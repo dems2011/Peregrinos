@@ -4,4 +4,5 @@
 node_modules
 .next
 android/.gradle
-android/app/build
+android/app/buildapps/api/dist/
+apps/api/dist/
