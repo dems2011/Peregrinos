@@ -1,0 +1,28 @@
+{
+  "name": "peregrinos",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "postinstall": "npm run build -w @peregrinos/shared",
+    "build:shared": "npm run build -w @peregrinos/shared",
+    "dev:api": "npm run dev -w @peregrinos/api",
+    "dev:web": "npm run dev -w @peregrinos/web",
+    "db:up": "docker compose up -d db",
+    "db:migrate": "npm run db:migrate -w @peregrinos/api",
+    "db:seed": "npm run db:seed -w @peregrinos/api",
+    "db:reset": "npm run db:reset -w @peregrinos/api",
+    "db:init": "npm run db:init -w @peregrinos/api"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.5.2",
+    "@capacitor/cli": "^8.5.2",
+    "@capacitor/core": "^8.5.2"
+  }
+}

@@ -1,0 +1,477 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  SUPERADMIN
+  ADMIN
+  OPERATOR
+}
+
+enum EventStatus {
+  SCHEDULED
+  IN_PROGRESS
+  FINISHED
+  CANCELLED
+}
+
+enum ParticipantStatus {
+  ACTIVE
+  INACTIVE
+  CANCELLED
+}
+
+enum CheckpointStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum CheckinMethod {
+  NUMBER
+  QR
+  SEARCH
+}
+
+/// ACTIVE: válido. CANCELLED: anulado por corrección (nunca se borra). CONFLICT: duplicado detectado en sincronización.
+enum CheckinStatus {
+  ACTIVE
+  CANCELLED
+  CONFLICT
+}
+
+enum SyncStatus {
+  SYNCED
+  PENDING
+  ERROR
+}
+
+enum IncidentType {
+  INJURED
+  LOST
+  WRONG_DOCUMENT
+  DUPLICATE
+  ABANDONED
+  EMERGENCY
+  NOTE
+}
+
+enum IncidentStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+}
+
+/// Preparado para múltiples organizaciones.
+model Organization {
+  id        String   @id @default(uuid())
+  name      String
+  createdAt DateTime @default(now())
+
+  users  User[]
+  events Event[]
+  invitations Invitation[]
+}
+
+model User {
+  id             String   @id @default(uuid())
+  organizationId String
+  email          String   @unique
+  name           String
+  passwordHash   String
+  role           Role
+  isActive       Boolean  @default(true)
+  /// Permisos activados individualmente (además de los del rol).
+  extraPermissions String[] @default([])
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization  Organization       @relation(fields: [organizationId], references: [id])
+  refreshTokens RefreshToken[]
+  assignments   OperatorAssignment[]
+  checkins      Checkin[]          @relation("CheckinOperator")
+  incidents     Incident[]
+  auditLogs     AuditLog[]
+
+  invitationsSent Invitation[] @relation("InvitationInviter")
+
+  @@index([organizationId, role])
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+  userAgent String?
+  ip        String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Event {
+  id             String      @id @default(uuid())
+  organizationId String
+  name           String
+  description    String?
+  startsAt       DateTime
+  timezone       String      @default("America/Argentina/Buenos_Aires")
+  status         EventStatus @default(SCHEDULED)
+  /// Nombre de la parroquia que aparece en la credencial (si falta, se usa el de la organización).
+  parishName     String?
+  /// Inscripción abierta: el peregrino se registra con un enlace público y envía su comprobante.
+  registrationOpen Boolean    @default(false)
+  registrationToken String?   @unique
+  registrationFee Decimal?    @db.Decimal(12, 2)
+  paymentInstructions String?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  organization Organization       @relation(fields: [organizationId], references: [id])
+  participants Participant[]
+  groups       ParticipantGroup[]
+  checkpoints  Checkpoint[]
+  assignments  OperatorAssignment[]
+  checkins     Checkin[]
+  incidents    Incident[]
+  syncQueue    SyncQueue[]
+  contacts     EventContact[]
+  registrations Registration[]
+
+  @@index([organizationId, status])
+}
+
+/// Preparado para grupos/familias.
+model ParticipantGroup {
+  id      String @id @default(uuid())
+  eventId String
+  name    String
+
+  event        Event         @relation(fields: [eventId], references: [id])
+  participants Participant[]
+
+  @@index([eventId])
+}
+
+model Participant {
+  id             String            @id @default(uuid())
+  eventId        String
+  /// Número visible (1 -> "001"). Único por evento.
+  number         Int
+  firstName      String
+  lastName       String
+  /// Documento normalizado (solo dígitos/letras, sin puntos). Único por evento.
+  documentNumber String
+  documentType   String            @default("DNI")
+  phone          String
+  /// Solo dígitos del teléfono, para buscar sin importar el formato.
+  phoneDigits    String            @default("")
+  /// Token opaco del QR. No contiene datos personales.
+  qrToken        String            @unique
+  /// Acceso del peregrino: solo se guardan hashes (enlace y código corto).
+  accessTokenHash String?          @unique
+  accessCodeHash  String?          @unique
+  accessIssuedAt  DateTime?
+  /// La credencial queda disponible desde que la persona entra al listado oficial.
+  credentialIssuedAt DateTime @default(now())
+  credentialPrintedAt DateTime?
+  photoUrl       String?
+  notes          String?
+  status         ParticipantStatus @default(ACTIVE)
+  groupId        String?
+  /// Preparado para menores y contacto de emergencia.
+  isMinor               Boolean @default(false)
+  emergencyContactName  String?
+  emergencyContactPhone String?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  event    Event             @relation(fields: [eventId], references: [id])
+  group    ParticipantGroup? @relation(fields: [groupId], references: [id])
+  checkins Checkin[]
+  incidents Incident[]
+  pilgrimSessions PilgrimSession[]
+  registration    Registration?
+
+  @@unique([eventId, number])
+  @@unique([eventId, documentNumber])
+  /// Permite claves foráneas compuestas que impiden mezclar eventos.
+  @@unique([id, eventId])
+  @@index([eventId, lastName, firstName])
+  @@index([eventId, phoneDigits])
+}
+
+model Checkpoint {
+  id          String           @id @default(uuid())
+  eventId     String
+  order       Int
+  name        String
+  description String?
+  address     String?
+  reference   String?
+  latitude    Float?
+  longitude   Float?
+  capacity    Int?
+  status      CheckpointStatus @default(ACTIVE)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  event       Event                @relation(fields: [eventId], references: [id])
+  assignments OperatorAssignment[]
+  checkins    Checkin[]
+  incidents   Incident[]
+  contacts    EventContact[]
+
+  @@unique([eventId, order])
+  @@unique([id, eventId])
+}
+
+/// Un operador puede tener uno o varios puntos asignados.
+model OperatorAssignment {
+  id           String   @id @default(uuid())
+  userId       String
+  eventId      String
+  checkpointId String
+  createdAt    DateTime @default(now())
+
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  event      Event      @relation(fields: [eventId], references: [id])
+  checkpoint Checkpoint @relation(fields: [checkpointId, eventId], references: [id, eventId])
+
+  @@unique([userId, checkpointId])
+  @@index([userId])
+}
+
+model Checkin {
+  /// UUID generado por el cliente (idempotencia en la sincronización).
+  id            String        @id @default(uuid())
+  eventId       String
+  participantId String
+  checkpointId  String
+  operatorId    String
+  /// Momento real de la llegada (reloj del dispositivo).
+  timestamp     DateTime
+  method        CheckinMethod
+  latitude      Float?
+  longitude     Float?
+  deviceId      String?
+  status        CheckinStatus @default(ACTIVE)
+  syncStatus    SyncStatus    @default(SYNCED)
+  /// Si es CONFLICT: id del registro ACTIVE con el que choca.
+  conflictOfId  String?
+  cancelReason  String?
+  cancelledById String?
+  cancelledAt   DateTime?
+  createdAt     DateTime      @default(now())
+
+  event       Event       @relation(fields: [eventId], references: [id])
+  participant Participant @relation(fields: [participantId, eventId], references: [id, eventId])
+  checkpoint  Checkpoint  @relation(fields: [checkpointId, eventId], references: [id, eventId])
+  operator    User        @relation("CheckinOperator", fields: [operatorId], references: [id])
+
+  @@index([eventId, checkpointId, timestamp])
+  @@index([eventId, participantId])
+  // NOTA: la unicidad parcial (eventId, participantId, checkpointId) WHERE status='ACTIVE'
+  // no se puede expresar en Prisma: se agrega con SQL en una migración (ver README).
+}
+
+model Incident {
+  id            String         @id @default(uuid())
+  eventId       String
+  participantId String?
+  checkpointId  String?
+  operatorId    String
+  type          IncidentType
+  description   String
+  status        IncidentStatus @default(OPEN)
+  occurredAt    DateTime       @default(now())
+  createdAt     DateTime       @default(now())
+
+  event       Event        @relation(fields: [eventId], references: [id])
+  participant Participant? @relation(fields: [participantId], references: [id])
+  checkpoint  Checkpoint?  @relation(fields: [checkpointId], references: [id])
+  operator    User         @relation(fields: [operatorId], references: [id])
+
+  @@index([eventId, status])
+}
+
+model AuditLog {
+  id             String   @id @default(uuid())
+  organizationId String?
+  eventId        String?
+  userId         String?
+  action         String
+  entityType     String
+  entityId       String?
+  metadata       Json?
+  ip             String?
+  userAgent      String?
+  createdAt      DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([eventId, createdAt])
+  @@index([userId, createdAt])
+  @@index([entityType, entityId])
+}
+
+/// Cola de sincronización del lado servidor (lotes recibidos desde dispositivos offline).
+model SyncQueue {
+  id          String     @id @default(uuid())
+  /// ID generado por el cliente para esta operación (idempotencia).
+  clientId    String     @unique
+  eventId     String
+  operatorId  String
+  deviceId    String?
+  type        String
+  payload     Json
+  status      SyncStatus @default(PENDING)
+  attempts    Int        @default(0)
+  lastError   String?
+  createdAt   DateTime   @default(now())
+  processedAt DateTime?
+
+  event Event @relation(fields: [eventId], references: [id])
+
+  @@index([eventId, status])
+}
+
+/// Invitación por correo para sumar personal con un nivel de acceso definido.
+model Invitation {
+  id             String    @id @default(uuid())
+  organizationId String
+  email          String
+  role           Role
+  extraPermissions String[] @default([])
+  /// Puntos de control que se asignarán al aceptar (solo operadores).
+  checkpointIds  String[]  @default([])
+  tokenHash      String    @unique
+  expiresAt      DateTime
+  acceptedAt     DateTime?
+  revokedAt      DateTime?
+  acceptedUserId String?
+  invitedById    String
+  lastSentAt     DateTime?
+  sendCount      Int       @default(0)
+  createdAt      DateTime  @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  invitedBy    User         @relation("InvitationInviter", fields: [invitedById], references: [id])
+
+  @@index([organizationId, email])
+}
+
+/// Sesión del peregrino (separada del personal; solo ve sus propios datos).
+model PilgrimSession {
+  id            String    @id @default(uuid())
+  /// Una sesión pertenece a una inscripción (aún sin verificar) o a un participante oficial.
+  participantId String?
+  registrationId String?
+  tokenHash     String    @unique
+  expiresAt     DateTime
+  revokedAt     DateTime?
+  createdAt     DateTime  @default(now())
+  userAgent     String?
+  ip            String?
+
+  participant  Participant?  @relation(fields: [participantId], references: [id], onDelete: Cascade)
+  registration Registration? @relation(fields: [registrationId], references: [id], onDelete: Cascade)
+
+  @@index([participantId])
+  @@index([registrationId])
+}
+
+/// Personas de la organización a quienes el peregrino puede recurrir.
+model EventContact {
+  id           String   @id @default(uuid())
+  eventId      String
+  checkpointId String?
+  name         String
+  roleLabel    String?
+  phone        String
+  email        String?
+  notes        String?
+  isEmergency  Boolean  @default(false)
+  sortOrder    Int      @default(0)
+  createdAt    DateTime @default(now())
+
+  event      Event       @relation(fields: [eventId], references: [id])
+  checkpoint Checkpoint? @relation(fields: [checkpointId], references: [id], onDelete: SetNull)
+
+  @@index([eventId, sortOrder])
+}
+
+enum RegistrationStatus {
+  PENDING_PROOF
+  IN_REVIEW
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum ProofStatus {
+  SUBMITTED
+  ACCEPTED
+  REJECTED
+}
+
+/// Inscripción de un peregrino que aún no está en el listado oficial.
+/// Al aprobarla se crea el Participant (con su número y QR); hasta entonces no tiene número.
+model Registration {
+  id             String             @id @default(uuid())
+  eventId        String
+  firstName      String
+  lastName       String
+  documentNumber String
+  documentType   String             @default("DNI")
+  phone          String
+  phoneDigits    String             @default("")
+  status         RegistrationStatus @default(PENDING_PROOF)
+  accessTokenHash String?           @unique
+  accessCodeHash  String?           @unique
+  rejectionReason String?
+  reviewedById   String?
+  reviewedAt     DateTime?
+  participantId  String?            @unique
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  event           Event            @relation(fields: [eventId], references: [id])
+  participant     Participant?     @relation(fields: [participantId], references: [id])
+  proofs          PaymentProof[]
+  pilgrimSessions PilgrimSession[]
+
+  @@unique([eventId, documentNumber])
+  @@index([eventId, status])
+}
+
+/// Comprobante de pago. El archivo vive fuera de la base (ver lib/storage.ts); aquí solo su referencia y huella.
+model PaymentProof {
+  id             String      @id @default(uuid())
+  registrationId String
+  storageKey     String      @unique
+  mimeType       String
+  sizeBytes      Int
+  /// Huella SHA-256: detecta el mismo comprobante usado en dos inscripciones.
+  sha256         String
+  amount         Decimal?    @db.Decimal(12, 2)
+  reference      String?
+  paidAt         DateTime?
+  note           String?
+  status         ProofStatus @default(SUBMITTED)
+  createdAt      DateTime    @default(now())
+  reviewedAt     DateTime?
+
+  registration Registration @relation(fields: [registrationId], references: [id], onDelete: Cascade)
+
+  @@index([sha256])
+  @@index([registrationId])
+}
