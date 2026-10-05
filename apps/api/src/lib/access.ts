@@ -32,6 +32,9 @@ export async function lockEvent(tx: { $queryRaw: typeof prisma.$queryRaw }, even
 }
 
 export function assertEventOpen(status: string) {
+  if (status === "DRAFT") {
+    throw forbidden("El evento está en borrador: todavía no se pueden registrar llegadas.");
+  }
   if (status === "FINISHED" || status === "CANCELLED") {
     throw forbidden("El evento está finalizado o cancelado: ya no se pueden registrar llegadas.");
   }

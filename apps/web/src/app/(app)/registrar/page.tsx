@@ -100,6 +100,7 @@ export default function Registrar() {
   const cp = cps.find((c) => c.id === cpId);
   if (!can("checkin:create")) return <Page title="Registrar llegada"><div className="alert warn">Tu usuario no tiene permiso para registrar llegadas.</div></Page>;
   if (event && (event.status === "FINISHED" || event.status === "CANCELLED")) return <Page title="Registrar llegada"><div className="alert warn">El evento está finalizado o cancelado.</div></Page>;
+  if (event?.status === "DRAFT") return <Page title="Registrar llegada"><div className="alert warn">El evento está en borrador: todavía no se pueden registrar llegadas.</div></Page>;
 
   return (
     <Page title="Registrar llegada">

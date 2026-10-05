@@ -5,8 +5,41 @@ export const ROLES = ["SUPERADMIN", "ADMIN", "OPERATOR"] as const;
 export type Role = (typeof ROLES)[number];
 export type AccountType = "STAFF" | "PILGRIM";
 
-export const EVENT_STATUSES = ["SCHEDULED", "IN_PROGRESS", "FINISHED", "CANCELLED"] as const;
+/** DRAFT: en preparación, no operativo · SCHEDULED: programado · IN_PROGRESS: activo · FINISHED: cerrado · CANCELLED: cancelado. */
+export const EVENT_STATUSES = ["DRAFT", "SCHEDULED", "IN_PROGRESS", "FINISHED", "CANCELLED"] as const;
 export type EventStatus = (typeof EVENT_STATUSES)[number];
+export const EVENT_STATUS_LABEL: Record<EventStatus, string> = {
+  DRAFT: "Borrador", SCHEDULED: "Programado", IN_PROGRESS: "En curso", FINISHED: "Finalizado", CANCELLED: "Cancelado",
+};
+/** Estados en los que el evento no admite operación (llegadas, altas desde inscripciones). */
+export const isEventOperable = (s: EventStatus) => s === "SCHEDULED" || s === "IN_PROGRESS";
+
+/* ---------- Tipos de evento (la peregrinación es un tipo especializado, no otra app) ---------- */
+export const EVENT_TYPES = [
+  "PILGRIMAGE", "PROCESSION", "PATRONAL_FEAST", "LITURGICAL_CELEBRATION", "ROSARY",
+  "RETREAT", "GATHERING", "COMMUNITY_ACTIVITY", "CULTURAL_ACTIVITY", "OTHER",
+] as const;
+export type EventType = (typeof EVENT_TYPES)[number];
+
+/** Qué habilita cada tipo. hasRoute: admite trayecto (EventRoute) y la gestión de recorrido. */
+export const EVENT_TYPE_INFO: Record<EventType, { label: string; hasRoute: boolean }> = {
+  PILGRIMAGE: { label: "Peregrinación", hasRoute: true },
+  PROCESSION: { label: "Procesión", hasRoute: true },
+  PATRONAL_FEAST: { label: "Fiesta patronal", hasRoute: false },
+  LITURGICAL_CELEBRATION: { label: "Celebración litúrgica", hasRoute: false },
+  ROSARY: { label: "Rosario", hasRoute: false },
+  RETREAT: { label: "Retiro", hasRoute: false },
+  GATHERING: { label: "Encuentro", hasRoute: false },
+  COMMUNITY_ACTIVITY: { label: "Actividad comunitaria", hasRoute: false },
+  CULTURAL_ACTIVITY: { label: "Actividad cultural", hasRoute: false },
+  OTHER: { label: "Otro", hasRoute: false },
+};
+
+export const EVENT_VISIBILITIES = ["PRIVATE", "UNLISTED", "PUBLIC"] as const;
+export type EventVisibility = (typeof EVENT_VISIBILITIES)[number];
+export const EVENT_VISIBILITY_LABEL: Record<EventVisibility, string> = {
+  PRIVATE: "Privado (solo personal)", UNLISTED: "Solo con enlace", PUBLIC: "Público",
+};
 
 export type Permission =
   | "event:read" | "event:create" | "event:update"
@@ -58,19 +91,106 @@ export const bootstrapSchema = z.object({
   password,
 });
 
-export const createEventSchema = z.object({
+const lat = z.coerce.number().min(-90).max(90);
+const lng = z.coerce.number().min(-180).max(180);
+const optText = (max: number) => z.string().trim().max(max).nullable().optional();
+
+/** Trayecto (origen → destino). Solo para tipos con EVENT_TYPE_INFO[type].hasRoute. */
+export const eventRouteSchema = z.object({
+  originName: optText(160),
+  originAddress: optText(240),
+  originLat: lat.nullable().optional(),
+  originLng: lng.nullable().optional(),
+  destinationName: optText(160),
+  destinationAddress: optText(240),
+  destinationLat: lat.nullable().optional(),
+  destinationLng: lng.nullable().optional(),
+  distanceKm: z.coerce.number().min(0).max(99_999).nullable().optional(),
+});
+export type EventRouteInput = z.infer<typeof eventRouteSchema>;
+
+/**
+ * Opciones propias de cada tipo (columna Event.settings). Hoy ningún tipo define opciones:
+ * cada fase agrega aquí los campos que necesite, sin tocar el modelo Event.
+ */
+const noSettings = z.object({}).strict();
+export const eventSettingsSchemas: Record<EventType, z.ZodTypeAny> = {
+  PILGRIMAGE: noSettings, PROCESSION: noSettings, PATRONAL_FEAST: noSettings, LITURGICAL_CELEBRATION: noSettings,
+  ROSARY: noSettings, RETREAT: noSettings, GATHERING: noSettings, COMMUNITY_ACTIVITY: noSettings,
+  CULTURAL_ACTIVITY: noSettings, OTHER: noSettings,
+};
+
+/** Campos comunes de alta/edición. Las reglas entre campos se validan con validateEventCoherence. */
+const eventFields = {
   name: z.string().trim().min(3).max(160),
   description: z.string().trim().max(2000).optional(),
+  type: z.enum(EVENT_TYPES),
   startsAt: z.coerce.date(),
+  endsAt: z.coerce.date().nullable().optional(),
   timezone: z.string().default("America/Argentina/Buenos_Aires"),
-  status: z.enum(EVENT_STATUSES).default("SCHEDULED"),
+  status: z.enum(EVENT_STATUSES).default("DRAFT"),
   /** Nombre de la parroquia que se imprime en la credencial. */
-  parishName: z.string().trim().max(160).nullable().optional(),
+  parishName: optText(160),
+  locationName: optText(160),
+  address: optText(240),
+  latitude: lat.nullable().optional(),
+  longitude: lng.nullable().optional(),
+  capacity: z.coerce.number().int().min(1).max(1_000_000).nullable().optional(),
+  visibility: z.enum(EVENT_VISIBILITIES).optional(),
   registrationOpen: z.boolean().optional(),
+  registrationOpensAt: z.coerce.date().nullable().optional(),
+  registrationClosesAt: z.coerce.date().nullable().optional(),
   registrationFee: z.coerce.number().min(0).max(100_000_000).nullable().optional(),
-  paymentInstructions: z.string().trim().max(1500).nullable().optional(),
+  paymentInstructions: optText(1500),
+  certificateEnabled: z.boolean().optional(),
+  certificatePhrase: optText(300),
+  settings: z.record(z.unknown()).optional(),
+  /** null quita el trayecto. */
+  route: eventRouteSchema.nullable().optional(),
+};
+/** Sin `type` se asume OTHER (compatibilidad con clientes que aún no lo envían). */
+export const createEventSchema = z.object({ ...eventFields, type: eventFields.type.default("OTHER") });
+export const updateEventSchema = z.object(eventFields).partial();
+export type CreateEventInput = z.infer<typeof createEventSchema>;
+
+export const eventListQuerySchema = z.object({
+  type: z.enum(EVENT_TYPES).optional(),
+  status: z.enum(EVENT_STATUSES).optional(),
 });
-export const updateEventSchema = createEventSchema.partial();
+
+/**
+ * Reglas entre campos sobre el estado final del evento (ya combinado con lo guardado).
+ * Devuelve la lista de problemas; vacía si todo es coherente.
+ */
+export function validateEventCoherence(e: {
+  type: EventType; startsAt: Date; endsAt?: Date | null;
+  registrationOpensAt?: Date | null; registrationClosesAt?: Date | null;
+  settings?: unknown; hasRoute: boolean; latitude?: number | null; longitude?: number | null;
+}): { field: string; message: string }[] {
+  const issues: { field: string; message: string }[] = [];
+  if (e.endsAt && e.endsAt < e.startsAt) issues.push({ field: "endsAt", message: "La finalización no puede ser anterior al inicio." });
+  if (e.registrationOpensAt && e.registrationClosesAt && e.registrationClosesAt < e.registrationOpensAt) {
+    issues.push({ field: "registrationClosesAt", message: "El cierre de inscripción no puede ser anterior a la apertura." });
+  }
+  if ((e.latitude == null) !== (e.longitude == null)) issues.push({ field: "latitude", message: "Indica latitud y longitud juntas." });
+  if (e.hasRoute && !EVENT_TYPE_INFO[e.type].hasRoute) {
+    issues.push({ field: "route", message: `Un evento de tipo «${EVENT_TYPE_INFO[e.type].label}» no tiene trayecto. Quita el trayecto antes de cambiar el tipo.` });
+  }
+  const s = eventSettingsSchemas[e.type].safeParse(e.settings ?? {});
+  if (!s.success) issues.push({ field: "settings", message: "Configuración no válida para este tipo de evento." });
+  return issues;
+}
+
+/** Inscripción abierta ahora: interruptor + estado operable + ventana opcional. */
+export function isRegistrationOpenNow(
+  e: { registrationOpen: boolean; status: EventStatus; registrationOpensAt?: Date | null; registrationClosesAt?: Date | null },
+  now = new Date(),
+): boolean {
+  if (!e.registrationOpen || !isEventOperable(e.status)) return false;
+  if (e.registrationOpensAt && now < e.registrationOpensAt) return false;
+  if (e.registrationClosesAt && now > e.registrationClosesAt) return false;
+  return true;
+}
 
 export const createUserSchema = z.object({
   name: z.string().trim().min(2).max(120),
@@ -278,7 +398,10 @@ export interface PilgrimMe {
   participant: { number: number; firstName: string; lastName: string; documentMasked: string };
   /** Contenido exacto del QR ("PG1:<token>"). */
   qrContent: string;
-  event: { id: string; name: string; description: string | null; startsAt: string; status: EventStatus; timezone: string };
+  event: {
+    id: string; name: string; description: string | null; startsAt: string; status: EventStatus; timezone: string;
+    type: EventType; endsAt: string | null; locationName: string | null; address: string | null;
+  };
   route: { checkpointId: string; order: number; name: string; address: string | null; reference: string | null; latitude: number | null; longitude: number | null; arrived: boolean; timestamp: string | null }[];
   progress: { done: number; total: number; percent: number };
   contacts: { id: string; name: string; roleLabel: string | null; phone: string; email: string | null; notes: string | null; isEmergency: boolean; checkpointName: string | null }[];
@@ -340,6 +463,9 @@ export interface PilgrimRegistrationMe {
     firstName: string; lastName: string; documentMasked: string; status: RegistrationStatus;
     rejectionReason: string | null; proofsSent: number; lastProofAt: string | null;
   };
-  event: { id: string; name: string; parishName: string; startsAt: string; registrationFee: string | null; paymentInstructions: string | null };
+  event: {
+    id: string; name: string; parishName: string; startsAt: string; registrationFee: string | null; paymentInstructions: string | null;
+    type: EventType; endsAt: string | null; locationName: string | null; address: string | null;
+  };
   contacts: PilgrimMe["contacts"];
 }

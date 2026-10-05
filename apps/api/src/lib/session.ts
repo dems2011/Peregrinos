@@ -150,6 +150,7 @@ export async function buildMe(userId: string): Promise<MeResponse> {
     );
 
   const rank = {
+    DRAFT: 9,
     IN_PROGRESS: 0,
     SCHEDULED: 1,
     FINISHED: 9,

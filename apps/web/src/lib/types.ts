@@ -1,6 +1,19 @@
+import type { EventStatus, EventType, EventVisibility } from "@peregrinos/shared";
+
+export interface EventRoute {
+  originName: string | null; originAddress: string | null; originLat: number | null; originLng: number | null;
+  destinationName: string | null; destinationAddress: string | null; destinationLat: number | null; destinationLng: number | null;
+  distanceKm: string | null;
+}
 export interface EventItem {
-  id: string; name: string; description: string | null; status: "SCHEDULED" | "IN_PROGRESS" | "FINISHED" | "CANCELLED";
-  startsAt: string; timezone: string; parishName: string | null; registrationOpen: boolean; registrationFee: string | null; paymentInstructions: string | null;
+  id: string; name: string; description: string | null; status: EventStatus; type: EventType;
+  startsAt: string; endsAt: string | null; timezone: string; parishName: string | null;
+  locationName: string | null; address: string | null; latitude: number | null; longitude: number | null;
+  capacity: number | null; visibility: EventVisibility;
+  registrationOpen: boolean; registrationOpensAt: string | null; registrationClosesAt: string | null;
+  registrationFee: string | null; paymentInstructions: string | null;
+  certificateEnabled: boolean; certificatePhrase: string | null; settings: Record<string, unknown>;
+  route: EventRoute | null;
   _count: { participants: number; checkpoints: number; checkins: number };
 }
 export interface Person {

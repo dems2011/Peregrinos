@@ -2,8 +2,22 @@ import { z } from "zod";
 export declare const ROLES: readonly ["SUPERADMIN", "ADMIN", "OPERATOR"];
 export type Role = (typeof ROLES)[number];
 export type AccountType = "STAFF" | "PILGRIM";
-export declare const EVENT_STATUSES: readonly ["SCHEDULED", "IN_PROGRESS", "FINISHED", "CANCELLED"];
+/** DRAFT: en preparación, no operativo · SCHEDULED: programado · IN_PROGRESS: activo · FINISHED: cerrado · CANCELLED: cancelado. */
+export declare const EVENT_STATUSES: readonly ["DRAFT", "SCHEDULED", "IN_PROGRESS", "FINISHED", "CANCELLED"];
 export type EventStatus = (typeof EVENT_STATUSES)[number];
+export declare const EVENT_STATUS_LABEL: Record<EventStatus, string>;
+/** Estados en los que el evento no admite operación (llegadas, altas desde inscripciones). */
+export declare const isEventOperable: (s: EventStatus) => s is "SCHEDULED" | "IN_PROGRESS";
+export declare const EVENT_TYPES: readonly ["PILGRIMAGE", "PROCESSION", "PATRONAL_FEAST", "LITURGICAL_CELEBRATION", "ROSARY", "RETREAT", "GATHERING", "COMMUNITY_ACTIVITY", "CULTURAL_ACTIVITY", "OTHER"];
+export type EventType = (typeof EVENT_TYPES)[number];
+/** Qué habilita cada tipo. hasRoute: admite trayecto (EventRoute) y la gestión de recorrido. */
+export declare const EVENT_TYPE_INFO: Record<EventType, {
+    label: string;
+    hasRoute: boolean;
+}>;
+export declare const EVENT_VISIBILITIES: readonly ["PRIVATE", "UNLISTED", "PUBLIC"];
+export type EventVisibility = (typeof EVENT_VISIBILITIES)[number];
+export declare const EVENT_VISIBILITY_LABEL: Record<EventVisibility, string>;
 export type Permission = "event:read" | "event:create" | "event:update" | "user:manage" | "assignment:manage" | "participant:read" | "participant:create" | "participant:manage" | "checkpoint:read" | "checkpoint:manage" | "checkin:create" | "checkin:read" | "checkin:correct" | "report:read" | "export:run" | "backup:run" | "audit:read" | "contact:manage" | "invitation:manage" | "payment:review" | "credential:export";
 export declare const ROLE_PERMISSIONS: Record<Role, ReadonlySet<Permission>>;
 export declare function can(role: Role, permission: Permission): boolean;
@@ -58,69 +72,325 @@ export declare const bootstrapSchema: z.ZodObject<{
     organizationName: string;
     name: string;
 }>;
+/** Trayecto (origen → destino). Solo para tipos con EVENT_TYPE_INFO[type].hasRoute. */
+export declare const eventRouteSchema: z.ZodObject<{
+    originName: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    originAddress: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    originLat: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
+    originLng: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
+    destinationName: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    destinationAddress: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    destinationLat: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
+    destinationLng: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
+    distanceKm: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
+}, "strip", z.ZodTypeAny, {
+    originName?: string | null | undefined;
+    originAddress?: string | null | undefined;
+    originLat?: number | null | undefined;
+    originLng?: number | null | undefined;
+    destinationName?: string | null | undefined;
+    destinationAddress?: string | null | undefined;
+    destinationLat?: number | null | undefined;
+    destinationLng?: number | null | undefined;
+    distanceKm?: number | null | undefined;
+}, {
+    originName?: string | null | undefined;
+    originAddress?: string | null | undefined;
+    originLat?: number | null | undefined;
+    originLng?: number | null | undefined;
+    destinationName?: string | null | undefined;
+    destinationAddress?: string | null | undefined;
+    destinationLat?: number | null | undefined;
+    destinationLng?: number | null | undefined;
+    distanceKm?: number | null | undefined;
+}>;
+export type EventRouteInput = z.infer<typeof eventRouteSchema>;
+export declare const eventSettingsSchemas: Record<EventType, z.ZodTypeAny>;
+/** Sin `type` se asume OTHER (compatibilidad con clientes que aún no lo envían). */
 export declare const createEventSchema: z.ZodObject<{
+    type: z.ZodDefault<z.ZodEnum<["PILGRIMAGE", "PROCESSION", "PATRONAL_FEAST", "LITURGICAL_CELEBRATION", "ROSARY", "RETREAT", "GATHERING", "COMMUNITY_ACTIVITY", "CULTURAL_ACTIVITY", "OTHER"]>>;
     name: z.ZodString;
     description: z.ZodOptional<z.ZodString>;
     startsAt: z.ZodDate;
+    endsAt: z.ZodOptional<z.ZodNullable<z.ZodDate>>;
     timezone: z.ZodDefault<z.ZodString>;
-    status: z.ZodDefault<z.ZodEnum<["SCHEDULED", "IN_PROGRESS", "FINISHED", "CANCELLED"]>>;
+    status: z.ZodDefault<z.ZodEnum<["DRAFT", "SCHEDULED", "IN_PROGRESS", "FINISHED", "CANCELLED"]>>;
     /** Nombre de la parroquia que se imprime en la credencial. */
     parishName: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    locationName: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    address: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    latitude: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
+    longitude: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
+    capacity: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
+    visibility: z.ZodOptional<z.ZodEnum<["PRIVATE", "UNLISTED", "PUBLIC"]>>;
     registrationOpen: z.ZodOptional<z.ZodBoolean>;
+    registrationOpensAt: z.ZodOptional<z.ZodNullable<z.ZodDate>>;
+    registrationClosesAt: z.ZodOptional<z.ZodNullable<z.ZodDate>>;
     registrationFee: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
     paymentInstructions: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    certificateEnabled: z.ZodOptional<z.ZodBoolean>;
+    certificatePhrase: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    settings: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+    /** null quita el trayecto. */
+    route: z.ZodOptional<z.ZodNullable<z.ZodObject<{
+        originName: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+        originAddress: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+        originLat: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
+        originLng: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
+        destinationName: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+        destinationAddress: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+        destinationLat: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
+        destinationLng: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
+        distanceKm: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
+    }, "strip", z.ZodTypeAny, {
+        originName?: string | null | undefined;
+        originAddress?: string | null | undefined;
+        originLat?: number | null | undefined;
+        originLng?: number | null | undefined;
+        destinationName?: string | null | undefined;
+        destinationAddress?: string | null | undefined;
+        destinationLat?: number | null | undefined;
+        destinationLng?: number | null | undefined;
+        distanceKm?: number | null | undefined;
+    }, {
+        originName?: string | null | undefined;
+        originAddress?: string | null | undefined;
+        originLat?: number | null | undefined;
+        originLng?: number | null | undefined;
+        destinationName?: string | null | undefined;
+        destinationAddress?: string | null | undefined;
+        destinationLat?: number | null | undefined;
+        destinationLng?: number | null | undefined;
+        distanceKm?: number | null | undefined;
+    }>>>;
 }, "strip", z.ZodTypeAny, {
-    status: "SCHEDULED" | "IN_PROGRESS" | "FINISHED" | "CANCELLED";
+    type: "PILGRIMAGE" | "PROCESSION" | "PATRONAL_FEAST" | "LITURGICAL_CELEBRATION" | "ROSARY" | "RETREAT" | "GATHERING" | "COMMUNITY_ACTIVITY" | "CULTURAL_ACTIVITY" | "OTHER";
+    status: "DRAFT" | "SCHEDULED" | "IN_PROGRESS" | "FINISHED" | "CANCELLED";
     name: string;
     startsAt: Date;
     timezone: string;
     description?: string | undefined;
+    endsAt?: Date | null | undefined;
     parishName?: string | null | undefined;
+    locationName?: string | null | undefined;
+    address?: string | null | undefined;
+    latitude?: number | null | undefined;
+    longitude?: number | null | undefined;
+    capacity?: number | null | undefined;
+    visibility?: "PRIVATE" | "UNLISTED" | "PUBLIC" | undefined;
     registrationOpen?: boolean | undefined;
+    registrationOpensAt?: Date | null | undefined;
+    registrationClosesAt?: Date | null | undefined;
     registrationFee?: number | null | undefined;
     paymentInstructions?: string | null | undefined;
+    certificateEnabled?: boolean | undefined;
+    certificatePhrase?: string | null | undefined;
+    settings?: Record<string, unknown> | undefined;
+    route?: {
+        originName?: string | null | undefined;
+        originAddress?: string | null | undefined;
+        originLat?: number | null | undefined;
+        originLng?: number | null | undefined;
+        destinationName?: string | null | undefined;
+        destinationAddress?: string | null | undefined;
+        destinationLat?: number | null | undefined;
+        destinationLng?: number | null | undefined;
+        distanceKm?: number | null | undefined;
+    } | null | undefined;
 }, {
     name: string;
     startsAt: Date;
-    status?: "SCHEDULED" | "IN_PROGRESS" | "FINISHED" | "CANCELLED" | undefined;
+    type?: "PILGRIMAGE" | "PROCESSION" | "PATRONAL_FEAST" | "LITURGICAL_CELEBRATION" | "ROSARY" | "RETREAT" | "GATHERING" | "COMMUNITY_ACTIVITY" | "CULTURAL_ACTIVITY" | "OTHER" | undefined;
+    status?: "DRAFT" | "SCHEDULED" | "IN_PROGRESS" | "FINISHED" | "CANCELLED" | undefined;
     description?: string | undefined;
+    endsAt?: Date | null | undefined;
     timezone?: string | undefined;
     parishName?: string | null | undefined;
+    locationName?: string | null | undefined;
+    address?: string | null | undefined;
+    latitude?: number | null | undefined;
+    longitude?: number | null | undefined;
+    capacity?: number | null | undefined;
+    visibility?: "PRIVATE" | "UNLISTED" | "PUBLIC" | undefined;
     registrationOpen?: boolean | undefined;
+    registrationOpensAt?: Date | null | undefined;
+    registrationClosesAt?: Date | null | undefined;
     registrationFee?: number | null | undefined;
     paymentInstructions?: string | null | undefined;
+    certificateEnabled?: boolean | undefined;
+    certificatePhrase?: string | null | undefined;
+    settings?: Record<string, unknown> | undefined;
+    route?: {
+        originName?: string | null | undefined;
+        originAddress?: string | null | undefined;
+        originLat?: number | null | undefined;
+        originLng?: number | null | undefined;
+        destinationName?: string | null | undefined;
+        destinationAddress?: string | null | undefined;
+        destinationLat?: number | null | undefined;
+        destinationLng?: number | null | undefined;
+        distanceKm?: number | null | undefined;
+    } | null | undefined;
 }>;
 export declare const updateEventSchema: z.ZodObject<{
     name: z.ZodOptional<z.ZodString>;
     description: z.ZodOptional<z.ZodOptional<z.ZodString>>;
+    type: z.ZodOptional<z.ZodEnum<["PILGRIMAGE", "PROCESSION", "PATRONAL_FEAST", "LITURGICAL_CELEBRATION", "ROSARY", "RETREAT", "GATHERING", "COMMUNITY_ACTIVITY", "CULTURAL_ACTIVITY", "OTHER"]>>;
     startsAt: z.ZodOptional<z.ZodDate>;
+    endsAt: z.ZodOptional<z.ZodOptional<z.ZodNullable<z.ZodDate>>>;
     timezone: z.ZodOptional<z.ZodDefault<z.ZodString>>;
-    status: z.ZodOptional<z.ZodDefault<z.ZodEnum<["SCHEDULED", "IN_PROGRESS", "FINISHED", "CANCELLED"]>>>;
+    status: z.ZodOptional<z.ZodDefault<z.ZodEnum<["DRAFT", "SCHEDULED", "IN_PROGRESS", "FINISHED", "CANCELLED"]>>>;
     parishName: z.ZodOptional<z.ZodOptional<z.ZodNullable<z.ZodString>>>;
+    locationName: z.ZodOptional<z.ZodOptional<z.ZodNullable<z.ZodString>>>;
+    address: z.ZodOptional<z.ZodOptional<z.ZodNullable<z.ZodString>>>;
+    latitude: z.ZodOptional<z.ZodOptional<z.ZodNullable<z.ZodNumber>>>;
+    longitude: z.ZodOptional<z.ZodOptional<z.ZodNullable<z.ZodNumber>>>;
+    capacity: z.ZodOptional<z.ZodOptional<z.ZodNullable<z.ZodNumber>>>;
+    visibility: z.ZodOptional<z.ZodOptional<z.ZodEnum<["PRIVATE", "UNLISTED", "PUBLIC"]>>>;
     registrationOpen: z.ZodOptional<z.ZodOptional<z.ZodBoolean>>;
+    registrationOpensAt: z.ZodOptional<z.ZodOptional<z.ZodNullable<z.ZodDate>>>;
+    registrationClosesAt: z.ZodOptional<z.ZodOptional<z.ZodNullable<z.ZodDate>>>;
     registrationFee: z.ZodOptional<z.ZodOptional<z.ZodNullable<z.ZodNumber>>>;
     paymentInstructions: z.ZodOptional<z.ZodOptional<z.ZodNullable<z.ZodString>>>;
+    certificateEnabled: z.ZodOptional<z.ZodOptional<z.ZodBoolean>>;
+    certificatePhrase: z.ZodOptional<z.ZodOptional<z.ZodNullable<z.ZodString>>>;
+    settings: z.ZodOptional<z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>>;
+    route: z.ZodOptional<z.ZodOptional<z.ZodNullable<z.ZodObject<{
+        originName: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+        originAddress: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+        originLat: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
+        originLng: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
+        destinationName: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+        destinationAddress: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+        destinationLat: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
+        destinationLng: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
+        distanceKm: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
+    }, "strip", z.ZodTypeAny, {
+        originName?: string | null | undefined;
+        originAddress?: string | null | undefined;
+        originLat?: number | null | undefined;
+        originLng?: number | null | undefined;
+        destinationName?: string | null | undefined;
+        destinationAddress?: string | null | undefined;
+        destinationLat?: number | null | undefined;
+        destinationLng?: number | null | undefined;
+        distanceKm?: number | null | undefined;
+    }, {
+        originName?: string | null | undefined;
+        originAddress?: string | null | undefined;
+        originLat?: number | null | undefined;
+        originLng?: number | null | undefined;
+        destinationName?: string | null | undefined;
+        destinationAddress?: string | null | undefined;
+        destinationLat?: number | null | undefined;
+        destinationLng?: number | null | undefined;
+        distanceKm?: number | null | undefined;
+    }>>>>;
 }, "strip", z.ZodTypeAny, {
-    status?: "SCHEDULED" | "IN_PROGRESS" | "FINISHED" | "CANCELLED" | undefined;
+    type?: "PILGRIMAGE" | "PROCESSION" | "PATRONAL_FEAST" | "LITURGICAL_CELEBRATION" | "ROSARY" | "RETREAT" | "GATHERING" | "COMMUNITY_ACTIVITY" | "CULTURAL_ACTIVITY" | "OTHER" | undefined;
+    status?: "DRAFT" | "SCHEDULED" | "IN_PROGRESS" | "FINISHED" | "CANCELLED" | undefined;
     name?: string | undefined;
     description?: string | undefined;
     startsAt?: Date | undefined;
+    endsAt?: Date | null | undefined;
     timezone?: string | undefined;
     parishName?: string | null | undefined;
+    locationName?: string | null | undefined;
+    address?: string | null | undefined;
+    latitude?: number | null | undefined;
+    longitude?: number | null | undefined;
+    capacity?: number | null | undefined;
+    visibility?: "PRIVATE" | "UNLISTED" | "PUBLIC" | undefined;
     registrationOpen?: boolean | undefined;
+    registrationOpensAt?: Date | null | undefined;
+    registrationClosesAt?: Date | null | undefined;
     registrationFee?: number | null | undefined;
     paymentInstructions?: string | null | undefined;
+    certificateEnabled?: boolean | undefined;
+    certificatePhrase?: string | null | undefined;
+    settings?: Record<string, unknown> | undefined;
+    route?: {
+        originName?: string | null | undefined;
+        originAddress?: string | null | undefined;
+        originLat?: number | null | undefined;
+        originLng?: number | null | undefined;
+        destinationName?: string | null | undefined;
+        destinationAddress?: string | null | undefined;
+        destinationLat?: number | null | undefined;
+        destinationLng?: number | null | undefined;
+        distanceKm?: number | null | undefined;
+    } | null | undefined;
 }, {
-    status?: "SCHEDULED" | "IN_PROGRESS" | "FINISHED" | "CANCELLED" | undefined;
+    type?: "PILGRIMAGE" | "PROCESSION" | "PATRONAL_FEAST" | "LITURGICAL_CELEBRATION" | "ROSARY" | "RETREAT" | "GATHERING" | "COMMUNITY_ACTIVITY" | "CULTURAL_ACTIVITY" | "OTHER" | undefined;
+    status?: "DRAFT" | "SCHEDULED" | "IN_PROGRESS" | "FINISHED" | "CANCELLED" | undefined;
     name?: string | undefined;
     description?: string | undefined;
     startsAt?: Date | undefined;
+    endsAt?: Date | null | undefined;
     timezone?: string | undefined;
     parishName?: string | null | undefined;
+    locationName?: string | null | undefined;
+    address?: string | null | undefined;
+    latitude?: number | null | undefined;
+    longitude?: number | null | undefined;
+    capacity?: number | null | undefined;
+    visibility?: "PRIVATE" | "UNLISTED" | "PUBLIC" | undefined;
     registrationOpen?: boolean | undefined;
+    registrationOpensAt?: Date | null | undefined;
+    registrationClosesAt?: Date | null | undefined;
     registrationFee?: number | null | undefined;
     paymentInstructions?: string | null | undefined;
+    certificateEnabled?: boolean | undefined;
+    certificatePhrase?: string | null | undefined;
+    settings?: Record<string, unknown> | undefined;
+    route?: {
+        originName?: string | null | undefined;
+        originAddress?: string | null | undefined;
+        originLat?: number | null | undefined;
+        originLng?: number | null | undefined;
+        destinationName?: string | null | undefined;
+        destinationAddress?: string | null | undefined;
+        destinationLat?: number | null | undefined;
+        destinationLng?: number | null | undefined;
+        distanceKm?: number | null | undefined;
+    } | null | undefined;
 }>;
+export type CreateEventInput = z.infer<typeof createEventSchema>;
+export declare const eventListQuerySchema: z.ZodObject<{
+    type: z.ZodOptional<z.ZodEnum<["PILGRIMAGE", "PROCESSION", "PATRONAL_FEAST", "LITURGICAL_CELEBRATION", "ROSARY", "RETREAT", "GATHERING", "COMMUNITY_ACTIVITY", "CULTURAL_ACTIVITY", "OTHER"]>>;
+    status: z.ZodOptional<z.ZodEnum<["DRAFT", "SCHEDULED", "IN_PROGRESS", "FINISHED", "CANCELLED"]>>;
+}, "strip", z.ZodTypeAny, {
+    type?: "PILGRIMAGE" | "PROCESSION" | "PATRONAL_FEAST" | "LITURGICAL_CELEBRATION" | "ROSARY" | "RETREAT" | "GATHERING" | "COMMUNITY_ACTIVITY" | "CULTURAL_ACTIVITY" | "OTHER" | undefined;
+    status?: "DRAFT" | "SCHEDULED" | "IN_PROGRESS" | "FINISHED" | "CANCELLED" | undefined;
+}, {
+    type?: "PILGRIMAGE" | "PROCESSION" | "PATRONAL_FEAST" | "LITURGICAL_CELEBRATION" | "ROSARY" | "RETREAT" | "GATHERING" | "COMMUNITY_ACTIVITY" | "CULTURAL_ACTIVITY" | "OTHER" | undefined;
+    status?: "DRAFT" | "SCHEDULED" | "IN_PROGRESS" | "FINISHED" | "CANCELLED" | undefined;
+}>;
+/**
+ * Reglas entre campos sobre el estado final del evento (ya combinado con lo guardado).
+ * Devuelve la lista de problemas; vacía si todo es coherente.
+ */
+export declare function validateEventCoherence(e: {
+    type: EventType;
+    startsAt: Date;
+    endsAt?: Date | null;
+    registrationOpensAt?: Date | null;
+    registrationClosesAt?: Date | null;
+    settings?: unknown;
+    hasRoute: boolean;
+    latitude?: number | null;
+    longitude?: number | null;
+}): {
+    field: string;
+    message: string;
+}[];
+/** Inscripción abierta ahora: interruptor + estado operable + ventana opcional. */
+export declare function isRegistrationOpenNow(e: {
+    registrationOpen: boolean;
+    status: EventStatus;
+    registrationOpensAt?: Date | null;
+    registrationClosesAt?: Date | null;
+}, now?: Date): boolean;
 export declare const createUserSchema: z.ZodObject<{
     name: z.ZodString;
     email: z.ZodString;
@@ -295,19 +565,19 @@ export declare const createCheckpointSchema: z.ZodObject<{
     name: string;
     description?: string | undefined;
     address?: string | undefined;
-    reference?: string | undefined;
-    capacity?: number | null | undefined;
     latitude?: number | null | undefined;
     longitude?: number | null | undefined;
+    capacity?: number | null | undefined;
+    reference?: string | undefined;
 }, {
     name: string;
     status?: "ACTIVE" | "INACTIVE" | undefined;
     description?: string | undefined;
     address?: string | undefined;
-    reference?: string | undefined;
-    capacity?: number | null | undefined;
     latitude?: number | null | undefined;
     longitude?: number | null | undefined;
+    capacity?: number | null | undefined;
+    reference?: string | undefined;
 }>;
 export declare const updateCheckpointSchema: z.ZodObject<{
     latitude: z.ZodOptional<z.ZodOptional<z.ZodNullable<z.ZodNumber>>>;
@@ -323,19 +593,19 @@ export declare const updateCheckpointSchema: z.ZodObject<{
     name?: string | undefined;
     description?: string | undefined;
     address?: string | undefined;
-    reference?: string | undefined;
-    capacity?: number | null | undefined;
     latitude?: number | null | undefined;
     longitude?: number | null | undefined;
+    capacity?: number | null | undefined;
+    reference?: string | undefined;
 }, {
     status?: "ACTIVE" | "INACTIVE" | undefined;
     name?: string | undefined;
     description?: string | undefined;
     address?: string | undefined;
-    reference?: string | undefined;
-    capacity?: number | null | undefined;
     latitude?: number | null | undefined;
     longitude?: number | null | undefined;
+    capacity?: number | null | undefined;
+    reference?: string | undefined;
 }>;
 export declare const reorderCheckpointsSchema: z.ZodObject<{
     checkpointIds: z.ZodArray<z.ZodString, "many">;
@@ -615,6 +885,10 @@ export interface PilgrimMe {
         startsAt: string;
         status: EventStatus;
         timezone: string;
+        type: EventType;
+        endsAt: string | null;
+        locationName: string | null;
+        address: string | null;
     };
     route: {
         checkpointId: string;
@@ -765,6 +1039,10 @@ export interface PilgrimRegistrationMe {
         startsAt: string;
         registrationFee: string | null;
         paymentInstructions: string | null;
+        type: EventType;
+        endsAt: string | null;
+        locationName: string | null;
+        address: string | null;
     };
     contacts: PilgrimMe["contacts"];
 }

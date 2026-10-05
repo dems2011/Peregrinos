@@ -38,6 +38,7 @@ async function main() {
     data: {
       organizationId: org.id,
       name: "Peregrinación de Luján 2026",
+      type: "PILGRIMAGE",
       description: "Caminata anual con cuatro puntos de control.",
       startsAt: new Date("2026-10-02T09:00:00-03:00"),
       status: "IN_PROGRESS",

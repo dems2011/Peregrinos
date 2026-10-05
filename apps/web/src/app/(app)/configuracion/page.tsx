@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { CalendarCog, ChevronRight, History, KeyRound, LogOut, Phone, Users } from "lucide-react";
+import { CalendarCog, CalendarDays, ChevronRight, History, KeyRound, LogOut, Phone, Users } from "lucide-react";
 import { logout } from "@/lib/api";
 import { useApp } from "@/components/AppContext";
 import { Page } from "@/components/ui";
@@ -10,7 +10,8 @@ export default function Configuracion() {
   const router = useRouter();
   const { can } = useApp();
   const items = [
-    can("event:update") && { href: "/configuracion/evento", icon: CalendarCog, c: "#1677FF", t: "Evento e inscripción", s: "Parroquia, fecha, estado, cobro y enlace de inscripción" },
+    can("event:update") && { href: "/configuracion/eventos", icon: CalendarDays, c: "#0E9AA7", t: "Eventos", s: "Todos los eventos por tipo y estado; crear uno nuevo" },
+    can("event:update") && { href: "/configuracion/evento", icon: CalendarCog, c: "#1677FF", t: "Evento e inscripción", s: "Tipo, fechas, lugar, trayecto, inscripción y certificado" },
     (can("invitation:manage") || can("user:manage")) && { href: "/configuracion/usuarios", icon: Users, c: "#7B3FE4", t: "Usuarios e invitaciones", s: "Invitar por correo y definir el nivel de acceso" },
     can("contact:manage") && { href: "/configuracion/contactos", icon: Phone, c: "#18A957", t: "Contactos del evento", s: "A quién pueden llamar los peregrinos" },
     can("participant:manage") && { href: "/configuracion/accesos", icon: KeyRound, c: "#F29B18", t: "Acceso de peregrinos", s: "Enlaces y códigos personales" },

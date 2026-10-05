@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Clock, CreditCard, Home, IdCard, LogOut, MapPin, Menu as MenuIcon, ScanLine, Settings, Users, Wallet } from "lucide-react";
-import type { Permission } from "@peregrinos/shared";
+import { EVENT_TYPE_INFO, type Permission } from "@peregrinos/shared";
 import { logout } from "@/lib/api";
 import { useApp } from "./AppContext";
 
@@ -18,10 +18,15 @@ export const NAV: NavItem[] = [
   { href: "/configuracion", label: "Configuración", icon: Settings, perm: "config" },
 ];
 
+/** Menú según permisos y tipo del evento activo: "Recorrido" solo en tipos con trayecto. */
 export function useNav() {
-  const { can } = useApp();
+  const { can, event } = useApp();
   const canConfig = can("event:update") || can("invitation:manage") || can("contact:manage") || can("audit:read");
-  return NAV.filter((n) => (n.perm === "config" ? canConfig : can(n.perm)));
+  const hasRoute = !event || EVENT_TYPE_INFO[event.type].hasRoute;
+  return NAV
+    .filter((n) => (n.perm === "config" ? canConfig : can(n.perm)))
+    .filter((n) => hasRoute || n.href !== "/recorrido")
+    .map((n) => (n.href === "/registrar" && !hasRoute ? { ...n, label: "Registrar asistencia" } : n));
 }
 
 export function EventPicker() {
@@ -55,7 +60,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
           <div><b>Peregrinos</b><small>Panel de administración</small></div>
         </div>
         {events.length > 1 && me.user.role !== "OPERATOR" && (
-          <select aria-label="Evento" value={event?.id ?? ""} onChange={(e) => setEventId(e.target.value)} style={{ margin: "0 4px 8px", minHeight: 40, borderRadius: 8, border: 0, padding: "0 8px" }}>
+          <select aria-label="Evento" value={event?.id ?? ""} onChange={(e) => setEventId(e.target.value)} style={{ margin: "0 4px 8px", minHeight: 40, borderRadius: 8, border: 0, padding: "0 8px", color: "var(--text)" }}>
             {events.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
           </select>
         )}

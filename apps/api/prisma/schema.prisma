@@ -86,34 +86,92 @@ model RefreshToken {
 }
 
 model Event {
-  id                  String               @id @default(uuid())
-  organizationId      String
-  name                String
-  description         String?
-  startsAt            DateTime
-  timezone            String               @default("America/Argentina/Buenos_Aires")
-  status              EventStatus          @default(SCHEDULED)
+  id                   String               @id @default(uuid())
+  organizationId       String
+  name                 String
+  description          String?
+  startsAt             DateTime
+  timezone             String               @default("America/Argentina/Buenos_Aires")
+  status               EventStatus          @default(DRAFT)
   /// Nombre de la parroquia que aparece en la credencial (si falta, se usa el de la organización).
-  parishName          String?
+  parishName           String?
   /// Inscripción abierta: el peregrino se registra con un enlace público y envía su comprobante.
-  registrationOpen    Boolean              @default(false)
-  registrationToken   String?              @unique
-  registrationFee     Decimal?             @db.Decimal(12, 2)
-  paymentInstructions String?
-  createdAt           DateTime             @default(now())
-  updatedAt           DateTime             @updatedAt
-  checkins            Checkin[]
-  checkpoints         Checkpoint[]
-  organization        Organization         @relation(fields: [organizationId], references: [id])
-  contacts            EventContact[]
-  incidents           Incident[]
-  assignments         OperatorAssignment[]
-  participants        Participant[]
-  groups              ParticipantGroup[]
-  registrations       Registration[]
-  syncQueue           SyncQueue[]
+  registrationOpen     Boolean              @default(false)
+  registrationToken    String?              @unique
+  registrationFee      Decimal?             @db.Decimal(12, 2)
+  paymentInstructions  String?
+  /// Tipo de evento. La peregrinación es un tipo más; lo que habilita cada tipo se define en packages/shared (EVENT_TYPE_INFO).
+  type                 EventType            @default(OTHER)
+  endsAt               DateTime?
+  /// Lugar general del evento (templo, plaza, salón). El trayecto, si lo hay, vive en EventRoute.
+  locationName         String?
+  address              String?
+  latitude             Float?
+  longitude            Float?
+  /// Cupo informativo del evento (todavía no limita inscripciones).
+  capacity             Int?
+  visibility           EventVisibility      @default(PRIVATE)
+  /// Ventana opcional de inscripción. registrationOpen sigue siendo el interruptor principal.
+  registrationOpensAt  DateTime?
+  registrationClosesAt DateTime?
+  certificateEnabled   Boolean              @default(false)
+  certificatePhrase    String?
+  /// Opciones menores propias del tipo, validadas con Zod (eventSettingsSchemas en packages/shared).
+  settings             Json                 @default("{}")
+  route                EventRoute?
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
+  checkins             Checkin[]
+  checkpoints          Checkpoint[]
+  organization         Organization         @relation(fields: [organizationId], references: [id])
+  contacts             EventContact[]
+  incidents            Incident[]
+  assignments          OperatorAssignment[]
+  participants         Participant[]
+  groups               ParticipantGroup[]
+  registrations        Registration[]
+  syncQueue            SyncQueue[]
 
   @@index([organizationId, status])
+  @@index([organizationId, type])
+}
+
+/// Trayecto de un evento (origen → destino). Estructura genérica para cualquier tipo con recorrido;
+/// qué tipos pueden tenerla lo decide EVENT_TYPE_INFO[type].hasRoute, no la base de datos.
+model EventRoute {
+  eventId            String   @id
+  originName         String?
+  originAddress      String?
+  originLat          Float?
+  originLng          Float?
+  destinationName    String?
+  destinationAddress String?
+  destinationLat     Float?
+  destinationLng     Float?
+  distanceKm         Decimal? @db.Decimal(7, 2)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  event              Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+}
+
+enum EventType {
+  PILGRIMAGE
+  PROCESSION
+  PATRONAL_FEAST
+  LITURGICAL_CELEBRATION
+  ROSARY
+  RETREAT
+  GATHERING
+  COMMUNITY_ACTIVITY
+  CULTURAL_ACTIVITY
+  OTHER
+}
+
+/// PRIVATE: solo personal · UNLISTED: accesible con enlace · PUBLIC: listable públicamente (directorio futuro).
+enum EventVisibility {
+  PRIVATE
+  UNLISTED
+  PUBLIC
 }
 
 /// Preparado para grupos/familias.
@@ -450,7 +508,9 @@ enum Role {
   OPERATOR
 }
 
+/// DRAFT: en preparación, no operativo · SCHEDULED: programado/publicado · IN_PROGRESS: activo · FINISHED: cerrado · CANCELLED: cancelado.
 enum EventStatus {
+  DRAFT
   SCHEDULED
   IN_PROGRESS
   FINISHED

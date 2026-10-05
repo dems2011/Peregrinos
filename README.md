@@ -153,6 +153,7 @@ Prueba: `bash scripts/smoke-payments.sh` (~35 comprobaciones). Estados de la ins
 - **Fase 3C:** app del peregrino: inscripción en `/registro/<token>` (con compresión de la foto del comprobante), estado del pago, entrada por `/p/<token>` o código, Mi QR disponible sin internet, Recorrido y Contactos.
 - **Fase 4:** offline (Service Worker + IndexedDB), cola y sincronización idempotente, conflictos, respaldo/restauración.
 - **Fase 5:** reportes y gráficos, exportación CSV/XLSX/PDF, incidencias y emergencia, despliegue.
+- **Internacionalización:** geografía (países, niveles administrativos, direcciones), idiomas `es/en/pt/it` y países prioritarios iniciales. Diseño aprobado y tareas en [`docs/ARQUITECTURA-INTERNACIONAL.md`](docs/ARQUITECTURA-INTERNACIONAL.md).
 - Foto del participante, íconos PNG para instalar en iPhone, instalación PWA (hoy solo hay `manifest` e `icon.svg`).
 - Aún no probado en navegador ni con dispositivos reales: ver «Verificación» abajo.
 

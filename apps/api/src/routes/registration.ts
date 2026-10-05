@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { publish } from "../lib/bus";
 import { z } from "zod";
-import { createRegistrationSchema, digitsOnly, normalizeDocument } from "@peregrinos/shared";
+import { createRegistrationSchema, digitsOnly, isRegistrationOpenNow, normalizeDocument } from "@peregrinos/shared";
 import { Prisma } from "@prisma/client";
 import { cfg } from "../config";
 import { prisma } from "../lib/prisma";
@@ -17,7 +17,7 @@ import { buildRegistrationMe } from "./pilgrim";
 export default async function registrationRoutes(app: FastifyInstance) {
   async function openEvent(token: string) {
     const event = await prisma.event.findUnique({ where: { registrationToken: token }, include: { organization: true } });
-    if (!event || !event.registrationOpen || event.status === "FINISHED" || event.status === "CANCELLED") {
+    if (!event || !isRegistrationOpenNow(event)) {
       throw notFound("La inscripción no está disponible. Consulta con la organización.");
     }
     return event;
@@ -27,7 +27,10 @@ export default async function registrationRoutes(app: FastifyInstance) {
     const { token } = z.object({ token: z.string().min(20).max(200) }).parse(req.query);
     const e = await openEvent(token);
     return {
-      event: { name: e.name, description: e.description, startsAt: e.startsAt, parishName: e.parishName ?? e.organization.name },
+      event: {
+        name: e.name, description: e.description, startsAt: e.startsAt, parishName: e.parishName ?? e.organization.name,
+        type: e.type, endsAt: e.endsAt, locationName: e.locationName, address: e.address,
+      },
       registrationFee: e.registrationFee?.toString() ?? null,
       paymentInstructions: e.paymentInstructions,
     };

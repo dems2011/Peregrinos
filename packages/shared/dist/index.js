@@ -1,12 +1,44 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.credentialQuerySchema = exports.rejectRegistrationSchema = exports.approveRegistrationSchema = exports.registrationListSchema = exports.proofFieldsSchema = exports.createRegistrationSchema = exports.REGISTRATION_STATUSES = exports.qBool = exports.updateContactSchema = exports.createContactSchema = exports.issueAccessSchema = exports.pilgrimLoginSchema = exports.acceptInvitationSchema = exports.createInvitationSchema = exports.ACCESS_LEVELS = exports.canGrantRole = exports.hasPermission = exports.GRANTABLE_PERMISSIONS = exports.checkinListSchema = exports.resolveConflictSchema = exports.correctCheckinSchema = exports.cancelCheckinSchema = exports.createCheckinSchema = exports.reorderCheckpointsSchema = exports.updateCheckpointSchema = exports.createCheckpointSchema = exports.participantListSchema = exports.updateParticipantSchema = exports.createParticipantSchema = exports.digitsOnly = exports.normalizeDocument = exports.parseQrContent = exports.qrContent = exports.QR_PREFIX = exports.CHECKIN_METHODS = exports.PARTICIPANT_STATUSES = exports.formatParticipantNumber = exports.paginationSchema = exports.assignmentsSchema = exports.updateUserSchema = exports.createUserSchema = exports.updateEventSchema = exports.createEventSchema = exports.bootstrapSchema = exports.registerPilgrimSchema = exports.loginSchema = exports.ROLE_PERMISSIONS = exports.EVENT_STATUSES = exports.ROLES = void 0;
+exports.updateContactSchema = exports.createContactSchema = exports.issueAccessSchema = exports.pilgrimLoginSchema = exports.acceptInvitationSchema = exports.createInvitationSchema = exports.ACCESS_LEVELS = exports.canGrantRole = exports.hasPermission = exports.GRANTABLE_PERMISSIONS = exports.checkinListSchema = exports.resolveConflictSchema = exports.correctCheckinSchema = exports.cancelCheckinSchema = exports.createCheckinSchema = exports.reorderCheckpointsSchema = exports.updateCheckpointSchema = exports.createCheckpointSchema = exports.participantListSchema = exports.updateParticipantSchema = exports.createParticipantSchema = exports.digitsOnly = exports.normalizeDocument = exports.parseQrContent = exports.qrContent = exports.QR_PREFIX = exports.CHECKIN_METHODS = exports.PARTICIPANT_STATUSES = exports.formatParticipantNumber = exports.paginationSchema = exports.assignmentsSchema = exports.updateUserSchema = exports.createUserSchema = exports.eventListQuerySchema = exports.updateEventSchema = exports.createEventSchema = exports.eventSettingsSchemas = exports.eventRouteSchema = exports.bootstrapSchema = exports.registerPilgrimSchema = exports.loginSchema = exports.ROLE_PERMISSIONS = exports.EVENT_VISIBILITY_LABEL = exports.EVENT_VISIBILITIES = exports.EVENT_TYPE_INFO = exports.EVENT_TYPES = exports.isEventOperable = exports.EVENT_STATUS_LABEL = exports.EVENT_STATUSES = exports.ROLES = void 0;
+exports.credentialQuerySchema = exports.rejectRegistrationSchema = exports.approveRegistrationSchema = exports.registrationListSchema = exports.proofFieldsSchema = exports.createRegistrationSchema = exports.REGISTRATION_STATUSES = exports.qBool = void 0;
 exports.can = can;
+exports.validateEventCoherence = validateEventCoherence;
+exports.isRegistrationOpenNow = isRegistrationOpenNow;
 exports.effectivePermissions = effectivePermissions;
 const zod_1 = require("zod");
 /* ---------- Roles y permisos (única fuente de verdad: API y Web) ---------- */
 exports.ROLES = ["SUPERADMIN", "ADMIN", "OPERATOR"];
-exports.EVENT_STATUSES = ["SCHEDULED", "IN_PROGRESS", "FINISHED", "CANCELLED"];
+/** DRAFT: en preparación, no operativo · SCHEDULED: programado · IN_PROGRESS: activo · FINISHED: cerrado · CANCELLED: cancelado. */
+exports.EVENT_STATUSES = ["DRAFT", "SCHEDULED", "IN_PROGRESS", "FINISHED", "CANCELLED"];
+exports.EVENT_STATUS_LABEL = {
+    DRAFT: "Borrador", SCHEDULED: "Programado", IN_PROGRESS: "En curso", FINISHED: "Finalizado", CANCELLED: "Cancelado",
+};
+/** Estados en los que el evento no admite operación (llegadas, altas desde inscripciones). */
+const isEventOperable = (s) => s === "SCHEDULED" || s === "IN_PROGRESS";
+exports.isEventOperable = isEventOperable;
+/* ---------- Tipos de evento (la peregrinación es un tipo especializado, no otra app) ---------- */
+exports.EVENT_TYPES = [
+    "PILGRIMAGE", "PROCESSION", "PATRONAL_FEAST", "LITURGICAL_CELEBRATION", "ROSARY",
+    "RETREAT", "GATHERING", "COMMUNITY_ACTIVITY", "CULTURAL_ACTIVITY", "OTHER",
+];
+/** Qué habilita cada tipo. hasRoute: admite trayecto (EventRoute) y la gestión de recorrido. */
+exports.EVENT_TYPE_INFO = {
+    PILGRIMAGE: { label: "Peregrinación", hasRoute: true },
+    PROCESSION: { label: "Procesión", hasRoute: true },
+    PATRONAL_FEAST: { label: "Fiesta patronal", hasRoute: false },
+    LITURGICAL_CELEBRATION: { label: "Celebración litúrgica", hasRoute: false },
+    ROSARY: { label: "Rosario", hasRoute: false },
+    RETREAT: { label: "Retiro", hasRoute: false },
+    GATHERING: { label: "Encuentro", hasRoute: false },
+    COMMUNITY_ACTIVITY: { label: "Actividad comunitaria", hasRoute: false },
+    CULTURAL_ACTIVITY: { label: "Actividad cultural", hasRoute: false },
+    OTHER: { label: "Otro", hasRoute: false },
+};
+exports.EVENT_VISIBILITIES = ["PRIVATE", "UNLISTED", "PUBLIC"];
+exports.EVENT_VISIBILITY_LABEL = {
+    PRIVATE: "Privado (solo personal)", UNLISTED: "Solo con enlace", PUBLIC: "Público",
+};
 const OPERATOR = ["event:read", "participant:read", "checkpoint:read", "checkin:create"];
 const ADMIN = [
     ...OPERATOR, "participant:manage", "checkpoint:manage", "checkin:read", "checkin:correct",
@@ -42,19 +74,97 @@ exports.bootstrapSchema = zod_1.z.object({
     email,
     password,
 });
-exports.createEventSchema = zod_1.z.object({
+const lat = zod_1.z.coerce.number().min(-90).max(90);
+const lng = zod_1.z.coerce.number().min(-180).max(180);
+const optText = (max) => zod_1.z.string().trim().max(max).nullable().optional();
+/** Trayecto (origen → destino). Solo para tipos con EVENT_TYPE_INFO[type].hasRoute. */
+exports.eventRouteSchema = zod_1.z.object({
+    originName: optText(160),
+    originAddress: optText(240),
+    originLat: lat.nullable().optional(),
+    originLng: lng.nullable().optional(),
+    destinationName: optText(160),
+    destinationAddress: optText(240),
+    destinationLat: lat.nullable().optional(),
+    destinationLng: lng.nullable().optional(),
+    distanceKm: zod_1.z.coerce.number().min(0).max(99_999).nullable().optional(),
+});
+/**
+ * Opciones propias de cada tipo (columna Event.settings). Hoy ningún tipo define opciones:
+ * cada fase agrega aquí los campos que necesite, sin tocar el modelo Event.
+ */
+const noSettings = zod_1.z.object({}).strict();
+exports.eventSettingsSchemas = {
+    PILGRIMAGE: noSettings, PROCESSION: noSettings, PATRONAL_FEAST: noSettings, LITURGICAL_CELEBRATION: noSettings,
+    ROSARY: noSettings, RETREAT: noSettings, GATHERING: noSettings, COMMUNITY_ACTIVITY: noSettings,
+    CULTURAL_ACTIVITY: noSettings, OTHER: noSettings,
+};
+/** Campos comunes de alta/edición. Las reglas entre campos se validan con validateEventCoherence. */
+const eventFields = {
     name: zod_1.z.string().trim().min(3).max(160),
     description: zod_1.z.string().trim().max(2000).optional(),
+    type: zod_1.z.enum(exports.EVENT_TYPES),
     startsAt: zod_1.z.coerce.date(),
+    endsAt: zod_1.z.coerce.date().nullable().optional(),
     timezone: zod_1.z.string().default("America/Argentina/Buenos_Aires"),
-    status: zod_1.z.enum(exports.EVENT_STATUSES).default("SCHEDULED"),
+    status: zod_1.z.enum(exports.EVENT_STATUSES).default("DRAFT"),
     /** Nombre de la parroquia que se imprime en la credencial. */
-    parishName: zod_1.z.string().trim().max(160).nullable().optional(),
+    parishName: optText(160),
+    locationName: optText(160),
+    address: optText(240),
+    latitude: lat.nullable().optional(),
+    longitude: lng.nullable().optional(),
+    capacity: zod_1.z.coerce.number().int().min(1).max(1_000_000).nullable().optional(),
+    visibility: zod_1.z.enum(exports.EVENT_VISIBILITIES).optional(),
     registrationOpen: zod_1.z.boolean().optional(),
+    registrationOpensAt: zod_1.z.coerce.date().nullable().optional(),
+    registrationClosesAt: zod_1.z.coerce.date().nullable().optional(),
     registrationFee: zod_1.z.coerce.number().min(0).max(100_000_000).nullable().optional(),
-    paymentInstructions: zod_1.z.string().trim().max(1500).nullable().optional(),
+    paymentInstructions: optText(1500),
+    certificateEnabled: zod_1.z.boolean().optional(),
+    certificatePhrase: optText(300),
+    settings: zod_1.z.record(zod_1.z.unknown()).optional(),
+    /** null quita el trayecto. */
+    route: exports.eventRouteSchema.nullable().optional(),
+};
+/** Sin `type` se asume OTHER (compatibilidad con clientes que aún no lo envían). */
+exports.createEventSchema = zod_1.z.object({ ...eventFields, type: eventFields.type.default("OTHER") });
+exports.updateEventSchema = zod_1.z.object(eventFields).partial();
+exports.eventListQuerySchema = zod_1.z.object({
+    type: zod_1.z.enum(exports.EVENT_TYPES).optional(),
+    status: zod_1.z.enum(exports.EVENT_STATUSES).optional(),
 });
-exports.updateEventSchema = exports.createEventSchema.partial();
+/**
+ * Reglas entre campos sobre el estado final del evento (ya combinado con lo guardado).
+ * Devuelve la lista de problemas; vacía si todo es coherente.
+ */
+function validateEventCoherence(e) {
+    const issues = [];
+    if (e.endsAt && e.endsAt < e.startsAt)
+        issues.push({ field: "endsAt", message: "La finalización no puede ser anterior al inicio." });
+    if (e.registrationOpensAt && e.registrationClosesAt && e.registrationClosesAt < e.registrationOpensAt) {
+        issues.push({ field: "registrationClosesAt", message: "El cierre de inscripción no puede ser anterior a la apertura." });
+    }
+    if ((e.latitude == null) !== (e.longitude == null))
+        issues.push({ field: "latitude", message: "Indica latitud y longitud juntas." });
+    if (e.hasRoute && !exports.EVENT_TYPE_INFO[e.type].hasRoute) {
+        issues.push({ field: "route", message: `Un evento de tipo «${exports.EVENT_TYPE_INFO[e.type].label}» no tiene trayecto. Quita el trayecto antes de cambiar el tipo.` });
+    }
+    const s = exports.eventSettingsSchemas[e.type].safeParse(e.settings ?? {});
+    if (!s.success)
+        issues.push({ field: "settings", message: "Configuración no válida para este tipo de evento." });
+    return issues;
+}
+/** Inscripción abierta ahora: interruptor + estado operable + ventana opcional. */
+function isRegistrationOpenNow(e, now = new Date()) {
+    if (!e.registrationOpen || !(0, exports.isEventOperable)(e.status))
+        return false;
+    if (e.registrationOpensAt && now < e.registrationOpensAt)
+        return false;
+    if (e.registrationClosesAt && now > e.registrationClosesAt)
+        return false;
+    return true;
+}
 exports.createUserSchema = zod_1.z.object({
     name: zod_1.z.string().trim().min(2).max(120),
     email,

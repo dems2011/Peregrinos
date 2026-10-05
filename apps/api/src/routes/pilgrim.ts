@@ -43,7 +43,8 @@ async function buildPilgrimMe(participantId: string): Promise<PilgrimMe> {
     stage: "OFFICIAL",
     participant: { number: p.number, firstName: p.firstName, lastName: p.lastName, documentMasked: maskDoc(p.documentNumber) },
     qrContent: qrContent(p.qrToken),
-    event: { id: p.event.id, name: p.event.name, description: p.event.description, startsAt: p.event.startsAt.toISOString(), status: p.event.status, timezone: p.event.timezone },
+    event: { id: p.event.id, name: p.event.name, description: p.event.description, startsAt: p.event.startsAt.toISOString(), status: p.event.status, timezone: p.event.timezone,
+      type: p.event.type, endsAt: p.event.endsAt?.toISOString() ?? null, locationName: p.event.locationName, address: p.event.address },
     route,
     progress: { done, total: route.length, percent: route.length ? Math.round((done / route.length) * 100) : 0 },
     contacts,
@@ -65,6 +66,7 @@ export async function buildRegistrationMe(registrationId: string): Promise<Pilgr
     event: {
       id: r.event.id, name: r.event.name, parishName: r.event.parishName ?? r.event.organization.name, startsAt: r.event.startsAt.toISOString(),
       registrationFee: r.event.registrationFee?.toString() ?? null, paymentInstructions: r.event.paymentInstructions,
+      type: r.event.type, endsAt: r.event.endsAt?.toISOString() ?? null, locationName: r.event.locationName, address: r.event.address,
     },
     contacts: await contactsOf(r.eventId),
   };
