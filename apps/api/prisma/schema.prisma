@@ -576,3 +576,176 @@ enum ProofStatus {
   ACCEPTED
   REJECTED
 }
+
+/**
+ * =====================  G1: CATÁLOGO GEOGRÁFICO INTERNACIONAL  =====================
+ */
+/**
+ * Ver docs/ARQUITECTURA-INTERNACIONAL.md. La integridad se garantiza con FK compuestas y CHECK
+ * (escritos a mano en la migración 20261005190000_geo_catalog; Prisma no los representa).
+ */
+
+/// División administrativa o localidad. Estructural y cerrado: no limita la cantidad de niveles.
+enum AreaKind {
+  ADMIN
+  LOCALITY
+}
+
+/// Estado de verificación de un dato de catálogo contra su fuente primaria. Un dato dudoso nunca es VERIFIED.
+enum GeoReviewStatus {
+  PENDING
+  VERIFIED
+}
+
+enum GeoImportStatus {
+  RUNNING
+  SUCCEEDED
+  FAILED
+}
+
+/// País o territorio con código ISO 3166-1 propio. Agregar uno = insertar una fila (nunca cambiar el esquema).
+model Country {
+  /// ISO 3166-1 alfa-2.
+  code         String               @id @db.Char(2)
+  /// ISO 3166-1 alfa-3.
+  iso3         String?              @unique @db.Char(3)
+  /// Nombres por idioma (Unicode CLDR): {"es":"…","en":"…","pt":"…","it":"…"}.
+  names        Json
+  /// Idiomas de uso en el país (BCP-47, CLDR). Sugerencia; la preferencia del usuario es independiente.
+  locales      String[]             @default([])
+  /// Moneda principal (ISO 4217).
+  currencyCode String?              @db.Char(3)
+  /// Código de país ITU-T E.164 ("+54"). No es único: +1 lo comparten varios países.
+  phonePrefix  String?
+  /// Zonas horarias del país (IANA tzdb).
+  timezones    String[]             @default([])
+  isEnabled    Boolean              @default(true)
+  reviewStatus GeoReviewStatus      @default(PENDING)
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+  levels       CountryAreaLevel[]
+  areas        AdministrativeArea[]
+  addresses    Address[]
+}
+
+/// Niveles de un país en orden (rank 1 = superior). Cantidad y nombres varían por país.
+model CountryAreaLevel {
+  id           String               @id @default(uuid())
+  countryCode  String               @db.Char(2)
+  rank         Int
+  kind         AreaKind
+  /// Etiqueta del nivel por idioma: {"es":"Provincia","en":"Province",…}.
+  labels       Json
+  /// Obligatorio en la selección de dirección.
+  isRequired   Boolean              @default(false)
+  reviewStatus GeoReviewStatus      @default(PENDING)
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+  country      Country              @relation(fields: [countryCode], references: [code], onDelete: Restrict, onUpdate: Restrict)
+  areas        AdministrativeArea[]
+
+  @@unique([countryCode, rank])
+  /// Destino de la FK compuesta de AdministrativeArea (el nivel y el tipo deben existir en la configuración del país).
+  @@unique([countryCode, rank, kind])
+}
+
+/// División administrativa o localidad. parentId es la ÚNICA fuente de verdad de la jerarquía;
+/// parentCountryCode/parentRank/parentKind son espejos del padre que la FK compuesta obliga a ser exactos.
+model AdministrativeArea {
+  /// Identificador interno estable: nunca se reutiliza ni se borra.
+  id                String               @id @default(uuid())
+  countryCode       String               @db.Char(2)
+  rank              Int
+  kind              AreaKind
+  parentId          String?
+  parentCountryCode String?              @db.Char(2)
+  parentRank        Int?
+  parentKind        AreaKind?
+  /// SOLO códigos ISO 3166-2 (p. ej. "AR-B"). Los códigos de fuentes nacionales van en source/sourceId.
+  isoCode           String?              @unique
+  /// Fuente del registro ("GEOREF", "IBGE", "COD-AB", "MANUAL"…): texto para admitir fuentes nuevas sin migrar.
+  source            String
+  /// Identificador del registro en su fuente.
+  sourceId          String
+  name              String
+  /// Minúsculas y sin tildes (misma función de normalización que usa la búsqueda).
+  nameNormalized    String
+  latitude          Float?
+  longitude         Float?
+  /// Si la fuente lo retira se desactiva; nunca se borra.
+  isActive          Boolean              @default(true)
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+  country           Country              @relation(fields: [countryCode], references: [code], onDelete: Restrict, onUpdate: Restrict)
+  level             CountryAreaLevel     @relation(fields: [countryCode, rank, kind], references: [countryCode, rank, kind], onDelete: Restrict, onUpdate: Restrict)
+  parent            AdministrativeArea?  @relation("AreaTree", fields: [parentId, parentCountryCode, parentRank, parentKind], references: [id, countryCode, rank, kind], onDelete: Restrict, onUpdate: Restrict)
+  children          AdministrativeArea[] @relation("AreaTree")
+  addresses         Address[]
+
+  /// Destino de la FK compuesta de Address.
+  @@unique([id, countryCode])
+  /// Destino de la FK compuesta de los hijos.
+  @@unique([id, countryCode, rank, kind])
+  /// Identidad de importación.
+  @@unique([countryCode, source, sourceId])
+  @@index([parentId])
+  @@index([countryCode, kind, rank])
+  @@index([countryCode, nameNormalized])
+}
+
+/// Dirección reutilizable (parroquia, residencia, lugar de evento). En G1 todavía no tiene dueños.
+/// Tres partes separadas: administrativa (país + área), textual y coordenadas.
+model Address {
+  id              String              @id @default(uuid())
+  countryCode     String              @db.Char(2)
+  /// Área más profunda elegida (ADMIN o LOCALITY).
+  areaId          String?
+  /// Espejo del país del área (FK compuesta + CHECK: igual a countryCode).
+  areaCountryCode String?             @db.Char(2)
+  /// Localidad que no está en el catálogo.
+  localityText    String?
+  line1           String?
+  line2           String?
+  postalCode      String?
+  /// Coordenadas propias de la dirección (no derivan del área).
+  latitude        Float?
+  longitude       Float?
+  /// Origen de las coordenadas ("USER_PIN" | "DEVICE_GPS" | "AREA_CENTROID"); lo valida la API/importador.
+  geoSource       String?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+  country         Country             @relation(fields: [countryCode], references: [code], onDelete: Restrict, onUpdate: Restrict)
+  area            AdministrativeArea? @relation(fields: [areaId, areaCountryCode], references: [id, countryCode], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([countryCode])
+  @@index([areaId])
+}
+
+/// Auditoría de cada importación del catálogo: qué dataset, qué versión y qué resultado.
+/// Sin FK a Country a propósito: el registro debe sobrevivir y puede crearse antes que el país.
+model GeoImportRun {
+  id               String          @id @default(uuid())
+  /// "COUNTRIES" | "AREA_LEVELS" | "AREAS" (lo valida el importador).
+  dataset          String
+  /// null = catálogo mundial.
+  countryCode      String?         @db.Char(2)
+  source           String
+  sourceVersion    String
+  /// Huella del archivo importado. null solo si combina varios archivos (sus huellas van en details).
+  sha256           String?         @db.Char(64)
+  dryRun           Boolean         @default(false)
+  status           GeoImportStatus @default(RUNNING)
+  startedAt        DateTime        @default(now())
+  finishedAt       DateTime?
+  insertedCount    Int             @default(0)
+  updatedCount     Int             @default(0)
+  unchangedCount   Int             @default(0)
+  deactivatedCount Int             @default(0)
+  errorCount       Int             @default(0)
+  /// Archivos y huellas, homónimos, errores y datos dudosos no cargados.
+  details          Json?
+  triggeredBy      String?
+
+  @@index([countryCode, dataset, startedAt])
+  @@index([source, sourceVersion])
+}
