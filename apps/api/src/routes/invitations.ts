@@ -2,7 +2,8 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { Prisma, type Invitation } from "@prisma/client";
 import { acceptInvitationSchema, canGrantRole, canInviteRole, createInvitationSchema } from "@peregrinos/shared";
-import { assertNotSuperadminGrant } from "../lib/roles";
+import { assertInvitationAcceptable, assertNotSuperadminGrant } from "../lib/roles";
+import { assertOrgCan } from "../lib/orgLifecycle";
 import { cfg } from "../config";
 import { prisma } from "../lib/prisma";
 import { audit } from "../lib/audit";
@@ -50,6 +51,7 @@ export default async function invitationRoutes(app: FastifyInstance) {
     const body = createInvitationSchema.parse(req.body);
     assertNotSuperadminGrant(body.role, "INVITATION");
     if (!canInviteRole(req.auth.role, body.role)) throw forbidden("No puedes invitar a un nivel superior al tuyo.");
+    assertOrgCan(req.auth.organizationStatus, "INVITE_STAFF");
 
     if (await prisma.user.findUnique({ where: { email: body.email } })) {
       throw new AppError(409, "USER_EXISTS", "Ya existe un usuario con ese correo.");
@@ -85,6 +87,7 @@ export default async function invitationRoutes(app: FastifyInstance) {
     if (inv.acceptedAt || inv.revokedAt) throw new AppError(409, "NOT_PENDING", "Esta invitación ya fue aceptada o revocada.");
     if (!canGrantRole(req.auth.role, inv.role)) throw forbidden();
     assertNotSuperadminGrant(inv.role, "INVITATION");
+    assertOrgCan(req.auth.organizationStatus, "INVITE_STAFF");
     const { raw, hash } = newOpaqueToken();
     const renewed = await prisma.invitation.update({
       where: { id }, data: { tokenHash: hash, expiresAt: new Date(Date.now() + cfg.INVITE_TTL_DAYS * 86_400_000) },
@@ -107,7 +110,7 @@ export default async function invitationRoutes(app: FastifyInstance) {
   /* ---------- Públicas (la persona invitada aún no tiene cuenta) ---------- */
 
   async function findByToken(token: string) {
-    const inv = await prisma.invitation.findUnique({ where: { tokenHash: sha256(token) }, include: { invitedBy: { select: { name: true } }, organization: true } });
+    const inv = await prisma.invitation.findUnique({ where: { tokenHash: sha256(token) }, include: { invitedBy: { select: { name: true, accountType: true } }, organization: true } });
     if (!inv) throw notFound("Esta invitación no es válida.");
     const st = statusOf(inv);
     if (st === "ACCEPTED") throw new AppError(410, "INVITATION_USED", "Esta invitación ya fue utilizada.");
@@ -132,8 +135,8 @@ export default async function invitationRoutes(app: FastifyInstance) {
   app.post("/accept", { config: strict }, async (req, reply) => {
     const body = acceptInvitationSchema.parse(req.body);
     const inv = await findByToken(body.token);
-    // Invitaciones a SUPERADMIN creadas antes de A1: no se pueden aceptar (solo revocar).
-    assertNotSuperadminGrant(inv.role, "INVITATION");
+    // A1/A3: SUPERADMIN solo mediante la invitación de fundador emitida por PLATFORM; la organización debe estar aprobada.
+    assertInvitationAcceptable({ role: inv.role, platformGrant: inv.platformGrant, inviterAccountType: inv.invitedBy.accountType, organizationStatus: inv.organization.status });
     const passwordHash = await hashPassword(body.password);
     try {
       const user = await prisma.$transaction(async (tx) => {

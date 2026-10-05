@@ -6,6 +6,7 @@ import { audit } from "../lib/audit";
 import { hashPassword } from "../lib/password";
 import { AppError, notFound } from "../lib/errors";
 import { assertCanPromoteToSuperadmin, assertNotSuperadminGrant } from "../lib/roles";
+import { assertOrgCan } from "../lib/orgLifecycle";
 
 const idParam = z.object({ id: z.string().uuid() });
 /** Solo cuentas del personal: las cuentas PILGRIM nunca se administran ni se asignan desde aquí. */
@@ -30,6 +31,7 @@ export default async function userRoutes(app: FastifyInstance) {
   app.post("/", { preHandler: app.requirePermission("user:manage") }, async (req, reply) => {
     const body = createUserSchema.parse(req.body);
     assertNotSuperadminGrant(body.role, "USER_CREATE");
+    assertOrgCan(req.auth.organizationStatus, "INVITE_STAFF");
     const user = await prisma.user.create({
       data: { organizationId: req.auth.organizationId, name: body.name, email: body.email, role: body.role, extraPermissions: body.extraPermissions, passwordHash: await hashPassword(body.password) },
       select: publicUser,

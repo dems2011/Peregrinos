@@ -13,7 +13,8 @@
     "db:seed": "tsx prisma/seed.ts",
     "db:reset": "prisma migrate reset --force",
     "db:init": "prisma migrate dev --create-only --name init && cat prisma/sql/checkin_active_unique.sql >> prisma/migrations/*_init/migration.sql && prisma migrate dev && tsx prisma/seed.ts",
-    "test:a1": "node --import tsx --test \"test/*.test.ts\""
+    "test:a1": "node --import tsx --test \"test/*.test.ts\"",
+    "platform:create-admin": "tsx scripts/create-platform-admin.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

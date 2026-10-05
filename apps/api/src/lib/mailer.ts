@@ -136,3 +136,21 @@ export function sendEmailVerification(p: {
 
   return sendMail(p.to, subject, text, html);
 }
+/** A3: confirmación al solicitante de una nueva parroquia, con su enlace privado de seguimiento. */
+export function sendOrganizationRequestReceived(p: { to: string; name: string; parishName: string; url: string }) {
+  const subject = "Recibimos tu solicitud de parroquia en Peregrinos";
+  const text =
+    `Hola ${p.name},\n\n` +
+    `Recibimos la solicitud para sumar "${p.parishName}" a Peregrinos. El equipo de la plataforma la revisará.\n\n` +
+    `Puedes consultar su estado (y corregirla si fuera rechazada) desde este enlace privado:\n${p.url}\n\n` +
+    `No compartas este enlace.`;
+  const html = `
+<div style="font-family:Inter,Arial,sans-serif;max-width:520px;margin:auto;color:#17324D">
+  <h2 style="color:#0B3158">Solicitud recibida</h2>
+  <p>Hola <b>${esc(p.name)}</b>.</p>
+  <p>Recibimos la solicitud para sumar <b>${esc(p.parishName)}</b> a Peregrinos. El equipo de la plataforma la revisará.</p>
+  <p><a href="${esc(p.url)}" style="display:inline-block;background:#1677FF;color:#fff;padding:14px 22px;border-radius:10px;text-decoration:none;font-weight:700">Ver mi solicitud</a></p>
+  <p style="color:#6D7D8E;font-size:13px">Este enlace es privado: no lo compartas.</p>
+</div>`;
+  return sendMail(p.to, subject, text, html);
+}

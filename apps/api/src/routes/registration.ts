@@ -17,7 +17,8 @@ import { buildRegistrationMe } from "./pilgrim";
 export default async function registrationRoutes(app: FastifyInstance) {
   async function openEvent(token: string) {
     const event = await prisma.event.findUnique({ where: { registrationToken: token }, include: { organization: true } });
-    if (!event || !isRegistrationOpenNow(event)) {
+    // A3: solo las parroquias aprobadas reciben inscripciones públicas.
+    if (!event || event.organization.status !== "APPROVED" || !isRegistrationOpenNow(event)) {
       throw notFound("La inscripción no está disponible. Consulta con la organización.");
     }
     return event;

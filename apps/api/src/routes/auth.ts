@@ -209,9 +209,11 @@ export default async function authRoutes(app: FastifyInstance) {
           );
         }
 
+        // A3: la instalación inicial crea la organización ya aprobada (no pasa por revisión de plataforma).
         const org = await tx.organization.create({
           data: {
             name: body.organizationName,
+            status: "APPROVED",
           },
         });
 
@@ -272,6 +274,8 @@ export default async function authRoutes(app: FastifyInstance) {
         !user ||
         !ok ||
         !user.isActive ||
+        // A3: el operador de plataforma tiene su propio login (/api/platform/login).
+        user.accountType === "PLATFORM" ||
         (
           user.accountType === "PILGRIM" &&
           !user.emailVerifiedAt

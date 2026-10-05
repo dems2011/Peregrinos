@@ -4,6 +4,7 @@ import type { FastifyReply, FastifyRequest } from "fastify";
 import {
   hasPermission,
   type AccountType,
+  type OrganizationStatus,
   type Permission,
   type Role,
 } from "@peregrinos/shared";
@@ -11,11 +12,14 @@ import { cfg } from "../config";
 import { prisma } from "../lib/prisma";
 import { forbidden, unauthorized } from "../lib/errors";
 import { sha256 } from "../lib/tokens";
+import { assertOrgCan } from "../lib/orgLifecycle";
 
 export const ACCESS_COOKIE = "pg_at";
 export const REFRESH_COOKIE = "pg_rt";
 export const PILGRIM_COOKIE = "pg_pt";
 export const PILGRIM_ACCOUNT_COOKIE = "pg_pa";
+/** A3: sesión del operador de plataforma (PLATFORM_ADMIN). Independiente de la del personal. */
+export const PLATFORM_COOKIE = "pg_pl";
 
 export interface AuthUser {
   id: string;
@@ -24,7 +28,16 @@ export interface AuthUser {
   role: Role;
   accountType: AccountType;
   organizationId: string;
+  /** A3: estado del ciclo de vida de la organización, leído de la BD en cada petición. */
+  organizationStatus: OrganizationStatus;
   extraPermissions: string[];
+}
+
+/** A3: operador de plataforma autenticado. */
+export interface PlatformAuth {
+  id: string;
+  name: string;
+  email: string;
 }
 
 export interface PilgrimAuth {
@@ -43,6 +56,7 @@ declare module "fastify" {
     auth: AuthUser;
     pilgrim: PilgrimAuth;
     pilgrimAccount: { id: string };
+    platform: PlatformAuth;
   }
 
   interface FastifyInstance {
@@ -64,6 +78,11 @@ declare module "fastify" {
     requirePermission: (
       p: Permission
     ) => (req: FastifyRequest, reply: FastifyReply) => Promise<void>;
+
+    authenticatePlatform: (
+      req: FastifyRequest,
+      reply: FastifyReply
+    ) => Promise<void>;
   }
 }
 
@@ -94,6 +113,11 @@ export default fp(async (app) => {
     undefined as unknown as { id: string }
   );
 
+  app.decorateRequest(
+    "platform",
+    undefined as unknown as PlatformAuth
+  );
+
   /** Personal: administradores y operadores. */
   app.decorate(
     "authenticate",
@@ -109,6 +133,7 @@ export default fp(async (app) => {
 
       const user = await prisma.user.findUnique({
         where: { id: sub },
+        include: { organization: { select: { status: true } } },
       });
 
       // A2: solo el personal tiene organización y rol (la BD lo impone con CHECK).
@@ -117,7 +142,8 @@ export default fp(async (app) => {
         !user.isActive ||
         user.accountType !== "STAFF" ||
         !user.organizationId ||
-        !user.role
+        !user.role ||
+        !user.organization
       ) {
         throw unauthorized();
       }
@@ -129,6 +155,7 @@ export default fp(async (app) => {
         role: user.role,
         accountType: user.accountType,
         organizationId: user.organizationId,
+        organizationStatus: user.organization.status,
         extraPermissions: user.extraPermissions,
       };
     }
@@ -251,6 +278,11 @@ export default fp(async (app) => {
           throw forbidden();
         }
 
+        // A3: una organización suspendida o archivada queda en solo lectura para todo su personal.
+        if (req.method !== "GET" && req.method !== "HEAD") {
+          assertOrgCan(req.auth.organizationStatus, "WRITE");
+        }
+
         if (
           !hasPermission(
             req.auth.role,
@@ -261,5 +293,41 @@ export default fp(async (app) => {
           throw forbidden();
         }
       }
+  );
+
+  /** A3: operador de plataforma (PLATFORM_ADMIN). Sesión propia; nunca es personal de una parroquia. */
+  app.decorate(
+    "authenticatePlatform",
+    async (req: FastifyRequest) => {
+      let sub: string;
+
+      try {
+        const token = req.cookies[PLATFORM_COOKIE];
+        if (!token) {
+          throw unauthorized();
+        }
+        const decoded = app.jwt.verify<{ sub: string; accountType: string }>(token);
+        if (decoded.accountType !== "PLATFORM" || !decoded.sub) {
+          throw unauthorized();
+        }
+        sub = decoded.sub;
+      } catch {
+        throw unauthorized();
+      }
+
+      const user = await prisma.user.findUnique({ where: { id: sub } });
+
+      if (
+        !user ||
+        !user.isActive ||
+        user.accountType !== "PLATFORM" ||
+        user.organizationId ||
+        user.role
+      ) {
+        throw unauthorized();
+      }
+
+      req.platform = { id: user.id, name: user.name, email: user.email };
+    }
   );
 });

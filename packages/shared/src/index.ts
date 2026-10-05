@@ -3,7 +3,15 @@ import { z } from "zod";
 /* ---------- Roles y permisos (única fuente de verdad: API y Web) ---------- */
 export const ROLES = ["SUPERADMIN", "ADMIN", "OPERATOR"] as const;
 export type Role = (typeof ROLES)[number];
-export type AccountType = "STAFF" | "PILGRIM";
+/** STAFF: personal de una parroquia · PILGRIM: identidad del peregrino · PLATFORM: operador de plataforma (A3). */
+export type AccountType = "STAFF" | "PILGRIM" | "PLATFORM";
+
+/* ---------- A3: ciclo de vida de organizaciones ---------- */
+export const ORGANIZATION_STATUSES = ["DRAFT", "PENDING_REVIEW", "APPROVED", "REJECTED", "SUSPENDED", "ARCHIVED"] as const;
+export type OrganizationStatus = (typeof ORGANIZATION_STATUSES)[number];
+export const ORGANIZATION_STATUS_LABEL: Record<OrganizationStatus, string> = {
+  DRAFT: "Borrador", PENDING_REVIEW: "En revisión", APPROVED: "Aprobada", REJECTED: "Rechazada", SUSPENDED: "Suspendida", ARCHIVED: "Archivada",
+};
 
 /** DRAFT: en preparación, no operativo · SCHEDULED: programado · IN_PROGRESS: activo · FINISHED: cerrado · CANCELLED: cancelado. */
 export const EVENT_STATUSES = ["DRAFT", "SCHEDULED", "IN_PROGRESS", "FINISHED", "CANCELLED"] as const;
@@ -227,6 +235,8 @@ export interface SessionUser {
   email: string;
   role: Role;
   organizationId: string;
+  /** A3: estado del ciclo de vida de la organización del usuario. */
+  organizationStatus: OrganizationStatus;
 }
 export interface AssignmentView {
   checkpointId: string;
@@ -380,6 +390,38 @@ export const acceptInvitationSchema = z.object({
   name: z.string().trim().min(2).max(120),
   password,
 }).strict();
+
+/* =====================  A3: SOLICITUDES DE PARROQUIA Y PLATAFORMA  ===================== */
+const reqText = (min: number, max: number) => z.string().trim().min(min).max(max);
+const optReqText = (max: number) => z.string().trim().max(max).optional().transform((v) => (v ? v : undefined));
+const organizationRequestFields = {
+  parishName: reqText(3, 160),
+  contactName: reqText(2, 120),
+  contactEmail: email,
+  contactPhone: optReqText(30),
+  /** ISO 3166-1 alfa-2 (catálogo internacional G1). */
+  countryCode: z.string().trim().toUpperCase().regex(/^[A-Z]{2}$/, "Código de país ISO 3166-1 alfa-2"),
+  locality: optReqText(160),
+  address: optReqText(240),
+  notes: optReqText(2000),
+};
+/** Solicitud pública de una nueva parroquia. No incluye estado, rol ni organización: los decide la plataforma. */
+export const organizationRequestSchema = z.object({
+  ...organizationRequestFields,
+  acceptTerms: z.literal(true, { errorMap: () => ({ message: "Debes aceptar los términos y condiciones" }) }),
+}).strict();
+/** Corrección y nueva presentación de una solicitud rechazada (con el token privado del solicitante). */
+export const resubmitOrganizationRequestSchema = z.object({ token: z.string().min(20).max(200), ...organizationRequestFields }).strict();
+export const organizationRequestTokenSchema = z.object({ token: z.string().min(20).max(200) }).strict();
+/** Revisión por PLATFORM. El motivo es obligatorio para rechazar y suspender. */
+export const platformApproveSchema = z.object({ note: z.string().trim().max(2000).optional() }).strict();
+export const platformRejectSchema = z.object({ reason: z.string().trim().min(5).max(2000) }).strict();
+export const organizationTransitionSchema = z.object({
+  to: z.enum(ORGANIZATION_STATUSES),
+  reason: z.string().trim().max(2000).optional(),
+}).strict();
+/** Presentación a revisión por el SUPERADMIN de la parroquia (DRAFT/REJECTED → PENDING_REVIEW). */
+export const submitOrganizationReviewSchema = z.object({ note: z.string().trim().max(2000).optional() }).strict();
 
 export const pilgrimLoginSchema = z.object({
   token: z.string().trim().min(20).max(200).optional(),

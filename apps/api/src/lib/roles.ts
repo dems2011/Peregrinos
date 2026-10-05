@@ -1,4 +1,4 @@
-import type { Role } from "@peregrinos/shared";
+import type { OrganizationStatus, Role } from "@peregrinos/shared";
 import { AppError, forbidden } from "./errors";
 
 /**
@@ -9,7 +9,9 @@ import { AppError, forbidden } from "./errors";
  *  2. Promoción de un miembro ACTIVO del personal de la MISMA organización por un SUPERADMIN,
  *     vía PATCH /users/:id, pasando por assertCanPromoteToSuperadmin().
  *
- * Quedan prohibidos: registro público, alta directa (POST /users) e invitaciones (enlace al portador).
+ * Quedan prohibidos: registro público, alta directa (POST /users) e invitaciones del personal (enlace al portador).
+ * A3: única excepción — la invitación de FUNDADOR que emite un operador PLATFORM al aprobar una solicitud
+ * de parroquia (Invitation.platformGrant=true, la BD exige role=SUPERADMIN), validada en assertInvitationAcceptable().
  */
 
 /** Alta directa o invitación: nunca SUPERADMIN. */
@@ -34,4 +36,21 @@ export function assertCanPromoteToSuperadmin(
   if (target.accountType !== "STAFF" || target.organizationId !== granter.organizationId) throw forbidden();
   if (target.id === granter.id) throw new AppError(409, "SELF_PROMOTION", "No puedes cambiar tu propio nivel a superadministrador.");
   if (!target.isActive) throw new AppError(409, "TARGET_INACTIVE", "Solo se puede promover a una cuenta activa.");
+}
+
+/**
+ * A3 — Aceptación de una invitación:
+ *  - la organización debe estar APPROVED;
+ *  - SUPERADMIN solo si es una invitación de fundador (platformGrant) emitida por una cuenta PLATFORM.
+ */
+export function assertInvitationAcceptable(inv: { role: Role; platformGrant: boolean; inviterAccountType: string; organizationStatus: OrganizationStatus }) {
+  if (inv.organizationStatus !== "APPROVED") {
+    throw new AppError(403, "ORGANIZATION_NOT_APPROVED", "La parroquia no está habilitada para sumar personal en este momento.");
+  }
+  if (inv.role === "SUPERADMIN" && !(inv.platformGrant && inv.inviterAccountType === "PLATFORM")) {
+    assertNotSuperadminGrant("SUPERADMIN", "INVITATION");
+  }
+  if (inv.platformGrant && (inv.role !== "SUPERADMIN" || inv.inviterAccountType !== "PLATFORM")) {
+    throw new AppError(403, "INVALID_FOUNDER_INVITATION", "Invitación no válida.");
+  }
 }

@@ -13,7 +13,35 @@ import {
   ACCESS_COOKIE,
   REFRESH_COOKIE,
   PILGRIM_ACCOUNT_COOKIE,
+  PLATFORM_COOKIE,
 } from "../plugins/auth";
+
+/** A3: duración de la sesión del operador de plataforma (corta, sin refresh). */
+export const PLATFORM_SESSION_MIN = 30;
+
+/** A3: crea la sesión del operador de plataforma. */
+export function issuePlatformSession(
+  app: FastifyInstance,
+  reply: FastifyReply,
+  user: { id: string; accountType: string }
+) {
+  if (user.accountType !== "PLATFORM") {
+    throw new Error("La sesión de plataforma requiere una cuenta PLATFORM.");
+  }
+  const token = app.jwt.sign(
+    { sub: user.id, accountType: "PLATFORM" },
+    { expiresIn: `${PLATFORM_SESSION_MIN}m` }
+  );
+  reply.setCookie(PLATFORM_COOKIE, token, {
+    ...cookieBase,
+    path: "/api/platform",
+    maxAge: PLATFORM_SESSION_MIN * 60,
+  });
+}
+
+export function clearPlatformSession(reply: FastifyReply) {
+  reply.clearCookie(PLATFORM_COOKIE, { path: "/api/platform" });
+}
 
 export const cookieBase = {
   httpOnly: true,
@@ -131,8 +159,9 @@ export async function buildPilgrimAccountMe(userId: string) {
 export async function buildMe(userId: string): Promise<MeResponse> {
   const user = await prisma.user.findUniqueOrThrow({
     where: { id: userId },
+    include: { organization: { select: { status: true } } },
   });
-  if (user.accountType !== "STAFF" || !user.role || !user.organizationId) {
+  if (user.accountType !== "STAFF" || !user.role || !user.organizationId || !user.organization) {
     throw new Error("buildMe es solo para cuentas del personal.");
   }
 
@@ -179,6 +208,7 @@ export async function buildMe(userId: string): Promise<MeResponse> {
       email: user.email,
       role: user.role as Role,
       organizationId: user.organizationId,
+      organizationStatus: user.organization.status,
     },
     permissions: effectivePermissions(
       user.role as Role,

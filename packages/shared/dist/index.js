@@ -1,7 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.createContactSchema = exports.issueAccessSchema = exports.pilgrimLoginSchema = exports.acceptInvitationSchema = exports.createInvitationSchema = exports.ACCESS_LEVELS = exports.canInviteRole = exports.canGrantRole = exports.hasPermission = exports.GRANTABLE_PERMISSIONS = exports.checkinListSchema = exports.resolveConflictSchema = exports.correctCheckinSchema = exports.cancelCheckinSchema = exports.createCheckinSchema = exports.reorderCheckpointsSchema = exports.updateCheckpointSchema = exports.createCheckpointSchema = exports.participantListSchema = exports.updateParticipantSchema = exports.createParticipantSchema = exports.digitsOnly = exports.normalizeDocument = exports.parseQrContent = exports.qrContent = exports.QR_PREFIX = exports.CHECKIN_METHODS = exports.PARTICIPANT_STATUSES = exports.formatParticipantNumber = exports.paginationSchema = exports.assignmentsSchema = exports.updateUserSchema = exports.createUserSchema = exports.eventListQuerySchema = exports.updateEventSchema = exports.createEventSchema = exports.eventSettingsSchemas = exports.eventRouteSchema = exports.bootstrapSchema = exports.registerPilgrimSchema = exports.loginSchema = exports.ROLE_PERMISSIONS = exports.EVENT_VISIBILITY_LABEL = exports.EVENT_VISIBILITIES = exports.EVENT_TYPE_INFO = exports.EVENT_TYPES = exports.isEventOperable = exports.EVENT_STATUS_LABEL = exports.EVENT_STATUSES = exports.ROLES = void 0;
-exports.credentialQuerySchema = exports.rejectRegistrationSchema = exports.approveRegistrationSchema = exports.registrationListSchema = exports.proofFieldsSchema = exports.createRegistrationSchema = exports.REGISTRATION_STATUSES = exports.qBool = exports.updateContactSchema = void 0;
+exports.organizationRequestSchema = exports.acceptInvitationSchema = exports.createInvitationSchema = exports.ACCESS_LEVELS = exports.canInviteRole = exports.canGrantRole = exports.hasPermission = exports.GRANTABLE_PERMISSIONS = exports.checkinListSchema = exports.resolveConflictSchema = exports.correctCheckinSchema = exports.cancelCheckinSchema = exports.createCheckinSchema = exports.reorderCheckpointsSchema = exports.updateCheckpointSchema = exports.createCheckpointSchema = exports.participantListSchema = exports.updateParticipantSchema = exports.createParticipantSchema = exports.digitsOnly = exports.normalizeDocument = exports.parseQrContent = exports.qrContent = exports.QR_PREFIX = exports.CHECKIN_METHODS = exports.PARTICIPANT_STATUSES = exports.formatParticipantNumber = exports.paginationSchema = exports.assignmentsSchema = exports.updateUserSchema = exports.createUserSchema = exports.eventListQuerySchema = exports.updateEventSchema = exports.createEventSchema = exports.eventSettingsSchemas = exports.eventRouteSchema = exports.bootstrapSchema = exports.registerPilgrimSchema = exports.loginSchema = exports.ROLE_PERMISSIONS = exports.EVENT_VISIBILITY_LABEL = exports.EVENT_VISIBILITIES = exports.EVENT_TYPE_INFO = exports.EVENT_TYPES = exports.isEventOperable = exports.EVENT_STATUS_LABEL = exports.EVENT_STATUSES = exports.ORGANIZATION_STATUS_LABEL = exports.ORGANIZATION_STATUSES = exports.ROLES = void 0;
+exports.credentialQuerySchema = exports.rejectRegistrationSchema = exports.approveRegistrationSchema = exports.registrationListSchema = exports.proofFieldsSchema = exports.createRegistrationSchema = exports.REGISTRATION_STATUSES = exports.qBool = exports.updateContactSchema = exports.createContactSchema = exports.issueAccessSchema = exports.pilgrimLoginSchema = exports.submitOrganizationReviewSchema = exports.organizationTransitionSchema = exports.platformRejectSchema = exports.platformApproveSchema = exports.organizationRequestTokenSchema = exports.resubmitOrganizationRequestSchema = void 0;
 exports.can = can;
 exports.validateEventCoherence = validateEventCoherence;
 exports.isRegistrationOpenNow = isRegistrationOpenNow;
@@ -9,6 +9,11 @@ exports.effectivePermissions = effectivePermissions;
 const zod_1 = require("zod");
 /* ---------- Roles y permisos (única fuente de verdad: API y Web) ---------- */
 exports.ROLES = ["SUPERADMIN", "ADMIN", "OPERATOR"];
+/* ---------- A3: ciclo de vida de organizaciones ---------- */
+exports.ORGANIZATION_STATUSES = ["DRAFT", "PENDING_REVIEW", "APPROVED", "REJECTED", "SUSPENDED", "ARCHIVED"];
+exports.ORGANIZATION_STATUS_LABEL = {
+    DRAFT: "Borrador", PENDING_REVIEW: "En revisión", APPROVED: "Aprobada", REJECTED: "Rechazada", SUSPENDED: "Suspendida", ARCHIVED: "Archivada",
+};
 /** DRAFT: en preparación, no operativo · SCHEDULED: programado · IN_PROGRESS: activo · FINISHED: cerrado · CANCELLED: cancelado. */
 exports.EVENT_STATUSES = ["DRAFT", "SCHEDULED", "IN_PROGRESS", "FINISHED", "CANCELLED"];
 exports.EVENT_STATUS_LABEL = {
@@ -316,6 +321,37 @@ exports.acceptInvitationSchema = zod_1.z.object({
     name: zod_1.z.string().trim().min(2).max(120),
     password,
 }).strict();
+/* =====================  A3: SOLICITUDES DE PARROQUIA Y PLATAFORMA  ===================== */
+const reqText = (min, max) => zod_1.z.string().trim().min(min).max(max);
+const optReqText = (max) => zod_1.z.string().trim().max(max).optional().transform((v) => (v ? v : undefined));
+const organizationRequestFields = {
+    parishName: reqText(3, 160),
+    contactName: reqText(2, 120),
+    contactEmail: email,
+    contactPhone: optReqText(30),
+    /** ISO 3166-1 alfa-2 (catálogo internacional G1). */
+    countryCode: zod_1.z.string().trim().toUpperCase().regex(/^[A-Z]{2}$/, "Código de país ISO 3166-1 alfa-2"),
+    locality: optReqText(160),
+    address: optReqText(240),
+    notes: optReqText(2000),
+};
+/** Solicitud pública de una nueva parroquia. No incluye estado, rol ni organización: los decide la plataforma. */
+exports.organizationRequestSchema = zod_1.z.object({
+    ...organizationRequestFields,
+    acceptTerms: zod_1.z.literal(true, { errorMap: () => ({ message: "Debes aceptar los términos y condiciones" }) }),
+}).strict();
+/** Corrección y nueva presentación de una solicitud rechazada (con el token privado del solicitante). */
+exports.resubmitOrganizationRequestSchema = zod_1.z.object({ token: zod_1.z.string().min(20).max(200), ...organizationRequestFields }).strict();
+exports.organizationRequestTokenSchema = zod_1.z.object({ token: zod_1.z.string().min(20).max(200) }).strict();
+/** Revisión por PLATFORM. El motivo es obligatorio para rechazar y suspender. */
+exports.platformApproveSchema = zod_1.z.object({ note: zod_1.z.string().trim().max(2000).optional() }).strict();
+exports.platformRejectSchema = zod_1.z.object({ reason: zod_1.z.string().trim().min(5).max(2000) }).strict();
+exports.organizationTransitionSchema = zod_1.z.object({
+    to: zod_1.z.enum(exports.ORGANIZATION_STATUSES),
+    reason: zod_1.z.string().trim().max(2000).optional(),
+}).strict();
+/** Presentación a revisión por el SUPERADMIN de la parroquia (DRAFT/REJECTED → PENDING_REVIEW). */
+exports.submitOrganizationReviewSchema = zod_1.z.object({ note: zod_1.z.string().trim().max(2000).optional() }).strict();
 exports.pilgrimLoginSchema = zod_1.z.object({
     token: zod_1.z.string().trim().min(20).max(200).optional(),
     code: zod_1.z.string().trim().min(8).max(20).optional(),

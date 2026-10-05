@@ -4,6 +4,7 @@ import { createEventSchema, eventListQuerySchema, updateEventSchema, validateEve
 import { prisma } from "../lib/prisma";
 import { audit } from "../lib/audit";
 import { notFound } from "../lib/errors";
+import { PUBLISHED_EVENT_STATUSES, assertOrgCan } from "../lib/orgLifecycle";
 import type { Prisma } from "@prisma/client";
 import { newOpaqueToken } from "../lib/tokens";
 
@@ -61,6 +62,9 @@ export default async function eventRoutes(app: FastifyInstance) {
   app.post("/", { preHandler: app.requirePermission("event:create") }, async (req, reply) => {
     const { route, settings, ...body } = createEventSchema.parse(req.body);
     assertCoherent({ ...body, settings, hasRoute: !!route });
+    // A3: publicar y abrir inscripciones requieren organización aprobada.
+    if ((PUBLISHED_EVENT_STATUSES as readonly string[]).includes(body.status)) assertOrgCan(req.auth.organizationStatus, "PUBLISH_EVENT");
+    if (body.registrationOpen) assertOrgCan(req.auth.organizationStatus, "OPEN_REGISTRATION");
     const event = await prisma.event.create({
       data: {
         ...body,
@@ -94,6 +98,12 @@ export default async function eventRoutes(app: FastifyInstance) {
       settings: settings ?? before.settings,
       hasRoute: finalHasRoute,
     });
+
+    // A3: publicar y abrir inscripciones requieren organización aprobada.
+    if (body.status && body.status !== before.status && (PUBLISHED_EVENT_STATUSES as readonly string[]).includes(body.status)) {
+      assertOrgCan(req.auth.organizationStatus, "PUBLISH_EVENT");
+    }
+    if (body.registrationOpen && !before.registrationOpen) assertOrgCan(req.auth.organizationStatus, "OPEN_REGISTRATION");
 
     const data: Prisma.EventUpdateInput = { ...body };
     if (settings !== undefined) data.settings = settings as Prisma.InputJsonObject;

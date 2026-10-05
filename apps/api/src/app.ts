@@ -9,6 +9,7 @@ import { Prisma } from "@prisma/client";
 import { cfg } from "./config";
 import { AppError } from "./lib/errors";
 import { prisma } from "./lib/prisma";
+import { redactUrl, reqSerializer } from "./lib/logRedact";
 import authPlugin from "./plugins/auth";
 import authRoutes from "./routes/auth";
 import eventRoutes from "./routes/events";
@@ -26,10 +27,13 @@ import registrationRoutes from "./routes/registration";
 import registrationAdminRoutes from "./routes/registrations";
 import credentialRoutes from "./routes/credentials";
 import streamRoutes from "./routes/stream";
+import organizationRequestRoutes from "./routes/organizationRequests";
+import platformRoutes from "./routes/platform";
+import organizationRoutes from "./routes/organization";
 
 export async function buildApp() {
   const app = Fastify({
-    logger: { level: cfg.NODE_ENV === "production" ? "info" : "debug", redact: ["req.headers.cookie", "req.headers.authorization"] },
+    logger: { level: cfg.NODE_ENV === "production" ? "info" : "debug", redact: ["req.headers.cookie", "req.headers.authorization"], serializers: { req: reqSerializer } },
     trustProxy: true,
     bodyLimit: 1_000_000,
   });
@@ -73,6 +77,13 @@ export async function buildApp() {
     return reply.status(500).send({ error: "INTERNAL", message: "Ocurrió un error inesperado. Intenta nuevamente." });
   });
 
+  // Igual al 404 por defecto de Fastify, pero sin registrar ni devolver tokens de la query string.
+  app.setNotFoundHandler((req, reply) => {
+    const url = redactUrl(req.url);
+    req.log.info(`Route ${req.method}:${url} not found`);
+    return reply.status(404).send({ message: `Route ${req.method}:${url} not found`, error: "Not Found", statusCode: 404 });
+  });
+
   app.get("/api/health", async () => {
     await prisma.$queryRaw`SELECT 1`;
     return { status: "ok", time: new Date().toISOString() };
@@ -94,6 +105,10 @@ export async function buildApp() {
   await app.register(registrationAdminRoutes, { prefix: "/api/events/:eventId/registrations" });
   await app.register(credentialRoutes, { prefix: "/api/events/:eventId/credentials" });
   await app.register(streamRoutes, { prefix: "/api/events/:eventId/stream" });
+  // A3: ciclo de vida de organizaciones.
+  await app.register(organizationRequestRoutes, { prefix: "/api/organization-requests" });
+  await app.register(platformRoutes, { prefix: "/api/platform" });
+  await app.register(organizationRoutes, { prefix: "/api/organization" });
 
   return app;
 }

@@ -1,7 +1,11 @@
 import { z } from "zod";
 export declare const ROLES: readonly ["SUPERADMIN", "ADMIN", "OPERATOR"];
 export type Role = (typeof ROLES)[number];
-export type AccountType = "STAFF" | "PILGRIM";
+/** STAFF: personal de una parroquia · PILGRIM: identidad del peregrino · PLATFORM: operador de plataforma (A3). */
+export type AccountType = "STAFF" | "PILGRIM" | "PLATFORM";
+export declare const ORGANIZATION_STATUSES: readonly ["DRAFT", "PENDING_REVIEW", "APPROVED", "REJECTED", "SUSPENDED", "ARCHIVED"];
+export type OrganizationStatus = (typeof ORGANIZATION_STATUSES)[number];
+export declare const ORGANIZATION_STATUS_LABEL: Record<OrganizationStatus, string>;
 /** DRAFT: en preparación, no operativo · SCHEDULED: programado · IN_PROGRESS: activo · FINISHED: cerrado · CANCELLED: cancelado. */
 export declare const EVENT_STATUSES: readonly ["DRAFT", "SCHEDULED", "IN_PROGRESS", "FINISHED", "CANCELLED"];
 export type EventStatus = (typeof EVENT_STATUSES)[number];
@@ -452,6 +456,8 @@ export interface SessionUser {
     email: string;
     role: Role;
     organizationId: string;
+    /** A3: estado del ciclo de vida de la organización del usuario. */
+    organizationStatus: OrganizationStatus;
 }
 export interface AssignmentView {
     checkpointId: string;
@@ -791,6 +797,112 @@ export declare const acceptInvitationSchema: z.ZodObject<{
     name: string;
     token: string;
 }>;
+/** Solicitud pública de una nueva parroquia. No incluye estado, rol ni organización: los decide la plataforma. */
+export declare const organizationRequestSchema: z.ZodObject<{
+    acceptTerms: z.ZodLiteral<true>;
+    parishName: z.ZodString;
+    contactName: z.ZodString;
+    contactEmail: z.ZodString;
+    contactPhone: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, string | undefined>;
+    /** ISO 3166-1 alfa-2 (catálogo internacional G1). */
+    countryCode: z.ZodString;
+    locality: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, string | undefined>;
+    address: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, string | undefined>;
+    notes: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, string | undefined>;
+}, "strict", z.ZodTypeAny, {
+    acceptTerms: true;
+    parishName: string;
+    contactName: string;
+    contactEmail: string;
+    countryCode: string;
+    address?: string | undefined;
+    notes?: string | undefined;
+    contactPhone?: string | undefined;
+    locality?: string | undefined;
+}, {
+    acceptTerms: true;
+    parishName: string;
+    contactName: string;
+    contactEmail: string;
+    countryCode: string;
+    address?: string | undefined;
+    notes?: string | undefined;
+    contactPhone?: string | undefined;
+    locality?: string | undefined;
+}>;
+/** Corrección y nueva presentación de una solicitud rechazada (con el token privado del solicitante). */
+export declare const resubmitOrganizationRequestSchema: z.ZodObject<{
+    parishName: z.ZodString;
+    contactName: z.ZodString;
+    contactEmail: z.ZodString;
+    contactPhone: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, string | undefined>;
+    /** ISO 3166-1 alfa-2 (catálogo internacional G1). */
+    countryCode: z.ZodString;
+    locality: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, string | undefined>;
+    address: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, string | undefined>;
+    notes: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, string | undefined>;
+    token: z.ZodString;
+}, "strict", z.ZodTypeAny, {
+    parishName: string;
+    token: string;
+    contactName: string;
+    contactEmail: string;
+    countryCode: string;
+    address?: string | undefined;
+    notes?: string | undefined;
+    contactPhone?: string | undefined;
+    locality?: string | undefined;
+}, {
+    parishName: string;
+    token: string;
+    contactName: string;
+    contactEmail: string;
+    countryCode: string;
+    address?: string | undefined;
+    notes?: string | undefined;
+    contactPhone?: string | undefined;
+    locality?: string | undefined;
+}>;
+export declare const organizationRequestTokenSchema: z.ZodObject<{
+    token: z.ZodString;
+}, "strict", z.ZodTypeAny, {
+    token: string;
+}, {
+    token: string;
+}>;
+/** Revisión por PLATFORM. El motivo es obligatorio para rechazar y suspender. */
+export declare const platformApproveSchema: z.ZodObject<{
+    note: z.ZodOptional<z.ZodString>;
+}, "strict", z.ZodTypeAny, {
+    note?: string | undefined;
+}, {
+    note?: string | undefined;
+}>;
+export declare const platformRejectSchema: z.ZodObject<{
+    reason: z.ZodString;
+}, "strict", z.ZodTypeAny, {
+    reason: string;
+}, {
+    reason: string;
+}>;
+export declare const organizationTransitionSchema: z.ZodObject<{
+    to: z.ZodEnum<["DRAFT", "PENDING_REVIEW", "APPROVED", "REJECTED", "SUSPENDED", "ARCHIVED"]>;
+    reason: z.ZodOptional<z.ZodString>;
+}, "strict", z.ZodTypeAny, {
+    to: "DRAFT" | "PENDING_REVIEW" | "APPROVED" | "REJECTED" | "SUSPENDED" | "ARCHIVED";
+    reason?: string | undefined;
+}, {
+    to: "DRAFT" | "PENDING_REVIEW" | "APPROVED" | "REJECTED" | "SUSPENDED" | "ARCHIVED";
+    reason?: string | undefined;
+}>;
+/** Presentación a revisión por el SUPERADMIN de la parroquia (DRAFT/REJECTED → PENDING_REVIEW). */
+export declare const submitOrganizationReviewSchema: z.ZodObject<{
+    note: z.ZodOptional<z.ZodString>;
+}, "strict", z.ZodTypeAny, {
+    note?: string | undefined;
+}, {
+    note?: string | undefined;
+}>;
 export declare const pilgrimLoginSchema: z.ZodEffects<z.ZodObject<{
     token: z.ZodOptional<z.ZodString>;
     code: z.ZodOptional<z.ZodString>;
@@ -961,14 +1073,14 @@ export declare const proofFieldsSchema: z.ZodObject<{
     note: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, unknown>;
 }, "strip", z.ZodTypeAny, {
     reference?: string | undefined;
+    note?: string | undefined;
     amount?: number | undefined;
     paidAt?: Date | undefined;
-    note?: string | undefined;
 }, {
     reference?: unknown;
+    note?: unknown;
     amount?: unknown;
     paidAt?: unknown;
-    note?: unknown;
 }>;
 export declare const registrationListSchema: z.ZodObject<{
     page: z.ZodDefault<z.ZodNumber>;
@@ -979,10 +1091,10 @@ export declare const registrationListSchema: z.ZodObject<{
 }, "strip", z.ZodTypeAny, {
     page: number;
     pageSize: number;
-    status?: "CANCELLED" | "PENDING_PROOF" | "IN_REVIEW" | "APPROVED" | "REJECTED" | undefined;
+    status?: "APPROVED" | "REJECTED" | "CANCELLED" | "PENDING_PROOF" | "IN_REVIEW" | undefined;
     q?: string | undefined;
 }, {
-    status?: "CANCELLED" | "PENDING_PROOF" | "IN_REVIEW" | "APPROVED" | "REJECTED" | undefined;
+    status?: "APPROVED" | "REJECTED" | "CANCELLED" | "PENDING_PROOF" | "IN_REVIEW" | undefined;
     page?: number | undefined;
     pageSize?: number | undefined;
     q?: string | undefined;

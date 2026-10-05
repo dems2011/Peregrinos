@@ -30,12 +30,17 @@ model Organization {
   // Estado público
   isActive Boolean @default(true)
 
+  /// A3: ciclo de vida (fuente de verdad; isActive NO lo sustituye). Las organizaciones previas a A3 quedan APPROVED.
+  status OrganizationStatus @default(DRAFT)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
 
-  events      Event[]
-  invitations Invitation[]
-  users       User[]
+  events        Event[]
+  invitations   Invitation[]
+  users         User[]
+  request       OrganizationRequest?
+  statusChanges OrganizationStatusChange[]
 }
 
 /// A2: identidad separada de la autorización del personal.
@@ -43,34 +48,37 @@ model Organization {
 /// Ambas reglas las impone la BD con CHECK (migración 20261006000000_pilgrim_identity_separation).
 /// La relación del peregrino con parroquias y eventos se deriva de Participant/Registration → Event → Organization.
 model User {
-  id                      String                   @id @default(uuid())
+  id                      String                     @id @default(uuid())
   organizationId          String?
-  email                   String                   @unique
+  email                   String                     @unique
   name                    String
   passwordHash            String
   role                    Role?
-  isActive                Boolean                  @default(true)
+  isActive                Boolean                    @default(true)
   /// Permisos activados individualmente (además de los del rol).
-  extraPermissions        String[]                 @default([])
-  createdAt               DateTime                 @default(now())
-  updatedAt               DateTime                 @updatedAt
-  documentNumber          String?                  @unique
+  extraPermissions        String[]                   @default([])
+  createdAt               DateTime                   @default(now())
+  updatedAt               DateTime                   @updatedAt
+  documentNumber          String?                    @unique
   emailVerifiedAt         DateTime?
   phone                   String?
   photoUrl                String?
-  accountType             AccountType              @default(STAFF)
+  accountType             AccountType                @default(STAFF)
   termsAcceptedAt         DateTime?
   auditLogs               AuditLog[]
-  checkins                Checkin[]                @relation("CheckinOperator")
+  checkins                Checkin[]                  @relation("CheckinOperator")
   emailVerificationTokens EmailVerificationToken[]
   incidents               Incident[]
-  invitationsSent         Invitation[]             @relation("InvitationInviter")
+  invitationsSent         Invitation[]               @relation("InvitationInviter")
+  /// A3: solicitudes de parroquia revisadas (solo PLATFORM) y transiciones registradas por esta cuenta.
+  requestsReviewed        OrganizationRequest[]      @relation("OrganizationRequestReviewer")
+  statusChanges           OrganizationStatusChange[]
   assignments             OperatorAssignment[]
   refreshTokens           RefreshToken[]
   /// Solo cuentas PILGRIM: sus participaciones e inscripciones por evento (se valida en código).
-  participations          Participant[]            @relation("PilgrimParticipations")
-  registrations           Registration[]           @relation("PilgrimRegistrations")
-  organization            Organization?            @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  participations          Participant[]              @relation("PilgrimParticipations")
+  registrations           Registration[]             @relation("PilgrimRegistrations")
+  organization            Organization?              @relation(fields: [organizationId], references: [id], onDelete: Restrict)
 
   @@index([organizationId, role])
 }
@@ -386,6 +394,9 @@ model Invitation {
   invitedById      String
   lastSentAt       DateTime?
   sendCount        Int          @default(0)
+  /// A3: invitación de fundador emitida por PLATFORM al aprobar una solicitud. Único caso en que una invitación
+  /// puede otorgar SUPERADMIN (la BD exige role=SUPERADMIN si es true).
+  platformGrant    Boolean      @default(false)
   createdAt        DateTime     @default(now())
   invitedBy        User         @relation("InvitationInviter", fields: [invitedById], references: [id])
   organization     Organization @relation(fields: [organizationId], references: [id])
@@ -504,6 +515,69 @@ model EmailVerificationToken {
 enum AccountType {
   STAFF
   PILGRIM
+  /// A3: operador de plataforma (PLATFORM_ADMIN). Sin organización, sin rol y sin permisos extra (CHECK en BD).
+  PLATFORM
+}
+
+/// A3: ciclo de vida de una organización (parroquia).
+enum OrganizationStatus {
+  DRAFT
+  PENDING_REVIEW
+  APPROVED
+  REJECTED
+  SUSPENDED
+  ARCHIVED
+}
+
+/// A3: solicitud pública de una nueva parroquia. La Organization se crea solo al aprobarla (PLATFORM).
+/// status ∈ {PENDING_REVIEW, APPROVED, REJECTED} (CHECK en BD).
+model OrganizationRequest {
+  id              String                     @id @default(uuid())
+  parishName      String
+  contactName     String
+  contactEmail    String
+  contactPhone    String?
+  /// ISO 3166-1 alfa-2 (catálogo internacional G1).
+  countryCode     String
+  locality        String?
+  address         String?
+  notes           String?
+  status          OrganizationStatus         @default(PENDING_REVIEW)
+  /// Hash del token privado que permite al solicitante consultar y corregir su solicitud.
+  editTokenHash   String                     @unique
+  rejectionReason String?
+  reviewedById    String?
+  reviewedAt      DateTime?
+  submissionCount Int                        @default(1)
+  organizationId  String?                    @unique
+  createdAt       DateTime                   @default(now())
+  updatedAt       DateTime                   @updatedAt
+  reviewedBy      User?                      @relation("OrganizationRequestReviewer", fields: [reviewedById], references: [id], onDelete: Restrict)
+  organization    Organization?              @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  statusChanges   OrganizationStatusChange[]
+
+  @@index([status, createdAt])
+  @@index([contactEmail])
+}
+
+/// A3: auditoría persistente (append-only) de cada transición de solicitud u organización.
+model OrganizationStatusChange {
+  id               String               @id @default(uuid())
+  organizationId   String?
+  requestId        String?
+  fromStatus       OrganizationStatus?
+  toStatus         OrganizationStatus
+  /// Cuenta que ejecutó la transición (null: el solicitante público, sin cuenta).
+  actorUserId      String?
+  actorAccountType AccountType?
+  reason           String?
+  createdAt        DateTime             @default(now())
+  organization     Organization?        @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  request          OrganizationRequest? @relation(fields: [requestId], references: [id], onDelete: Restrict)
+  actor            User?                @relation(fields: [actorUserId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, createdAt])
+  @@index([requestId, createdAt])
 }
 
 enum Role {
