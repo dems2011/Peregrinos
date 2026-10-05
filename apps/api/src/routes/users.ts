@@ -7,17 +7,19 @@ import { hashPassword } from "../lib/password";
 import { AppError, notFound } from "../lib/errors";
 
 const idParam = z.object({ id: z.string().uuid() });
+/** Solo cuentas del personal: las cuentas PILGRIM nunca se administran ni se asignan desde aquí. */
+const staffOf = (organizationId: string) => ({ organizationId, accountType: "STAFF" as const });
 const publicUser = { id: true, name: true, email: true, role: true, extraPermissions: true, isActive: true, createdAt: true } as const;
 
 export default async function userRoutes(app: FastifyInstance) {
   async function ensureAnotherSuperadmin(orgId: string, excludeId: string) {
-    const others = await prisma.user.count({ where: { organizationId: orgId, role: "SUPERADMIN", isActive: true, id: { not: excludeId } } });
+    const others = await prisma.user.count({ where: { ...staffOf(orgId), role: "SUPERADMIN", isActive: true, id: { not: excludeId } } });
     if (others === 0) throw new AppError(409, "LAST_SUPERADMIN", "Debe quedar al menos un superadministrador activo.");
   }
 
   app.get("/", { preHandler: app.requirePermission("user:manage") }, async (req) => {
     const items = await prisma.user.findMany({
-      where: { organizationId: req.auth.organizationId },
+      where: staffOf(req.auth.organizationId),
       select: publicUser,
       orderBy: [{ role: "asc" }, { name: "asc" }],
     });
@@ -37,7 +39,7 @@ export default async function userRoutes(app: FastifyInstance) {
   app.patch("/:id", { preHandler: app.requirePermission("user:manage") }, async (req) => {
     const { id } = idParam.parse(req.params);
     const body = updateUserSchema.parse(req.body);
-    const target = await prisma.user.findFirst({ where: { id, organizationId: req.auth.organizationId } });
+    const target = await prisma.user.findFirst({ where: { id, ...staffOf(req.auth.organizationId) } });
     if (!target) throw notFound("Usuario no encontrado.");
 
     const losesSuperadmin =
@@ -64,7 +66,7 @@ export default async function userRoutes(app: FastifyInstance) {
   /** "Eliminar" = desactivar. El usuario queda en la BD para conservar la trazabilidad de sus registros. */
   app.delete("/:id", { preHandler: app.requirePermission("user:manage") }, async (req, reply) => {
     const { id } = idParam.parse(req.params);
-    const target = await prisma.user.findFirst({ where: { id, organizationId: req.auth.organizationId } });
+    const target = await prisma.user.findFirst({ where: { id, ...staffOf(req.auth.organizationId) } });
     if (!target) throw notFound("Usuario no encontrado.");
     if (target.id === req.auth.id) throw new AppError(409, "SELF_DELETE", "No puedes desactivar tu propia cuenta.");
     if (target.role === "SUPERADMIN" && target.isActive) await ensureAnotherSuperadmin(target.organizationId, target.id);
@@ -78,7 +80,7 @@ export default async function userRoutes(app: FastifyInstance) {
   app.get("/:id/assignments", { preHandler: app.requirePermission("assignment:manage") }, async (req) => {
     const { id } = idParam.parse(req.params);
     const rows = await prisma.operatorAssignment.findMany({
-      where: { userId: id, user: { organizationId: req.auth.organizationId } },
+      where: { userId: id, user: staffOf(req.auth.organizationId) },
       include: { checkpoint: { include: { event: { select: { id: true, name: true } } } } },
     });
     return {
@@ -93,7 +95,7 @@ export default async function userRoutes(app: FastifyInstance) {
   app.put("/:id/assignments", { preHandler: app.requirePermission("assignment:manage") }, async (req) => {
     const { id } = idParam.parse(req.params);
     const { checkpointIds } = assignmentsSchema.parse(req.body);
-    const user = await prisma.user.findFirst({ where: { id, organizationId: req.auth.organizationId } });
+    const user = await prisma.user.findFirst({ where: { id, ...staffOf(req.auth.organizationId) } });
     if (!user) throw notFound("Usuario no encontrado.");
     if (user.role !== "OPERATOR") throw new AppError(400, "NOT_OPERATOR", "Solo los operadores tienen puntos asignados.");
 

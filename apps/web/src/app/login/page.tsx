@@ -1,4 +1,5 @@
 "use client";
+
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { ApiError, login } from "@/lib/api";
@@ -14,11 +15,16 @@ export default function LoginPage() {
     e.preventDefault();
     setBusy(true);
     setError(null);
+
     try {
       await login(email, password);
       router.replace("/");
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "No se pudo conectar con el servidor.");
+      setError(
+        err instanceof ApiError
+          ? err.message
+          : "No se pudo conectar con el servidor."
+      );
     } finally {
       setBusy(false);
     }
@@ -27,24 +33,97 @@ export default function LoginPage() {
   return (
     <main className="splash">
       <div className="brand">
-        <svg width="72" height="72" viewBox="0 0 512 512" aria-hidden="true">
-          <path d="M256 40c-86 0-148 66-148 146 0 104 148 286 148 286s148-182 148-286c0-80-62-146-148-146z" fill="#fff" />
-          <circle cx="256" cy="186" r="62" fill="#1677FF" />
+        <svg
+          width="72"
+          height="72"
+          viewBox="0 0 512 512"
+          aria-hidden="true"
+        >
+          <path
+            d="M256 40c-86 0-148 66-148 146 0 104 148 286 148 286s148-182 148-286c0-80-62-146-148-146z"
+            fill="#fff"
+          />
+          <circle
+            cx="256"
+            cy="186"
+            r="62"
+            fill="#1677FF"
+          />
         </svg>
+
         <h1>Peregrinos</h1>
         <p>Control de Recorrido</p>
       </div>
+
       <form onSubmit={onSubmit} noValidate>
-        {error && <div className="error" role="alert">{error}</div>}
+        {error && (
+          <div className="error" role="alert">
+            {error}
+          </div>
+        )}
+
         <div className="field">
           <label htmlFor="email">Correo</label>
-          <input id="email" type="email" autoComplete="username" inputMode="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+          <input
+            id="email"
+            type="email"
+            autoComplete="username"
+            inputMode="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+          />
         </div>
+
         <div className="field">
           <label htmlFor="password">Contraseña</label>
-          <input id="password" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+          <input
+            id="password"
+            type="password"
+            autoComplete="current-password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+          />
         </div>
-        <button className="btn btn-primary" disabled={busy || !email || !password}>{busy ? "Entrando…" : "Iniciar sesión"}</button>
+
+        <button
+          className="btn btn-primary"
+          disabled={busy || !email || !password}
+        >
+          {busy ? "Entrando…" : "Iniciar sesión"}
+        </button>
+
+        <div
+          style={{
+            textAlign: "center",
+            marginTop: "22px",
+            color: "#111827",
+          }}
+        >
+          <p
+            style={{
+              margin: "0 0 8px",
+              fontSize: "14px",
+              color: "#111827",
+            }}
+          >
+            ¿Eres peregrino y todavía no tienes una cuenta?
+          </p>
+
+          <a
+            href="/registrar"
+            style={{
+              color: "#1677FF",
+              fontWeight: 700,
+              textDecoration: "none",
+              fontSize: "15px",
+            }}
+          >
+            Crear cuenta de peregrino
+          </a>
+        </div>
+
         <p className="tagline">Juntos en el camino</p>
       </form>
     </main>

@@ -1,6 +1,7 @@
 import { z } from "zod";
 export declare const ROLES: readonly ["SUPERADMIN", "ADMIN", "OPERATOR"];
 export type Role = (typeof ROLES)[number];
+export type AccountType = "STAFF" | "PILGRIM";
 export declare const EVENT_STATUSES: readonly ["SCHEDULED", "IN_PROGRESS", "FINISHED", "CANCELLED"];
 export type EventStatus = (typeof EVENT_STATUSES)[number];
 export type Permission = "event:read" | "event:create" | "event:update" | "user:manage" | "assignment:manage" | "participant:read" | "participant:create" | "participant:manage" | "checkpoint:read" | "checkpoint:manage" | "checkin:create" | "checkin:read" | "checkin:correct" | "report:read" | "export:run" | "backup:run" | "audit:read" | "contact:manage" | "invitation:manage" | "payment:review" | "credential:export";
@@ -15,6 +16,31 @@ export declare const loginSchema: z.ZodObject<{
 }, {
     email: string;
     password: string;
+}>;
+export declare const registerPilgrimSchema: z.ZodObject<{
+    firstName: z.ZodString;
+    lastName: z.ZodString;
+    email: z.ZodString;
+    documentNumber: z.ZodString;
+    phone: z.ZodString;
+    password: z.ZodString;
+    acceptTerms: z.ZodLiteral<true>;
+}, "strip", z.ZodTypeAny, {
+    email: string;
+    password: string;
+    firstName: string;
+    lastName: string;
+    documentNumber: string;
+    phone: string;
+    acceptTerms: true;
+}, {
+    email: string;
+    password: string;
+    firstName: string;
+    lastName: string;
+    documentNumber: string;
+    phone: string;
+    acceptTerms: true;
 }>;
 export declare const bootstrapSchema: z.ZodObject<{
     organizationName: z.ZodString;
@@ -526,8 +552,8 @@ export declare const createContactSchema: z.ZodObject<{
     isEmergency: z.ZodDefault<z.ZodBoolean>;
     sortOrder: z.ZodDefault<z.ZodNumber>;
 }, "strip", z.ZodTypeAny, {
-    name: string;
     phone: string;
+    name: string;
     isEmergency: boolean;
     sortOrder: number;
     email?: string | undefined;
@@ -535,8 +561,8 @@ export declare const createContactSchema: z.ZodObject<{
     checkpointId?: string | null | undefined;
     roleLabel?: string | undefined;
 }, {
-    name: string;
     phone: string;
+    name: string;
     email?: string | undefined;
     notes?: string | undefined;
     checkpointId?: string | null | undefined;
@@ -555,8 +581,8 @@ export declare const updateContactSchema: z.ZodObject<{
     sortOrder: z.ZodOptional<z.ZodDefault<z.ZodNumber>>;
 }, "strip", z.ZodTypeAny, {
     email?: string | undefined;
-    name?: string | undefined;
     phone?: string | undefined;
+    name?: string | undefined;
     notes?: string | undefined;
     checkpointId?: string | null | undefined;
     roleLabel?: string | undefined;
@@ -564,8 +590,8 @@ export declare const updateContactSchema: z.ZodObject<{
     sortOrder?: number | undefined;
 }, {
     email?: string | undefined;
-    name?: string | undefined;
     phone?: string | undefined;
+    name?: string | undefined;
     notes?: string | undefined;
     checkpointId?: string | null | undefined;
     roleLabel?: string | undefined;

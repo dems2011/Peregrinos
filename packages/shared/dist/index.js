@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.credentialQuerySchema = exports.rejectRegistrationSchema = exports.approveRegistrationSchema = exports.registrationListSchema = exports.proofFieldsSchema = exports.createRegistrationSchema = exports.REGISTRATION_STATUSES = exports.qBool = exports.updateContactSchema = exports.createContactSchema = exports.issueAccessSchema = exports.pilgrimLoginSchema = exports.acceptInvitationSchema = exports.createInvitationSchema = exports.ACCESS_LEVELS = exports.canGrantRole = exports.hasPermission = exports.GRANTABLE_PERMISSIONS = exports.checkinListSchema = exports.resolveConflictSchema = exports.correctCheckinSchema = exports.cancelCheckinSchema = exports.createCheckinSchema = exports.reorderCheckpointsSchema = exports.updateCheckpointSchema = exports.createCheckpointSchema = exports.participantListSchema = exports.updateParticipantSchema = exports.createParticipantSchema = exports.digitsOnly = exports.normalizeDocument = exports.parseQrContent = exports.qrContent = exports.QR_PREFIX = exports.CHECKIN_METHODS = exports.PARTICIPANT_STATUSES = exports.formatParticipantNumber = exports.paginationSchema = exports.assignmentsSchema = exports.updateUserSchema = exports.createUserSchema = exports.updateEventSchema = exports.createEventSchema = exports.bootstrapSchema = exports.loginSchema = exports.ROLE_PERMISSIONS = exports.EVENT_STATUSES = exports.ROLES = void 0;
+exports.credentialQuerySchema = exports.rejectRegistrationSchema = exports.approveRegistrationSchema = exports.registrationListSchema = exports.proofFieldsSchema = exports.createRegistrationSchema = exports.REGISTRATION_STATUSES = exports.qBool = exports.updateContactSchema = exports.createContactSchema = exports.issueAccessSchema = exports.pilgrimLoginSchema = exports.acceptInvitationSchema = exports.createInvitationSchema = exports.ACCESS_LEVELS = exports.canGrantRole = exports.hasPermission = exports.GRANTABLE_PERMISSIONS = exports.checkinListSchema = exports.resolveConflictSchema = exports.correctCheckinSchema = exports.cancelCheckinSchema = exports.createCheckinSchema = exports.reorderCheckpointsSchema = exports.updateCheckpointSchema = exports.createCheckpointSchema = exports.participantListSchema = exports.updateParticipantSchema = exports.createParticipantSchema = exports.digitsOnly = exports.normalizeDocument = exports.parseQrContent = exports.qrContent = exports.QR_PREFIX = exports.CHECKIN_METHODS = exports.PARTICIPANT_STATUSES = exports.formatParticipantNumber = exports.paginationSchema = exports.assignmentsSchema = exports.updateUserSchema = exports.createUserSchema = exports.updateEventSchema = exports.createEventSchema = exports.bootstrapSchema = exports.registerPilgrimSchema = exports.loginSchema = exports.ROLE_PERMISSIONS = exports.EVENT_STATUSES = exports.ROLES = void 0;
 exports.can = can;
 exports.effectivePermissions = effectivePermissions;
 const zod_1 = require("zod");
@@ -25,6 +25,17 @@ function can(role, permission) {
 const email = zod_1.z.string().trim().toLowerCase().email().max(200);
 const password = zod_1.z.string().min(10, "La contraseña debe tener al menos 10 caracteres").max(128);
 exports.loginSchema = zod_1.z.object({ email, password: zod_1.z.string().min(1).max(128) });
+exports.registerPilgrimSchema = zod_1.z.object({
+    firstName: zod_1.z.string().trim().min(2, "El nombre es obligatorio").max(80),
+    lastName: zod_1.z.string().trim().min(2, "El apellido es obligatorio").max(80),
+    email,
+    documentNumber: zod_1.z.string().trim().min(5, "El DNI es obligatorio").max(30),
+    phone: zod_1.z.string().trim().min(6, "El teléfono es obligatorio").max(30),
+    password,
+    acceptTerms: zod_1.z.literal(true, {
+        errorMap: () => ({ message: "Debes aceptar los términos y condiciones" }),
+    }),
+});
 exports.bootstrapSchema = zod_1.z.object({
     organizationName: zod_1.z.string().trim().min(2).max(120),
     name: zod_1.z.string().trim().min(2).max(120),

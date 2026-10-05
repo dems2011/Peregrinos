@@ -3,6 +3,8 @@
 !.env.example
 node_modules
 .next
-android/.gradle
-android/app/buildapps/api/dist/
 apps/api/dist/
+apps/api/uploads/
+*.tsbuildinfo
+# Android: los build/ y .gradle/ ya los ignora apps/web/android/.gitignore
+apps/web/android/.idea/

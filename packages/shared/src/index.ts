@@ -3,6 +3,7 @@ import { z } from "zod";
 /* ---------- Roles y permisos (única fuente de verdad: API y Web) ---------- */
 export const ROLES = ["SUPERADMIN", "ADMIN", "OPERATOR"] as const;
 export type Role = (typeof ROLES)[number];
+export type AccountType = "STAFF" | "PILGRIM";
 
 export const EVENT_STATUSES = ["SCHEDULED", "IN_PROGRESS", "FINISHED", "CANCELLED"] as const;
 export type EventStatus = (typeof EVENT_STATUSES)[number];
@@ -38,6 +39,17 @@ const email = z.string().trim().toLowerCase().email().max(200);
 const password = z.string().min(10, "La contraseña debe tener al menos 10 caracteres").max(128);
 
 export const loginSchema = z.object({ email, password: z.string().min(1).max(128) });
+export const registerPilgrimSchema = z.object({
+  firstName: z.string().trim().min(2, "El nombre es obligatorio").max(80),
+  lastName: z.string().trim().min(2, "El apellido es obligatorio").max(80),
+  email,
+  documentNumber: z.string().trim().min(5, "El DNI es obligatorio").max(30),
+  phone: z.string().trim().min(6, "El teléfono es obligatorio").max(30),
+  password,
+  acceptTerms: z.literal(true, {
+    errorMap: () => ({ message: "Debes aceptar los términos y condiciones" }),
+  }),
+});
 
 export const bootstrapSchema = z.object({
   organizationName: z.string().trim().min(2).max(120),
