@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
 import { MailPlus, RefreshCw, Trash2, UserCog } from "lucide-react";
-import { ACCESS_LEVELS, canGrantRole } from "@peregrinos/shared";
+import { ACCESS_LEVELS, canGrantRole, canInviteRole } from "@peregrinos/shared";
 import { api, ApiError, del, patch, post, put } from "@/lib/api";
 import { useLoad } from "@/lib/hooks";
 import { fmtDate } from "@/lib/format";
@@ -76,7 +76,7 @@ export default function Usuarios() {
 
 function InviteModal({ cps, onClose, onSent }: { cps: Checkpoint[]; onClose: () => void; onSent: (r: { url: string; emailSent: boolean; email: string }) => void }) {
   const { me } = useApp();
-  const levels = ACCESS_LEVELS.filter((l) => canGrantRole(me.user.role, l.role));
+  const levels = ACCESS_LEVELS.filter((l) => canInviteRole(me.user.role, l.role));
   const [email, setEmail] = useState(""); const [lv, setLv] = useState(levels[0].id); const [sel, setSel] = useState<string[]>([]); const [err, setErr] = useState<string | null>(null); const [busy, setBusy] = useState(false);
   const level = levels.find((l) => l.id === lv)!;
   return (

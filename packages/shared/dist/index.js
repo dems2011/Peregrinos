@@ -1,7 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.updateContactSchema = exports.createContactSchema = exports.issueAccessSchema = exports.pilgrimLoginSchema = exports.acceptInvitationSchema = exports.createInvitationSchema = exports.ACCESS_LEVELS = exports.canGrantRole = exports.hasPermission = exports.GRANTABLE_PERMISSIONS = exports.checkinListSchema = exports.resolveConflictSchema = exports.correctCheckinSchema = exports.cancelCheckinSchema = exports.createCheckinSchema = exports.reorderCheckpointsSchema = exports.updateCheckpointSchema = exports.createCheckpointSchema = exports.participantListSchema = exports.updateParticipantSchema = exports.createParticipantSchema = exports.digitsOnly = exports.normalizeDocument = exports.parseQrContent = exports.qrContent = exports.QR_PREFIX = exports.CHECKIN_METHODS = exports.PARTICIPANT_STATUSES = exports.formatParticipantNumber = exports.paginationSchema = exports.assignmentsSchema = exports.updateUserSchema = exports.createUserSchema = exports.eventListQuerySchema = exports.updateEventSchema = exports.createEventSchema = exports.eventSettingsSchemas = exports.eventRouteSchema = exports.bootstrapSchema = exports.registerPilgrimSchema = exports.loginSchema = exports.ROLE_PERMISSIONS = exports.EVENT_VISIBILITY_LABEL = exports.EVENT_VISIBILITIES = exports.EVENT_TYPE_INFO = exports.EVENT_TYPES = exports.isEventOperable = exports.EVENT_STATUS_LABEL = exports.EVENT_STATUSES = exports.ROLES = void 0;
-exports.credentialQuerySchema = exports.rejectRegistrationSchema = exports.approveRegistrationSchema = exports.registrationListSchema = exports.proofFieldsSchema = exports.createRegistrationSchema = exports.REGISTRATION_STATUSES = exports.qBool = void 0;
+exports.createContactSchema = exports.issueAccessSchema = exports.pilgrimLoginSchema = exports.acceptInvitationSchema = exports.createInvitationSchema = exports.ACCESS_LEVELS = exports.canInviteRole = exports.canGrantRole = exports.hasPermission = exports.GRANTABLE_PERMISSIONS = exports.checkinListSchema = exports.resolveConflictSchema = exports.correctCheckinSchema = exports.cancelCheckinSchema = exports.createCheckinSchema = exports.reorderCheckpointsSchema = exports.updateCheckpointSchema = exports.createCheckpointSchema = exports.participantListSchema = exports.updateParticipantSchema = exports.createParticipantSchema = exports.digitsOnly = exports.normalizeDocument = exports.parseQrContent = exports.qrContent = exports.QR_PREFIX = exports.CHECKIN_METHODS = exports.PARTICIPANT_STATUSES = exports.formatParticipantNumber = exports.paginationSchema = exports.assignmentsSchema = exports.updateUserSchema = exports.createUserSchema = exports.eventListQuerySchema = exports.updateEventSchema = exports.createEventSchema = exports.eventSettingsSchemas = exports.eventRouteSchema = exports.bootstrapSchema = exports.registerPilgrimSchema = exports.loginSchema = exports.ROLE_PERMISSIONS = exports.EVENT_VISIBILITY_LABEL = exports.EVENT_VISIBILITIES = exports.EVENT_TYPE_INFO = exports.EVENT_TYPES = exports.isEventOperable = exports.EVENT_STATUS_LABEL = exports.EVENT_STATUSES = exports.ROLES = void 0;
+exports.credentialQuerySchema = exports.rejectRegistrationSchema = exports.approveRegistrationSchema = exports.registrationListSchema = exports.proofFieldsSchema = exports.createRegistrationSchema = exports.REGISTRATION_STATUSES = exports.qBool = exports.updateContactSchema = void 0;
 exports.can = can;
 exports.validateEventCoherence = validateEventCoherence;
 exports.isRegistrationOpenNow = isRegistrationOpenNow;
@@ -56,7 +56,11 @@ function can(role, permission) {
 /* ---------- Esquemas Zod ---------- */
 const email = zod_1.z.string().trim().toLowerCase().email().max(200);
 const password = zod_1.z.string().min(10, "La contraseña debe tener al menos 10 caracteres").max(128);
-exports.loginSchema = zod_1.z.object({ email, password: zod_1.z.string().min(1).max(128) });
+/*
+ * A1 (deny-by-default): los cuerpos que crean cuentas o asignan roles son .strict().
+ * Cualquier campo no declarado (role, accountType, organizationId, isSuperadmin…) produce 400.
+ */
+exports.loginSchema = zod_1.z.object({ email, password: zod_1.z.string().min(1).max(128) }).strict();
 exports.registerPilgrimSchema = zod_1.z.object({
     firstName: zod_1.z.string().trim().min(2, "El nombre es obligatorio").max(80),
     lastName: zod_1.z.string().trim().min(2, "El apellido es obligatorio").max(80),
@@ -67,13 +71,13 @@ exports.registerPilgrimSchema = zod_1.z.object({
     acceptTerms: zod_1.z.literal(true, {
         errorMap: () => ({ message: "Debes aceptar los términos y condiciones" }),
     }),
-});
+}).strict();
 exports.bootstrapSchema = zod_1.z.object({
     organizationName: zod_1.z.string().trim().min(2).max(120),
     name: zod_1.z.string().trim().min(2).max(120),
     email,
     password,
-});
+}).strict();
 const lat = zod_1.z.coerce.number().min(-90).max(90);
 const lng = zod_1.z.coerce.number().min(-180).max(180);
 const optText = (max) => zod_1.z.string().trim().max(max).nullable().optional();
@@ -171,14 +175,14 @@ exports.createUserSchema = zod_1.z.object({
     password,
     role: zod_1.z.enum(exports.ROLES),
     extraPermissions: zod_1.z.array(zod_1.z.enum(["participant:create", "checkin:read", "report:read"])).default([]),
-});
+}).strict();
 exports.updateUserSchema = zod_1.z.object({
     name: zod_1.z.string().trim().min(2).max(120).optional(),
     role: zod_1.z.enum(exports.ROLES).optional(),
     isActive: zod_1.z.boolean().optional(),
     password: password.optional(),
     extraPermissions: zod_1.z.array(zod_1.z.enum(["participant:create", "checkin:read", "report:read"])).optional(),
-});
+}).strict();
 exports.assignmentsSchema = zod_1.z.object({
     checkpointIds: zod_1.z.array(zod_1.z.string().uuid()).max(50),
 });
@@ -285,6 +289,13 @@ exports.hasPermission = hasPermission;
 /** Nadie puede dar un nivel superior al suyo: el Superadmin da cualquiera; el Administrador solo nivel operador. */
 const canGrantRole = (granter, target) => granter === "SUPERADMIN" || (granter === "ADMIN" && target === "OPERATOR");
 exports.canGrantRole = canGrantRole;
+/**
+ * A1: roles que se pueden otorgar por invitación o alta directa. SUPERADMIN queda excluido:
+ * solo se otorga promoviendo a un miembro activo del personal (PATCH /users/:id), con un único
+ * punto de control en el servidor. Una invitación es un enlace al portador y no debe dar SUPERADMIN.
+ */
+const canInviteRole = (granter, target) => target !== "SUPERADMIN" && (0, exports.canGrantRole)(granter, target);
+exports.canInviteRole = canInviteRole;
 /** Niveles listos para elegir al invitar. */
 exports.ACCESS_LEVELS = [
     { id: "OPERATOR_POINT", label: "Operador de punto", description: "Solo chequea llegadas en sus puntos", role: "OPERATOR", extraPermissions: [] },
@@ -297,14 +308,14 @@ exports.createInvitationSchema = zod_1.z.object({
     role: zod_1.z.enum(exports.ROLES),
     extraPermissions: zod_1.z.array(zod_1.z.enum(exports.GRANTABLE_PERMISSIONS)).default([]),
     checkpointIds: zod_1.z.array(zod_1.z.string().uuid()).max(50).default([]),
-}).refine((v) => v.role === "OPERATOR" || v.checkpointIds.length === 0, {
+}).strict().refine((v) => v.role === "OPERATOR" || v.checkpointIds.length === 0, {
     message: "Solo los operadores tienen puntos asignados", path: ["checkpointIds"],
 });
 exports.acceptInvitationSchema = zod_1.z.object({
     token: zod_1.z.string().min(20).max(200),
     name: zod_1.z.string().trim().min(2).max(120),
     password,
-});
+}).strict();
 exports.pilgrimLoginSchema = zod_1.z.object({
     token: zod_1.z.string().trim().min(20).max(200).optional(),
     code: zod_1.z.string().trim().min(8).max(20).optional(),

@@ -24,7 +24,7 @@ export declare function can(role: Role, permission: Permission): boolean;
 export declare const loginSchema: z.ZodObject<{
     email: z.ZodString;
     password: z.ZodString;
-}, "strip", z.ZodTypeAny, {
+}, "strict", z.ZodTypeAny, {
     email: string;
     password: string;
 }, {
@@ -39,7 +39,7 @@ export declare const registerPilgrimSchema: z.ZodObject<{
     phone: z.ZodString;
     password: z.ZodString;
     acceptTerms: z.ZodLiteral<true>;
-}, "strip", z.ZodTypeAny, {
+}, "strict", z.ZodTypeAny, {
     email: string;
     password: string;
     firstName: string;
@@ -61,7 +61,7 @@ export declare const bootstrapSchema: z.ZodObject<{
     name: z.ZodString;
     email: z.ZodString;
     password: z.ZodString;
-}, "strip", z.ZodTypeAny, {
+}, "strict", z.ZodTypeAny, {
     email: string;
     password: string;
     organizationName: string;
@@ -397,7 +397,7 @@ export declare const createUserSchema: z.ZodObject<{
     password: z.ZodString;
     role: z.ZodEnum<["SUPERADMIN", "ADMIN", "OPERATOR"]>;
     extraPermissions: z.ZodDefault<z.ZodArray<z.ZodEnum<["participant:create", "checkin:read", "report:read"]>, "many">>;
-}, "strip", z.ZodTypeAny, {
+}, "strict", z.ZodTypeAny, {
     email: string;
     password: string;
     name: string;
@@ -416,7 +416,7 @@ export declare const updateUserSchema: z.ZodObject<{
     isActive: z.ZodOptional<z.ZodBoolean>;
     password: z.ZodOptional<z.ZodString>;
     extraPermissions: z.ZodOptional<z.ZodArray<z.ZodEnum<["participant:create", "checkin:read", "report:read"]>, "many">>;
-}, "strip", z.ZodTypeAny, {
+}, "strict", z.ZodTypeAny, {
     password?: string | undefined;
     name?: string | undefined;
     role?: "SUPERADMIN" | "ADMIN" | "OPERATOR" | undefined;
@@ -720,6 +720,12 @@ export declare function effectivePermissions(role: Role, extras?: readonly strin
 export declare const hasPermission: (role: Role, extras: readonly string[], p: Permission) => boolean;
 /** Nadie puede dar un nivel superior al suyo: el Superadmin da cualquiera; el Administrador solo nivel operador. */
 export declare const canGrantRole: (granter: Role, target: Role) => boolean;
+/**
+ * A1: roles que se pueden otorgar por invitación o alta directa. SUPERADMIN queda excluido:
+ * solo se otorga promoviendo a un miembro activo del personal (PATCH /users/:id), con un único
+ * punto de control en el servidor. Una invitación es un enlace al portador y no debe dar SUPERADMIN.
+ */
+export declare const canInviteRole: (granter: Role, target: Role) => boolean;
 /** Niveles listos para elegir al invitar. */
 export declare const ACCESS_LEVELS: readonly [{
     readonly id: "OPERATOR_POINT";
@@ -751,7 +757,7 @@ export declare const createInvitationSchema: z.ZodEffects<z.ZodObject<{
     role: z.ZodEnum<["SUPERADMIN", "ADMIN", "OPERATOR"]>;
     extraPermissions: z.ZodDefault<z.ZodArray<z.ZodEnum<["participant:create", "checkin:read", "report:read"]>, "many">>;
     checkpointIds: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
-}, "strip", z.ZodTypeAny, {
+}, "strict", z.ZodTypeAny, {
     email: string;
     role: "SUPERADMIN" | "ADMIN" | "OPERATOR";
     extraPermissions: ("participant:create" | "checkin:read" | "report:read")[];
@@ -776,7 +782,7 @@ export declare const acceptInvitationSchema: z.ZodObject<{
     token: z.ZodString;
     name: z.ZodString;
     password: z.ZodString;
-}, "strip", z.ZodTypeAny, {
+}, "strict", z.ZodTypeAny, {
     password: string;
     name: string;
     token: string;

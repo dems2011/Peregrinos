@@ -5,6 +5,7 @@ import { prisma } from "../lib/prisma";
 import { audit } from "../lib/audit";
 import { hashPassword } from "../lib/password";
 import { AppError, notFound } from "../lib/errors";
+import { assertCanPromoteToSuperadmin, assertNotSuperadminGrant } from "../lib/roles";
 
 const idParam = z.object({ id: z.string().uuid() });
 /** Solo cuentas del personal: las cuentas PILGRIM nunca se administran ni se asignan desde aquí. */
@@ -28,6 +29,7 @@ export default async function userRoutes(app: FastifyInstance) {
 
   app.post("/", { preHandler: app.requirePermission("user:manage") }, async (req, reply) => {
     const body = createUserSchema.parse(req.body);
+    assertNotSuperadminGrant(body.role, "USER_CREATE");
     const user = await prisma.user.create({
       data: { organizationId: req.auth.organizationId, name: body.name, email: body.email, role: body.role, extraPermissions: body.extraPermissions, passwordHash: await hashPassword(body.password) },
       select: publicUser,
@@ -42,9 +44,11 @@ export default async function userRoutes(app: FastifyInstance) {
     const target = await prisma.user.findFirst({ where: { id, ...staffOf(req.auth.organizationId) } });
     if (!target) throw notFound("Usuario no encontrado.");
 
+    const gainsSuperadmin = body.role === "SUPERADMIN" && target.role !== "SUPERADMIN";
+    if (gainsSuperadmin) assertCanPromoteToSuperadmin(req.auth, target);
     const losesSuperadmin =
       target.role === "SUPERADMIN" && target.isActive && (body.isActive === false || (body.role && body.role !== "SUPERADMIN"));
-    if (losesSuperadmin) await ensureAnotherSuperadmin(target.organizationId, target.id);
+    if (losesSuperadmin) await ensureAnotherSuperadmin(req.auth.organizationId, target.id);
 
     const { password, ...rest } = body;
     const user = await prisma.user.update({
@@ -60,6 +64,12 @@ export default async function userRoutes(app: FastifyInstance) {
       action: "USER_UPDATED", entityType: "User", entityId: id,
       metadata: { fields: Object.keys(rest), passwordChanged: Boolean(password) },
     });
+    if (body.role && body.role !== target.role) {
+      await audit(req, {
+        action: gainsSuperadmin ? "SUPERADMIN_GRANTED" : target.role === "SUPERADMIN" ? "SUPERADMIN_REVOKED" : "USER_ROLE_CHANGED",
+        entityType: "User", entityId: id, metadata: { from: target.role, to: body.role },
+      });
+    }
     return user;
   });
 
@@ -69,7 +79,7 @@ export default async function userRoutes(app: FastifyInstance) {
     const target = await prisma.user.findFirst({ where: { id, ...staffOf(req.auth.organizationId) } });
     if (!target) throw notFound("Usuario no encontrado.");
     if (target.id === req.auth.id) throw new AppError(409, "SELF_DELETE", "No puedes desactivar tu propia cuenta.");
-    if (target.role === "SUPERADMIN" && target.isActive) await ensureAnotherSuperadmin(target.organizationId, target.id);
+    if (target.role === "SUPERADMIN" && target.isActive) await ensureAnotherSuperadmin(req.auth.organizationId, target.id);
     await prisma.user.update({ where: { id }, data: { isActive: false } });
     await prisma.refreshToken.updateMany({ where: { userId: id, revokedAt: null }, data: { revokedAt: new Date() } });
     await audit(req, { action: "USER_DEACTIVATED", entityType: "User", entityId: id, metadata: { email: target.email } });

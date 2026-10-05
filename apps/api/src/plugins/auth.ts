@@ -111,10 +111,13 @@ export default fp(async (app) => {
         where: { id: sub },
       });
 
+      // A2: solo el personal tiene organización y rol (la BD lo impone con CHECK).
       if (
         !user ||
         !user.isActive ||
-        user.accountType !== "STAFF"
+        user.accountType !== "STAFF" ||
+        !user.organizationId ||
+        !user.role
       ) {
         throw unauthorized();
       }
@@ -242,6 +245,11 @@ export default fp(async (app) => {
         reply: FastifyReply
       ) => {
         await app.authenticate(req, reply);
+
+        // Defensa en profundidad: los permisos son solo del personal; accountType no autoriza por sí mismo.
+        if (req.auth.accountType !== "STAFF") {
+          throw forbidden();
+        }
 
         if (
           !hasPermission(

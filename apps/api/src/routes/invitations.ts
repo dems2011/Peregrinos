@@ -1,7 +1,8 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { Prisma, type Invitation } from "@prisma/client";
-import { acceptInvitationSchema, canGrantRole, createInvitationSchema } from "@peregrinos/shared";
+import { acceptInvitationSchema, canGrantRole, canInviteRole, createInvitationSchema } from "@peregrinos/shared";
+import { assertNotSuperadminGrant } from "../lib/roles";
 import { cfg } from "../config";
 import { prisma } from "../lib/prisma";
 import { audit } from "../lib/audit";
@@ -47,7 +48,8 @@ export default async function invitationRoutes(app: FastifyInstance) {
 
   app.post("/", { preHandler: manage }, async (req, reply) => {
     const body = createInvitationSchema.parse(req.body);
-    if (!canGrantRole(req.auth.role, body.role)) throw forbidden("No puedes invitar a un nivel superior al tuyo.");
+    assertNotSuperadminGrant(body.role, "INVITATION");
+    if (!canInviteRole(req.auth.role, body.role)) throw forbidden("No puedes invitar a un nivel superior al tuyo.");
 
     if (await prisma.user.findUnique({ where: { email: body.email } })) {
       throw new AppError(409, "USER_EXISTS", "Ya existe un usuario con ese correo.");
@@ -82,6 +84,7 @@ export default async function invitationRoutes(app: FastifyInstance) {
     if (!inv) throw notFound("Invitación no encontrada.");
     if (inv.acceptedAt || inv.revokedAt) throw new AppError(409, "NOT_PENDING", "Esta invitación ya fue aceptada o revocada.");
     if (!canGrantRole(req.auth.role, inv.role)) throw forbidden();
+    assertNotSuperadminGrant(inv.role, "INVITATION");
     const { raw, hash } = newOpaqueToken();
     const renewed = await prisma.invitation.update({
       where: { id }, data: { tokenHash: hash, expiresAt: new Date(Date.now() + cfg.INVITE_TTL_DAYS * 86_400_000) },
@@ -129,6 +132,8 @@ export default async function invitationRoutes(app: FastifyInstance) {
   app.post("/accept", { config: strict }, async (req, reply) => {
     const body = acceptInvitationSchema.parse(req.body);
     const inv = await findByToken(body.token);
+    // Invitaciones a SUPERADMIN creadas antes de A1: no se pueden aceptar (solo revocar).
+    assertNotSuperadminGrant(inv.role, "INVITATION");
     const passwordHash = await hashPassword(body.password);
     try {
       const user = await prisma.$transaction(async (tx) => {

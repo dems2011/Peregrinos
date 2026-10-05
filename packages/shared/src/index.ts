@@ -71,7 +71,11 @@ export function can(role: Role, permission: Permission): boolean {
 const email = z.string().trim().toLowerCase().email().max(200);
 const password = z.string().min(10, "La contraseña debe tener al menos 10 caracteres").max(128);
 
-export const loginSchema = z.object({ email, password: z.string().min(1).max(128) });
+/*
+ * A1 (deny-by-default): los cuerpos que crean cuentas o asignan roles son .strict().
+ * Cualquier campo no declarado (role, accountType, organizationId, isSuperadmin…) produce 400.
+ */
+export const loginSchema = z.object({ email, password: z.string().min(1).max(128) }).strict();
 export const registerPilgrimSchema = z.object({
   firstName: z.string().trim().min(2, "El nombre es obligatorio").max(80),
   lastName: z.string().trim().min(2, "El apellido es obligatorio").max(80),
@@ -82,14 +86,14 @@ export const registerPilgrimSchema = z.object({
   acceptTerms: z.literal(true, {
     errorMap: () => ({ message: "Debes aceptar los términos y condiciones" }),
   }),
-});
+}).strict();
 
 export const bootstrapSchema = z.object({
   organizationName: z.string().trim().min(2).max(120),
   name: z.string().trim().min(2).max(120),
   email,
   password,
-});
+}).strict();
 
 const lat = z.coerce.number().min(-90).max(90);
 const lng = z.coerce.number().min(-180).max(180);
@@ -198,14 +202,14 @@ export const createUserSchema = z.object({
   password,
   role: z.enum(ROLES),
   extraPermissions: z.array(z.enum(["participant:create", "checkin:read", "report:read"])).default([]),
-});
+}).strict();
 export const updateUserSchema = z.object({
   name: z.string().trim().min(2).max(120).optional(),
   role: z.enum(ROLES).optional(),
   isActive: z.boolean().optional(),
   password: password.optional(),
   extraPermissions: z.array(z.enum(["participant:create", "checkin:read", "report:read"])).optional(),
-});
+}).strict();
 
 export const assignmentsSchema = z.object({
   checkpointIds: z.array(z.string().uuid()).max(50),
@@ -347,6 +351,13 @@ export const hasPermission = (role: Role, extras: readonly string[], p: Permissi
 export const canGrantRole = (granter: Role, target: Role) =>
   granter === "SUPERADMIN" || (granter === "ADMIN" && target === "OPERATOR");
 
+/**
+ * A1: roles que se pueden otorgar por invitación o alta directa. SUPERADMIN queda excluido:
+ * solo se otorga promoviendo a un miembro activo del personal (PATCH /users/:id), con un único
+ * punto de control en el servidor. Una invitación es un enlace al portador y no debe dar SUPERADMIN.
+ */
+export const canInviteRole = (granter: Role, target: Role) => target !== "SUPERADMIN" && canGrantRole(granter, target);
+
 /** Niveles listos para elegir al invitar. */
 export const ACCESS_LEVELS = [
   { id: "OPERATOR_POINT", label: "Operador de punto", description: "Solo chequea llegadas en sus puntos", role: "OPERATOR" as Role, extraPermissions: [] as GrantablePermission[] },
@@ -360,7 +371,7 @@ export const createInvitationSchema = z.object({
   role: z.enum(ROLES),
   extraPermissions: z.array(z.enum(GRANTABLE_PERMISSIONS)).default([]),
   checkpointIds: z.array(z.string().uuid()).max(50).default([]),
-}).refine((v) => v.role === "OPERATOR" || v.checkpointIds.length === 0, {
+}).strict().refine((v) => v.role === "OPERATOR" || v.checkpointIds.length === 0, {
   message: "Solo los operadores tienen puntos asignados", path: ["checkpointIds"],
 });
 
@@ -368,7 +379,7 @@ export const acceptInvitationSchema = z.object({
   token: z.string().min(20).max(200),
   name: z.string().trim().min(2).max(120),
   password,
-});
+}).strict();
 
 export const pilgrimLoginSchema = z.object({
   token: z.string().trim().min(20).max(200).optional(),

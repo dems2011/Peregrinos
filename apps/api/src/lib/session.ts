@@ -26,8 +26,11 @@ export async function issueSession(
   app: FastifyInstance,
   req: FastifyRequest,
   reply: FastifyReply,
-  user: { id: string; role: string }
+  user: { id: string; role: string | null; accountType: string }
 ) {
+  if (user.accountType !== "STAFF" || !user.role) {
+    throw new Error("La sesión de personal requiere una cuenta STAFF.");
+  }
   const accessToken = app.jwt.sign({ sub: user.id, role: user.role });
   const { raw, hash } = newOpaqueToken();
 
@@ -129,6 +132,9 @@ export async function buildMe(userId: string): Promise<MeResponse> {
   const user = await prisma.user.findUniqueOrThrow({
     where: { id: userId },
   });
+  if (user.accountType !== "STAFF" || !user.role || !user.organizationId) {
+    throw new Error("buildMe es solo para cuentas del personal.");
+  }
 
   const rows = await prisma.operatorAssignment.findMany({
     where: { userId, checkpoint: { status: "ACTIVE" } },

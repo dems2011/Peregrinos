@@ -68,33 +68,19 @@ export default async function authRoutes(app: FastifyInstance) {
         );
       }
 
-      const organization = await prisma.organization.findFirst({
-        orderBy: {
-          createdAt: "asc",
-        },
-      });
-
-      if (!organization) {
-        throw new AppError(
-          503,
-          "SYSTEM_NOT_INITIALIZED",
-          "El sistema todavía no está inicializado."
-        );
-      }
-
       const passwordHash = await hashPassword(body.password);
       const verification = newOpaqueToken();
 
       const user = await prisma.$transaction(async (tx) => {
         const created = await tx.user.create({
           data: {
-            organizationId: organization.id,
+            // A2: el peregrino es una identidad sin organización ni rol de personal.
             name: `${body.firstName} ${body.lastName}`,
             email,
             documentNumber,
             phone: body.phone.trim(),
             passwordHash,
-            role: "OPERATOR",
+            // Fijado por el servidor (deny-by-default): el body no puede influir en el tipo de cuenta.
             accountType: "PILGRIM",
             termsAcceptedAt: new Date(),
           },
@@ -212,7 +198,10 @@ export default async function authRoutes(app: FastifyInstance) {
       const passwordHash = await hashPassword(body.password);
 
       const user = await prisma.$transaction(async (tx) => {
-        if ((await tx.user.count()) > 0) {
+        // Serializa inicializaciones concurrentes: solo una puede crear el primer SUPERADMIN.
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(472910001)`;
+        // A2: los peregrinos pueden existir antes de la inicialización; lo que define "inicializado" es el personal.
+        if ((await tx.user.count({ where: { accountType: "STAFF" } })) > 0) {
           throw new AppError(
             409,
             "ALREADY_INITIALIZED",
