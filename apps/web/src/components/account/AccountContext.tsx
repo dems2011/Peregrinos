@@ -13,7 +13,7 @@ export interface AccountMe {
 interface Ctx { me: AccountMe; reload: () => Promise<void>; logout: () => Promise<void> }
 const AccountCtx = createContext<Ctx | null>(null);
 
-/** Sesión de la cuenta del peregrino. Sin sesión → /cuenta/ingresar (nunca el login del personal). */
+/** Sesión de la cuenta del peregrino. Sin sesión → /login (ingreso único: personal y peregrinos). */
 export function AccountProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const [me, setMe] = useState<AccountMe | null>(null);
@@ -22,14 +22,14 @@ export function AccountProvider({ children }: { children: React.ReactNode }) {
     try { setError(null); setMe(await api<AccountMe>("/auth/account/me")); }
     catch (e) {
       // Sin sesión (o sesión invalidada tras cambiar la contraseña) → ingreso de la cuenta. Otro error: reintentar.
-      if (e instanceof ApiError && e.status === 401) router.replace("/cuenta/ingresar");
+      if (e instanceof ApiError && e.status === 401) router.replace("/login");
       else setError(errorText(e, "No se pudo cargar tu cuenta. Intenta nuevamente."));
     }
   }, [router]);
   useEffect(() => { void reload(); }, [reload]);
   const logout = useCallback(async () => {
     await post("/auth/account/logout").catch(() => undefined);
-    router.replace("/cuenta/ingresar");
+    router.replace("/login");
   }, [router]);
   if (!me && error) {
     return (

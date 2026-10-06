@@ -40,7 +40,7 @@ export default function Registro() {
       <div className="field"><label htmlFor="pw">Contraseña <span className="req">*</span></label><input id="pw" type="password" autoComplete="new-password" value={f.password} onChange={set("password")} /><span className="hint">Al menos 10 caracteres.</span></div>
       <label className="check"><input type="checkbox" checked={terms} onChange={(e) => setTerms(e.target.checked)} /> Acepto los términos y condiciones</label>
       <button className="btn btn-primary" disabled={busy || !terms}>{busy ? "Creando…" : "Crear cuenta"}</button>
-      <p className="muted small" style={{ marginTop: 12 }}>¿Ya tienes cuenta? <Link href="/cuenta/ingresar">Ingresar</Link></p>
+      <p className="muted small" style={{ marginTop: 12 }}>¿Ya tienes cuenta? <Link href="/login">Ingresar</Link></p>
     </form>
   );
 }

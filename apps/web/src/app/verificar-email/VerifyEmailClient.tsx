@@ -49,8 +49,8 @@ export default function VerifyEmailClient() {
         setMessage(
           data?.message || "Correo verificado correctamente."
         );
-        // A5.0: después de verificar, al ingreso de la cuenta del peregrino.
-        setTimeout(() => router.replace("/cuenta/ingresar"), 2500);
+        // A5.0: después de verificar, al ingreso único.
+        setTimeout(() => router.replace("/login"), 2500);
       } catch (error) {
         setStatus("error");
         setMessage(
@@ -141,7 +141,7 @@ export default function VerifyEmailClient() {
 
         {status === "success" && (
           <a
-            href="/cuenta/ingresar"
+            href="/login"
             style={{
               display: "inline-block",
               padding: "13px 24px",
@@ -152,7 +152,7 @@ export default function VerifyEmailClient() {
               fontWeight: 700,
             }}
           >
-            Ingresar a mi cuenta
+            Ingresar
           </a>
         )}
 

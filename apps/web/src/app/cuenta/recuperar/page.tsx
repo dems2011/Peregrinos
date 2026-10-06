@@ -23,7 +23,7 @@ export default function Recuperar() {
       {err && <div className="alert err" role="alert">{err}</div>}
       <div className="field"><label htmlFor="em">Correo</label><input id="em" type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} /></div>
       <button className="btn btn-primary" disabled={busy || !email}>{busy ? "Enviando…" : "Enviarme el enlace"}</button>
-      <p className="muted small" style={{ marginTop: 12 }}><Link href="/cuenta/ingresar">Volver a ingresar</Link></p>
+      <p className="muted small" style={{ marginTop: 12 }}><Link href="/login">Volver a ingresar</Link></p>
     </form>
   );
 }

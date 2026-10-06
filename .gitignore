@@ -9,5 +9,7 @@ apps/api/uploads/
 # Android: los build/ y .gradle/ ya los ignora apps/web/android/.gitignore
 apps/web/android/.idea/
 apps/api/geo/.downloads/
+# webDir de respaldo de Capacitor (lo crea scripts/android-branding.ps1)
+apps/web/out/
 # Reportes generados por npm run geo:dry-run
 apps/api/geo/reports/

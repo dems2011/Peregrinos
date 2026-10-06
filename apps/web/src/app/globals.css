@@ -149,10 +149,25 @@ a { color: inherit; text-decoration: none; }
 .spinner { width: 22px; height: 22px; border: 3px solid #cfe0f7; border-top-color: var(--blue); border-radius: 50%; animation: spin .8s linear infinite; margin: 24px auto; } @keyframes spin { to { transform: rotate(360deg); } }
 
 /* ---------- Acceso ---------- */
-.splash { min-height: 100dvh; display: flex; flex-direction: column; justify-content: center; padding: 32px 24px; color: #fff; background: linear-gradient(180deg, #0B3158 0%, #124a80 55%, #c9732b 130%); }
-.splash .brand { text-align: center; margin-bottom: 28px; } .splash .brand h1 { font-size: 34px; margin-top: 12px; } .splash .brand p { margin: 2px 0 0; font-size: 20px; font-weight: 600; opacity: .95; }
-.splash form, .splash .box { width: 100%; max-width: 420px; margin: 0 auto; } .splash .field label { color: var(--text); } .splash .tagline { text-align: center; margin-top: 22px; font-size: 14px; opacity: .85; }
-.splash .error { background: #FDECEC; color: var(--err); border-radius: 10px; padding: 10px 12px; font-size: 14px; margin-bottom: 14px; }
+/* Pantalla inicial: azul sólido (mismo azul que el icono, la PWA y el splash de Android) y texto claro con contraste AA. */
+.splash { min-height: 100dvh; display: flex; flex-direction: column; justify-content: center; padding: max(env(safe-area-inset-top), 32px) 24px 32px; color: #fff; background: var(--navy); }
+.splash .brand { text-align: center; margin-bottom: 32px; }
+.splash .brand h1 { font-size: 36px; margin-top: 14px; letter-spacing: .2px; }
+.splash .brand p { margin: 6px 0 0; font-size: 18px; font-weight: 500; color: #D6E4F5; }
+.splash form, .splash .box { width: 100%; max-width: 420px; margin: 0 auto; }
+.splash .field label { color: #fff; }
+.splash .field input { border-color: transparent; color: var(--text); }
+.splash .field input::placeholder { color: #5B6B7C; }
+.splash .field input:focus-visible { outline: 3px solid #8FBFFF; outline-offset: 2px; }
+.splash :focus-visible { outline-color: #8FBFFF; }
+.splash .btn-primary { background: #fff; border-color: #fff; color: var(--navy); }
+.splash .btn-primary:disabled { opacity: .7; }
+.splash .btn:not(.btn-primary) { background: transparent; border-color: rgba(255, 255, 255, .55); color: #fff; }
+.splash .muted-on-blue { color: #D6E4F5; font-size: 15px; }
+.splash .link-on-blue { color: #fff; font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
+.splash .links { margin-top: 22px; display: grid; gap: 14px; text-align: center; }
+.splash .error { background: #FDECEC; color: #B42318; border-radius: 10px; padding: 10px 12px; font-size: 14px; margin-bottom: 14px; }
+.splash .error a { color: #B42318; font-weight: 700; text-decoration: underline; }
 
 /* A5.0 — Área de cuenta del peregrino (distinta del panel del personal: columna única, mobile-first). */
 .acct { min-height: 100vh; background: linear-gradient(180deg, #0B3158 0, #0B3158 180px, var(--bg, #F4F7FB) 180px); }

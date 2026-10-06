@@ -2,8 +2,9 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Peregrinos · Control de Recorrido",
-  description: "Control de recorrido y asistencia para peregrinaciones.",
+  title: "Peregrinos",
+  description: "La Iglesia más cerca de ti.",
+  applicationName: "Peregrinos",
   manifest: "/manifest.webmanifest",
   appleWebApp: { capable: true, title: "Peregrinos", statusBarStyle: "black-translucent" },
 };

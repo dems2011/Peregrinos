@@ -32,7 +32,7 @@ export default function Restablecer() {
     <section className="card stack-sm" role="status">
       <h2>Contraseña actualizada</h2>
       <p>Por seguridad cerramos todas tus sesiones. Ingresa con tu contraseña nueva.</p>
-      <Link className="btn btn-primary" href="/cuenta/ingresar">Ingresar</Link>
+      <Link className="btn btn-primary" href="/login">Ingresar</Link>
     </section>
   );
   if (!token) return (
