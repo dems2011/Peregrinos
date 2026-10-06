@@ -1,7 +1,9 @@
 import type { FastifyRequest } from "fastify";
 import { z } from "zod";
 import { prisma } from "./prisma";
+import type { EventCapability } from "@peregrinos/shared";
 import { forbidden, notFound } from "./errors";
+import { assertEventCapability } from "./eventLifecycle";
 
 export const eventParam = z.object({ eventId: z.string().uuid() });
 
@@ -19,6 +21,13 @@ export async function loadEvent(req: FastifyRequest, eventId: string) {
   return event;
 }
 
+/** A4: igual que loadEvent, y además exige que el evento tenga activa la capacidad del módulo. */
+export async function loadEventWith(req: FastifyRequest, eventId: string, capability: EventCapability) {
+  const event = await loadEvent(req, eventId);
+  assertEventCapability(event, capability);
+  return event;
+}
+
 /** Un operador solo puede registrar llegadas en los puntos que tiene asignados. */
 export async function assertCanUseCheckpoint(req: FastifyRequest, checkpointId: string) {
   if (req.auth.role !== "OPERATOR") return;
@@ -26,9 +35,12 @@ export async function assertCanUseCheckpoint(req: FastifyRequest, checkpointId: 
   if (!ok) throw forbidden("Este punto de control no está asignado a tu usuario.");
 }
 
-/** Bloqueo por evento para asignar números/orden sin carreras entre peticiones simultáneas. */
-export async function lockEvent(tx: { $queryRaw: typeof prisma.$queryRaw }, eventId: string) {
-  await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${eventId}))`;
+/**
+ * Bloqueo por evento para asignar números/orden sin carreras entre peticiones simultáneas.
+ * $executeRaw y no $queryRaw: pg_advisory_xact_lock devuelve `void`, que Prisma no puede deserializar.
+ */
+export async function lockEvent(tx: { $executeRaw: typeof prisma.$executeRaw }, eventId: string) {
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${eventId}))`;
 }
 
 export function assertEventOpen(status: string) {

@@ -4,7 +4,7 @@ import { createContactSchema, updateContactSchema } from "@peregrinos/shared";
 import { prisma } from "../lib/prisma";
 import { audit } from "../lib/audit";
 import { AppError, notFound } from "../lib/errors";
-import { eventParam, loadEvent } from "../lib/access";
+import { eventParam, loadEvent, loadEventWith } from "../lib/access";
 
 const idParam = eventParam.extend({ id: z.string().uuid() });
 
@@ -31,7 +31,7 @@ export default async function contactRoutes(app: FastifyInstance) {
 
   app.post("/", { preHandler: manage }, async (req, reply) => {
     const { eventId } = eventParam.parse(req.params);
-    await loadEvent(req, eventId);
+    await loadEventWith(req, eventId, "CONTACTS");
     const body = createContactSchema.parse(req.body);
     await assertCheckpoint(eventId, body.checkpointId);
     const c = await prisma.eventContact.create({ data: { ...body, eventId } });
@@ -41,7 +41,7 @@ export default async function contactRoutes(app: FastifyInstance) {
 
   app.patch("/:id", { preHandler: manage }, async (req) => {
     const { eventId, id } = idParam.parse(req.params);
-    await loadEvent(req, eventId);
+    await loadEventWith(req, eventId, "CONTACTS");
     const body = updateContactSchema.parse(req.body);
     if (!(await prisma.eventContact.findFirst({ where: { id, eventId } }))) throw notFound("Contacto no encontrado.");
     await assertCheckpoint(eventId, body.checkpointId);
@@ -52,7 +52,7 @@ export default async function contactRoutes(app: FastifyInstance) {
 
   app.delete("/:id", { preHandler: manage }, async (req, reply) => {
     const { eventId, id } = idParam.parse(req.params);
-    await loadEvent(req, eventId);
+    await loadEventWith(req, eventId, "CONTACTS");
     const c = await prisma.eventContact.findFirst({ where: { id, eventId } });
     if (!c) throw notFound("Contacto no encontrado.");
     await prisma.eventContact.delete({ where: { id } });

@@ -1,4 +1,4 @@
-import type { EventStatus, EventType, EventVisibility } from "@peregrinos/shared";
+import type { EventCapability, EventStatus, EventType, EventVisibility, RegistrationState } from "@peregrinos/shared";
 
 export interface EventRoute {
   originName: string | null; originAddress: string | null; originLat: number | null; originLng: number | null;
@@ -14,10 +14,12 @@ export interface EventItem {
   registrationFee: string | null; paymentInstructions: string | null;
   certificateEnabled: boolean; certificatePhrase: string | null; settings: Record<string, unknown>;
   route: EventRoute | null;
+  /** A4: módulos activos del evento y estado derivado de la inscripción (no se guarda). */
+  capabilities: EventCapability[]; registrationState: RegistrationState; activeParticipants: number;
   _count: { participants: number; checkpoints: number; checkins: number };
 }
 export interface Person {
-  id: string; number: number; firstName: string; lastName: string; documentNumber: string; status: "ACTIVE" | "INACTIVE" | "CANCELLED";
+  id: string; personId?: string; number: number; firstName: string; lastName: string; documentNumber: string; status: "ACTIVE" | "CANCELLED";
   phone?: string; documentType?: string; notes?: string | null; createdAt?: string;
 }
 export interface Checkpoint {

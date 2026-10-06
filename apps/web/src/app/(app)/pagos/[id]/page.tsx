@@ -1,7 +1,7 @@
 "use client";
 import { useParams, useRouter } from "next/navigation";
 import { useState } from "react";
-import { BadgeCheck, FileText, IdCard, TriangleAlert, X } from "lucide-react";
+import { BadgeCheck, FileText, IdCard, RotateCcw, TriangleAlert, X } from "lucide-react";
 import { api, ApiError, download, post } from "@/lib/api";
 import { useLoad } from "@/lib/hooks";
 import { fmtDateTime, fmtDoc, money, pad } from "@/lib/format";
@@ -22,6 +22,7 @@ export default function RevisarPago() {
   const [pi, setPi] = useState(0);
   const [num, setNum] = useState("");
   const [reject, setReject] = useState(false);
+  const [reopen, setReopen] = useState(false);
   const [reason, setReason] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -38,6 +39,11 @@ export default function RevisarPago() {
     try { await post(`/events/${eid}/registrations/${r.id}/approve`, { withoutProof, ...(num ? { number: Number(num) } : {}) }); d.reload(); }
     catch (e) { setErr(e instanceof ApiError ? e.message : "No se pudo confirmar."); } finally { setBusy(false); }
   };
+  const doReopen = async () => {
+    setBusy(true); setErr(null);
+    try { await post(`/events/${eid}/registrations/${r.id}/reopen`, { reason }); setReopen(false); setReason(""); d.reload(); }
+    catch (e) { setErr(e instanceof ApiError ? e.message : "No se pudo reabrir."); } finally { setBusy(false); }
+  };
   const doReject = async () => {
     setBusy(true); setErr(null);
     try { await post(`/events/${eid}/registrations/${r.id}/reject`, { reason }); setReject(false); router.replace("/pagos"); }
@@ -49,7 +55,7 @@ export default function RevisarPago() {
       <ErrorBox msg={err} />
       <section className="card stack-sm">
         <div className="row"><h2>{r.firstName} {r.lastName}</h2><StatusPill s={r.status} /></div>
-        <dl className="kv"><dt>DNI</dt><dd>{fmtDoc(r.documentNumber)}</dd><dt>Teléfono</dt><dd><a href={`tel:${r.phone}`}>{r.phone}</a></dd>{event?.registrationFee && <><dt>Monto esperado</dt><dd>{money(event.registrationFee)}</dd></>}</dl>
+        <dl className="kv"><dt>Documento</dt><dd>{fmtDoc(r.documentNumber)}</dd><dt>Teléfono</dt><dd><a href={`tel:${r.phone}`}>{r.phone}</a></dd>{event?.registrationFee && <><dt>Monto esperado</dt><dd>{money(event.registrationFee)}</dd></>}</dl>
         {r.status === "REJECTED" && r.rejectionReason && <div className="alert err">Rechazada: {r.rejectionReason}</div>}
       </section>
 
@@ -72,7 +78,13 @@ export default function RevisarPago() {
         </section>
       ) : <div className="alert info">Todavía no envió comprobante.</div>}
 
-      {reviewable && (
+      {/* A4: una rechazada no se aprueba directamente; el personal la reabre (vuelve a revisión) con un motivo. */}
+      {r.status === "REJECTED" && (
+        <section className="card stack">
+          <button className="btn" disabled={busy} onClick={() => { setReason(""); setReopen(true); }}><RotateCcw size={20} /> Reabrir revisión</button>
+        </section>
+      )}
+      {reviewable && r.status !== "REJECTED" && (
         <section className="card stack">
           <div className="field" style={{ marginBottom: 0 }}><label htmlFor="asg">Número a asignar (opcional)</label><input id="asg" inputMode="numeric" value={num} onChange={(e) => setNum(e.target.value.replace(/\D/g, "").slice(0, 6))} placeholder="Si lo dejas vacío se asigna el siguiente" /></div>
           {r.status === "IN_REVIEW"
@@ -97,6 +109,13 @@ export default function RevisarPago() {
           <p className="muted">La persona verá el motivo y podrá enviar otro comprobante.</p>
           <div className="field"><label htmlFor="mot">Motivo <span className="req">*</span></label><textarea id="mot" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Ej: el monto no coincide / la imagen no se ve" /></div>
           <button className="btn btn-danger" disabled={busy || reason.trim().length < 3} onClick={doReject}>Rechazar</button>
+        </Modal>
+      )}
+      {reopen && (
+        <Modal title="Reabrir revisión" onClose={() => setReopen(false)}>
+          <p className="muted">La inscripción vuelve a «En revisión». Después podrás confirmarla (por ejemplo, si pagó en efectivo). Queda registrado.</p>
+          <div className="field"><label htmlFor="rmot">Motivo <span className="req">*</span></label><textarea id="rmot" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Ej: pagó en efectivo en la secretaría" /></div>
+          <button className="btn btn-primary" disabled={busy || reason.trim().length < 3} onClick={doReopen}>Reabrir revisión</button>
         </Modal>
       )}
     </Page>

@@ -32,9 +32,15 @@ export async function sendMail(
   html: string
 ): Promise<boolean> {
   if (!transport) {
-    console.log(
-      `\n[correo no configurado] Para: ${to}\n${subject}\n${text}\n`
-    );
+    // A5.0: sin SMTP, el contenido (con enlaces y tokens) solo se muestra fuera de producción.
+    // En producción nunca se escribe el cuerpo en los logs.
+    if (cfg.NODE_ENV === "production") {
+      console.warn("[correo no configurado] Falta SMTP_URL: no se envió un correo.");
+    } else {
+      console.log(
+        `\n[correo no configurado] Para: ${to}\n${subject}\n${text}\n`
+      );
+    }
     return false;
   }
 
@@ -151,6 +157,61 @@ export function sendOrganizationRequestReceived(p: { to: string; name: string; p
   <p>Recibimos la solicitud para sumar <b>${esc(p.parishName)}</b> a Peregrinos. El equipo de la plataforma la revisará.</p>
   <p><a href="${esc(p.url)}" style="display:inline-block;background:#1677FF;color:#fff;padding:14px 22px;border-radius:10px;text-decoration:none;font-weight:700">Ver mi solicitud</a></p>
   <p style="color:#6D7D8E;font-size:13px">Este enlace es privado: no lo compartas.</p>
+</div>`;
+  return sendMail(p.to, subject, text, html);
+}
+
+/** A5.0: recuperación de contraseña de la cuenta del peregrino. El token viaja en el fragmento (#), nunca al servidor web. */
+export function sendPasswordReset(p: { to: string; name: string; url: string; minutes: number }) {
+  const subject = "Restablecer tu contraseña de Peregrinos";
+  const text =
+    `Hola ${p.name},\n\n` +
+    `Recibimos un pedido para restablecer la contraseña de tu cuenta de Peregrinos.\n` +
+    `Si fuiste tú, usa este enlace (vence en ${p.minutes} minutos y sirve una sola vez):\n${p.url}\n\n` +
+    `Si no lo pediste, ignora este mensaje: tu contraseña no cambia.`;
+  const html = `
+<div style="font-family:Inter,Arial,sans-serif;max-width:520px;margin:auto;color:#17324D">
+  <h2 style="color:#0B3158">Restablecer contraseña</h2>
+  <p>Hola <b>${esc(p.name)}</b>.</p>
+  <p>Recibimos un pedido para restablecer la contraseña de tu cuenta de Peregrinos.</p>
+  <p><a href="${esc(p.url)}" style="display:inline-block;background:#1677FF;color:#fff;padding:14px 22px;border-radius:10px;text-decoration:none;font-weight:700">Elegir una contraseña nueva</a></p>
+  <p style="color:#6D7D8E;font-size:13px">El enlace vence en ${p.minutes} minutos y sirve una sola vez. Si no lo pediste, ignora este mensaje.</p>
+</div>`;
+  return sendMail(p.to, subject, text, html);
+}
+
+/** A5.0: alguien intentó registrarse con un correo que ya tiene cuenta. Se avisa al dueño de ese buzón. */
+export function sendAccountExistsNotice(p: { to: string; name: string; loginUrl: string; recoverUrl: string }) {
+  const subject = "Ya tienes una cuenta en Peregrinos";
+  const text =
+    `Hola ${p.name},\n\n` +
+    `Recibimos un pedido para crear una cuenta con este correo, pero ya tienes una.\n` +
+    `Ingresa aquí: ${p.loginUrl}\nSi no recuerdas tu contraseña: ${p.recoverUrl}\n\n` +
+    `Si no fuiste tú, puedes ignorar este mensaje: tu cuenta no cambió.`;
+  const html = `
+<div style="font-family:Inter,Arial,sans-serif;max-width:520px;margin:auto;color:#17324D">
+  <h2 style="color:#0B3158">Ya tienes una cuenta</h2>
+  <p>Hola <b>${esc(p.name)}</b>. Recibimos un pedido para crear una cuenta con este correo, pero ya tienes una.</p>
+  <p><a href="${esc(p.loginUrl)}">Ingresar</a> · <a href="${esc(p.recoverUrl)}">Recuperar mi contraseña</a></p>
+  <p style="color:#6D7D8E;font-size:13px">Si no fuiste tú, ignora este mensaje: tu cuenta no cambió.</p>
+</div>`;
+  return sendMail(p.to, subject, text, html);
+}
+
+/** A5.0: el registro no se pudo completar con esos datos (sin decir cuál dato ni si existe otra cuenta). */
+export function sendRegistrationNotCompleted(p: { to: string; name: string; loginUrl: string; recoverUrl: string }) {
+  const subject = "No pudimos completar tu registro en Peregrinos";
+  const text =
+    `Hola ${p.name},\n\n` +
+    `No pudimos completar el registro con los datos que ingresaste.\n` +
+    `Si ya tienes una cuenta, ingresa (${p.loginUrl}) o recupera tu contraseña (${p.recoverUrl}).\n` +
+    `Si crees que es un error, consulta con la organización.`;
+  const html = `
+<div style="font-family:Inter,Arial,sans-serif;max-width:520px;margin:auto;color:#17324D">
+  <h2 style="color:#0B3158">No pudimos completar tu registro</h2>
+  <p>Hola <b>${esc(p.name)}</b>. No pudimos completar el registro con los datos que ingresaste.</p>
+  <p>Si ya tienes una cuenta: <a href="${esc(p.loginUrl)}">ingresa</a> o <a href="${esc(p.recoverUrl)}">recupera tu contraseña</a>.</p>
+  <p style="color:#6D7D8E;font-size:13px">Si crees que es un error, consulta con la organización.</p>
 </div>`;
   return sendMail(p.to, subject, text, html);
 }

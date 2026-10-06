@@ -1,5 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
+import type { Prisma } from "@prisma/client";
 import { assignmentsSchema, createUserSchema, updateUserSchema } from "@peregrinos/shared";
 import { prisma } from "../lib/prisma";
 import { audit } from "../lib/audit";
@@ -11,11 +12,16 @@ import { assertOrgCan } from "../lib/orgLifecycle";
 const idParam = z.object({ id: z.string().uuid() });
 /** Solo cuentas del personal: las cuentas PILGRIM nunca se administran ni se asignan desde aquí. */
 const staffOf = (organizationId: string) => ({ organizationId, accountType: "STAFF" as const });
-const publicUser = { id: true, name: true, email: true, role: true, extraPermissions: true, isActive: true, createdAt: true } as const;
+const publicUser = { id: true, name: true, email: true, role: true, extraPermissions: true, isActive: true, createdAt: true, mfaEnabledAt: true } as const;
 
 export default async function userRoutes(app: FastifyInstance) {
-  async function ensureAnotherSuperadmin(orgId: string, excludeId: string) {
-    const others = await prisma.user.count({ where: { ...staffOf(orgId), role: "SUPERADMIN", isActive: true, id: { not: excludeId } } });
+  /**
+   * Debe quedar otro SUPERADMIN activo. Se comprueba dentro de la transacción y con un bloqueo por organización:
+   * dos superadministradores que se desactivan o degradan mutuamente a la vez no pueden dejarla sin ninguno.
+   */
+  async function ensureAnotherSuperadmin(tx: Prisma.TransactionClient, orgId: string, excludeId: string) {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`superadmins:${orgId}`}))`;
+    const others = await tx.user.count({ where: { ...staffOf(orgId), role: "SUPERADMIN", isActive: true, id: { not: excludeId } } });
     if (others === 0) throw new AppError(409, "LAST_SUPERADMIN", "Debe quedar al menos un superadministrador activo.");
   }
 
@@ -28,7 +34,10 @@ export default async function userRoutes(app: FastifyInstance) {
     return { items };
   });
 
-  app.post("/", { preHandler: app.requirePermission("user:manage") }, async (req, reply) => {
+  // A6 (§8.2): otorgar o quitar roles, cambiar claves y desactivar usuarios exigen un segundo factor reciente.
+  const sensitive = [app.requirePermission("user:manage"), app.requireRecentMfa];
+
+  app.post("/", { preHandler: sensitive }, async (req, reply) => {
     const body = createUserSchema.parse(req.body);
     assertNotSuperadminGrant(body.role, "USER_CREATE");
     assertOrgCan(req.auth.organizationStatus, "INVITE_STAFF");
@@ -40,7 +49,7 @@ export default async function userRoutes(app: FastifyInstance) {
     return reply.status(201).send(user);
   });
 
-  app.patch("/:id", { preHandler: app.requirePermission("user:manage") }, async (req) => {
+  app.patch("/:id", { preHandler: sensitive }, async (req) => {
     const { id } = idParam.parse(req.params);
     const body = updateUserSchema.parse(req.body);
     const target = await prisma.user.findFirst({ where: { id, ...staffOf(req.auth.organizationId) } });
@@ -50,18 +59,22 @@ export default async function userRoutes(app: FastifyInstance) {
     if (gainsSuperadmin) assertCanPromoteToSuperadmin(req.auth, target);
     const losesSuperadmin =
       target.role === "SUPERADMIN" && target.isActive && (body.isActive === false || (body.role && body.role !== "SUPERADMIN"));
-    if (losesSuperadmin) await ensureAnotherSuperadmin(req.auth.organizationId, target.id);
-
     const { password, ...rest } = body;
-    const user = await prisma.user.update({
-      where: { id },
-      data: { ...rest, ...(password ? { passwordHash: await hashPassword(password) } : {}) },
-      select: publicUser,
+    const passwordHash = password ? await hashPassword(password) : null;
+    // Si se desactiva o se cambia la contraseña, se cierran todas sus sesiones (refresh revocados y versión de sesión + 1).
+    const closeSessions = body.isActive === false || !!password;
+    const user = await prisma.$transaction(async (tx) => {
+      if (losesSuperadmin) await ensureAnotherSuperadmin(tx, req.auth.organizationId, target.id);
+      const u = await tx.user.update({
+        where: { id },
+        data: { ...rest, ...(passwordHash ? { passwordHash } : {}), ...(closeSessions ? { sessionVersion: { increment: 1 } } : {}) },
+        select: publicUser,
+      });
+      if (closeSessions) {
+        await tx.refreshToken.updateMany({ where: { userId: id, revokedAt: null }, data: { revokedAt: new Date() } });
+      }
+      return u;
     });
-    // Si se desactiva o se cambia la contraseña, se cierran todas sus sesiones.
-    if (body.isActive === false || password) {
-      await prisma.refreshToken.updateMany({ where: { userId: id, revokedAt: null }, data: { revokedAt: new Date() } });
-    }
     await audit(req, {
       action: "USER_UPDATED", entityType: "User", entityId: id,
       metadata: { fields: Object.keys(rest), passwordChanged: Boolean(password) },
@@ -75,15 +88,42 @@ export default async function userRoutes(app: FastifyInstance) {
     return user;
   });
 
+  /**
+   * A6: restablecer el MFA de otra cuenta del personal (perdió el teléfono y los códigos). La cuenta deberá enrolarse
+   * de nuevo; sus sesiones se cierran. Solo un SUPERADMIN restablece a otro SUPERADMIN. Nunca la propia cuenta.
+   */
+  app.post("/:id/mfa/reset", { preHandler: sensitive, config: { rateLimit: { max: 10, timeWindow: "15 minutes" } } }, async (req, reply) => {
+    const { id } = idParam.parse(req.params);
+    const target = await prisma.user.findFirst({ where: { id, ...staffOf(req.auth.organizationId) } });
+    if (!target) throw notFound("Usuario no encontrado.");
+    if (target.id === req.auth.id) throw new AppError(409, "SELF_MFA_RESET", "Usa la configuración de seguridad de tu cuenta.");
+    if (target.role === "SUPERADMIN" && req.auth.role !== "SUPERADMIN") {
+      throw new AppError(403, "FORBIDDEN", "Solo un superadministrador puede restablecer a otro superadministrador.");
+    }
+    if (!target.mfaEnabledAt && !target.mfaPendingSecret) throw new AppError(409, "MFA_NOT_ENABLED", "La cuenta no tiene verificación en dos pasos.");
+    await prisma.$transaction([
+      prisma.user.update({
+        where: { id },
+        data: { mfaTotpSecret: null, mfaEnabledAt: null, mfaLastStep: null, mfaPendingSecret: null, mfaPendingAt: null, mfaFailedCount: 0, mfaLockedUntil: null, sessionVersion: { increment: 1 } },
+      }),
+      prisma.mfaRecoveryCode.deleteMany({ where: { userId: id } }),
+      prisma.refreshToken.updateMany({ where: { userId: id, revokedAt: null }, data: { revokedAt: new Date() } }),
+    ]);
+    await audit(req, { action: "MFA_RESET_BY_ADMIN", entityType: "User", entityId: id, metadata: { email: target.email, targetRole: target.role } });
+    return reply.status(204).send();
+  });
+
   /** "Eliminar" = desactivar. El usuario queda en la BD para conservar la trazabilidad de sus registros. */
-  app.delete("/:id", { preHandler: app.requirePermission("user:manage") }, async (req, reply) => {
+  app.delete("/:id", { preHandler: sensitive }, async (req, reply) => {
     const { id } = idParam.parse(req.params);
     const target = await prisma.user.findFirst({ where: { id, ...staffOf(req.auth.organizationId) } });
     if (!target) throw notFound("Usuario no encontrado.");
     if (target.id === req.auth.id) throw new AppError(409, "SELF_DELETE", "No puedes desactivar tu propia cuenta.");
-    if (target.role === "SUPERADMIN" && target.isActive) await ensureAnotherSuperadmin(req.auth.organizationId, target.id);
-    await prisma.user.update({ where: { id }, data: { isActive: false } });
-    await prisma.refreshToken.updateMany({ where: { userId: id, revokedAt: null }, data: { revokedAt: new Date() } });
+    await prisma.$transaction(async (tx) => {
+      if (target.role === "SUPERADMIN" && target.isActive) await ensureAnotherSuperadmin(tx, req.auth.organizationId, target.id);
+      await tx.user.update({ where: { id }, data: { isActive: false, sessionVersion: { increment: 1 } } });
+      await tx.refreshToken.updateMany({ where: { userId: id, revokedAt: null }, data: { revokedAt: new Date() } });
+    });
     await audit(req, { action: "USER_DEACTIVATED", entityType: "User", entityId: id, metadata: { email: target.email } });
     return reply.status(204).send();
   });

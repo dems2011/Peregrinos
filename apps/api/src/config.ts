@@ -17,6 +17,13 @@ const schema = z.object({
   /** Carpeta privada de comprobantes de pago. En producción, un volumen persistente con respaldo. */
   UPLOAD_DIR: z.string().default("./uploads"),
   COOKIE_SECURE: z.enum(["true", "false"]).default("false").transform((v) => v === "true"),
+  /** A6: clave AES-256 (base64 de 32 bytes) para cifrar los secretos MFA. Opcional: sin ella se deriva de JWT_SECRET. */
+  MFA_ENCRYPTION_KEY: z
+    .string()
+    .optional()
+    .refine((v) => !v || Buffer.from(v, "base64").length === 32, "MFA_ENCRYPTION_KEY debe ser base64 de 32 bytes"),
+  /** A6: sin MFA activo, un SUPERADMIN solo puede enrolarse (ARQUITECTURA-CUENTAS §8.1). "false" solo para transición. */
+  MFA_ENFORCE_SUPERADMIN: z.enum(["true", "false"]).default("true").transform((v) => v === "true"),
 });
 
 const parsed = schema.safeParse(process.env);

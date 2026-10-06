@@ -1,0 +1,21 @@
+{
+    "common.yes": "Yes",
+    "common.no": "No",
+    "common.save": "Save",
+    "common.cancel": "Cancel",
+    "common.close": "Close",
+    "common.back": "Back",
+    "common.edit": "Edit",
+    "common.delete": "Delete",
+    "common.search": "Search",
+    "common.loading": "Loading…",
+    "common.error": "Something went wrong.",
+    "common.empty": "—",
+    "date.today": "Today",
+    "date.yesterday": "Yesterday",
+    "date.tomorrow": "Tomorrow",
+    "date.expiresOn": "Expires on {date}.",
+    "format.dateTime": "{date} · {time}",
+    "format.dateRange": "{start} – {end}",
+    "format.timeRange": "{start}–{end}"
+}

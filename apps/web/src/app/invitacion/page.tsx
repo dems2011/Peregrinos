@@ -8,13 +8,16 @@ import { ACCESS_LEVELS } from "@peregrinos/shared";
 interface Preview { email: string; role: string; organization: string; invitedBy: string; checkpoints: { name: string; eventName: string }[] }
 
 function Inner() {
-  const token = useSearchParams().get("token") ?? "";
+  // Se lee una sola vez: después se quita de la barra de direcciones (y del historial) sin perderlo.
+  const params = useSearchParams();
+  const [token] = useState(() => params.get("token") ?? "");
   const router = useRouter();
   const [p, setP] = useState<Preview | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [name, setName] = useState(""); const [pw, setPw] = useState(""); const [busy, setBusy] = useState(false);
   useEffect(() => {
     if (!token) return setErr("Falta el enlace de la invitación.");
+    window.history.replaceState(null, "", window.location.pathname);
     api<Preview>(`/invitations/preview?token=${encodeURIComponent(token)}`).then(setP).catch((e) => setErr(e instanceof ApiError ? e.message : "No se pudo abrir la invitación."));
   }, [token]);
   async function submit(e: FormEvent) {
@@ -28,6 +31,8 @@ function Inner() {
       <div className="brand"><MapPin size={64} color="#fff" fill="#1677FF" /><h1>Peregrinos</h1><p>Invitación</p></div>
       <form onSubmit={submit} noValidate>
         {err && <div className="error" role="alert">{err}</div>}
+        {!p && !err && <div className="spinner" role="status" aria-label="Cargando" />}
+        {!p && err && <p style={{ textAlign: "center" }}><a href="/login" style={{ color: "#fff" }}>Ir al ingreso</a></p>}
         {p && (<>
           <p style={{ textAlign: "center", margin: "0 0 18px" }}><b>{p.invitedBy}</b> te invitó a sumarte a <b>{p.organization}</b> como <b>{role}</b>.{p.checkpoints.length > 0 && <><br />Atenderás: {p.checkpoints.map((c) => c.name).join(", ")}.</>}</p>
           <div className="field"><label htmlFor="em">Correo</label><input id="em" value={p.email} disabled /></div>

@@ -1,5 +1,6 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { refreshSession } from "./api";
 
 /** Carga datos y permite recargarlos. `deps` cambia => vuelve a cargar. */
 export function useLoad<T>(fn: () => Promise<T>, deps: unknown[]) {
@@ -7,10 +8,13 @@ export function useLoad<T>(fn: () => Promise<T>, deps: unknown[]) {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const fnRef = useRef(fn); fnRef.current = fn;
+  const seq = useRef(0);
   const reload = useCallback(async () => {
-    try { setError(null); setData(await fnRef.current()); }
-    catch (e) { setError((e as Error).message); }
-    finally { setLoading(false); }
+    // Solo la última carga se aplica: una respuesta lenta de un filtro anterior no pisa la actual.
+    const n = ++seq.current;
+    try { setError(null); const d = await fnRef.current(); if (n === seq.current) setData(d); }
+    catch (e) { if (n === seq.current) setError((e as Error).message); }
+    finally { if (n === seq.current) setLoading(false); }
   }, []);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { setLoading(true); reload(); }, deps);
@@ -31,7 +35,8 @@ export function useEventStream(eventId: string | undefined, onMessage: (type: st
       es.onerror = async () => {
         setLive(false); es?.close();
         if (closed) return;
-        try { await fetch("/api/auth/refresh", { method: "POST", credentials: "include", headers: { "X-PG-Client": "web" } }); } catch { /* sin red */ }
+        // Renovación compartida con el cliente del API (evita dos refresh simultáneos con el mismo token).
+        await refreshSession();
         timer = setTimeout(open, 3000);
       };
     };

@@ -16,8 +16,9 @@ export default function Contactos() {
   const cps = useLoad(() => (eid ? api<{ items: Checkpoint[] }>(`/events/${eid}/checkpoints`) : Promise.resolve(null)), [eid]);
   const [edit, setEdit] = useState<Contact | "new" | null>(null);
   return (
-    <Page title="Contactos del evento" back="/configuracion" action={<button className="ic" aria-label="Agregar contacto" onClick={() => setEdit("new")}><Plus size={24} /></button>}>
+    <Page title="Contactos del evento" back="/configuracion" action={eid ? <button className="ic" aria-label="Agregar contacto" onClick={() => setEdit("new")}><Plus size={24} /></button> : undefined}>
       <p className="muted">Estas personas aparecen en la pestaña «Contactos» de la app del peregrino, con botón para llamar.</p>
+      {!eid && <div className="empty">No hay un evento seleccionado.</div>}
       <ErrorBox msg={list.error} />
       <div className="card flat">
         {list.loading ? <Loading /> : !list.data?.items.length ? <div className="empty">Aún no hay contactos.</div> : list.data.items.map((c) => (
@@ -36,7 +37,7 @@ function ContactModal({ c, eid, cps, onClose, onSaved }: { c: Contact | null; ei
   const [f, setF] = useState({ name: c?.name ?? "", roleLabel: c?.roleLabel ?? "", phone: c?.phone ?? "", email: c?.email ?? "", checkpointId: c?.checkpointId ?? "", isEmergency: c?.isEmergency ?? false });
   const [err, setErr] = useState<string | null>(null);
   const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setF({ ...f, [k]: e.target.value });
-  const body = () => ({ name: f.name, roleLabel: f.roleLabel || undefined, phone: f.phone, email: f.email || undefined, checkpointId: f.checkpointId || null, isEmergency: f.isEmergency });
+  const body = () => ({ name: f.name, roleLabel: f.roleLabel.trim() /* "" permite borrar el cargo al editar */, phone: f.phone, email: f.email || undefined, checkpointId: f.checkpointId || null, isEmergency: f.isEmergency });
   return (
     <Modal title={c ? "Editar contacto" : "Nuevo contacto"} onClose={onClose}>
       <ErrorBox msg={err} />
@@ -47,7 +48,11 @@ function ContactModal({ c, eid, cps, onClose, onSaved }: { c: Contact | null; ei
       <div className="field"><label>Punto de control (opcional)</label><select value={f.checkpointId} onChange={set("checkpointId")}><option value="">Todo el recorrido</option>{cps.map((p) => <option key={p.id} value={p.id}>{p.order}. {p.name}</option>)}</select></div>
       <label className="check"><input type="checkbox" checked={f.isEmergency} onChange={(e) => setF({ ...f, isEmergency: e.target.checked })} /> Es contacto de emergencia (se muestra primero)</label>
       <button className="btn btn-primary" disabled={f.name.trim().length < 2 || f.phone.trim().length < 7} onClick={async () => { try { if (c) await patch(`/events/${eid}/contacts/${c.id}`, body()); else await post(`/events/${eid}/contacts`, body()); onSaved(); } catch (e) { setErr(e instanceof ApiError ? (e.details?.map((d) => d.message).join(". ") || e.message) : "No se pudo guardar."); } }}>Guardar</button>
-      {c && <button className="btn btn-danger" onClick={async () => { if (confirm("¿Eliminar este contacto?")) { await del(`/events/${eid}/contacts/${c.id}`); onSaved(); } }}>Eliminar</button>}
+      {c && <button className="btn btn-danger" onClick={async () => {
+        if (!confirm("¿Eliminar este contacto?")) return;
+        try { await del(`/events/${eid}/contacts/${c.id}`); onSaved(); }
+        catch (e) { setErr(e instanceof ApiError ? e.message : "No se pudo eliminar."); }
+      }}>Eliminar</button>}
     </Modal>
   );
 }

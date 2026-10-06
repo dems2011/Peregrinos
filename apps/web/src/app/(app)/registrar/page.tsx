@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { AlertTriangle, Check, Hash, MapPin, ScanLine, Search } from "lucide-react";
 import { api, ApiError, post, qs } from "@/lib/api";
 import { deviceId, useDebounced } from "@/lib/hooks";
-import { avatarColor, fmtDoc, fmtTime, pad } from "@/lib/format";
+import { avatarColor, fmtDateCompact, fmtDoc, fmtTime, pad } from "@/lib/format";
 import type { Checkpoint, Paged, Person } from "@/lib/types";
 import { useApp } from "@/components/AppContext";
 import { ErrorBox, Page } from "@/components/ui";
@@ -119,9 +119,9 @@ export default function Registrar() {
 
       {step.kind === "found" && (
         <div className="card found">
-          <div className="row"><span className="big" style={{ color: avatarColor(step.person.number) }}>{pad(step.person.number)}</span>{step.person.status !== "ACTIVE" && <span className="pill err">{step.person.status === "INACTIVE" ? "Inactivo" : "Cancelado"}</span>}</div>
+          <div className="row"><span className="big" style={{ color: avatarColor(step.person.number) }}>{pad(step.person.number)}</span>{step.person.status !== "ACTIVE" && <span className="pill err">Cancelado</span>}</div>
           <div className="name">{step.person.firstName} {step.person.lastName}</div>
-          <dl className="kv"><dt>DNI</dt><dd>{fmtDoc(step.person.documentNumber)}</dd><dt>Teléfono</dt><dd>{step.person.phone ?? "—"}</dd><dt>Punto</dt><dd>{cp?.name}</dd><dt>Hora</dt><dd>{fmtTime(now, tz)}</dd></dl>
+          <dl className="kv"><dt>Documento</dt><dd>{fmtDoc(step.person.documentNumber)}</dd><dt>Teléfono</dt><dd>{step.person.phone ?? "—"}</dd><dt>Punto</dt><dd>{cp?.name}</dd><dt>Hora</dt><dd>{fmtTime(now, tz)}</dd></dl>
           {step.already && <div className="alert warn"><AlertTriangle size={18} style={{ verticalAlign: "-3px" }} /> Esta persona ya registró su llegada en este punto a las {fmtTime(step.already.timestamp, tz)} ({step.already.operator}).</div>}
           {step.person.status !== "ACTIVE" && <div className="alert err">Esta persona no está activa: no se puede registrar.</div>}
           <button className="btn btn-ok btn-xl" onClick={register} disabled={busy || !!step.already || step.person.status !== "ACTIVE"}><Check size={28} /> REGISTRAR LLEGADA</button>
@@ -149,7 +149,7 @@ export default function Registrar() {
               <div className="card flat">{results.map((p) => (
                 <button key={p.id} className="list-item" onClick={() => identify({ number: p.number }, "SEARCH")}>
                   <span className="avatar" style={{ background: avatarColor(p.number) }}>{pad(p.number)}</span>
-                  <span className="grow"><span className="t">{p.firstName} {p.lastName}</span><br /><span className="s">DNI {fmtDoc(p.documentNumber)}</span></span>
+                  <span className="grow"><span className="t">{p.firstName} {p.lastName}</span><br /><span className="s">Doc. {fmtDoc(p.documentNumber)}</span></span>
                 </button>))}
                 {dq.trim().length >= 2 && !results.length && <div className="empty">Sin resultados.</div>}
               </div>
@@ -164,9 +164,9 @@ export default function Registrar() {
           <h2>¡Llegada registrada!</h2>
           <div className="box">
             <div className="row"><b style={{ fontSize: 22 }}>{step.person.firstName} {step.person.lastName}</b><span className="avatar" style={{ background: avatarColor(step.person.number) }}>{pad(step.person.number)}</span></div>
-            <div className="muted">DNI {fmtDoc(step.person.documentNumber)}{step.person.phone ? ` · ${step.person.phone}` : ""}</div>
+            <div className="muted">Doc. {fmtDoc(step.person.documentNumber)}{step.person.phone ? ` · ${step.person.phone}` : ""}</div>
             <div><MapPin size={16} style={{ verticalAlign: "-3px" }} /> <b>{cp?.name}</b></div>
-            <div className="muted">{fmtTime(step.at, tz)} · {new Date(step.at).toLocaleDateString("es-AR", { timeZone: tz })}</div>
+            <div className="muted">{fmtTime(step.at, tz)} · {fmtDateCompact(step.at, tz)}</div>
           </div>
           <small>Toca para registrar a la siguiente persona</small>
         </div>

@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { publish } from "../lib/bus";
 import { z } from "zod";
-import { createRegistrationSchema, digitsOnly, isRegistrationOpenNow, normalizeDocument } from "@peregrinos/shared";
+import { createRegistrationSchema, deriveRegistrationState, digitsOnly, normalizeDocument } from "@peregrinos/shared";
 import { Prisma } from "@prisma/client";
 import { cfg } from "../config";
 import { prisma } from "../lib/prisma";
@@ -18,9 +18,12 @@ export default async function registrationRoutes(app: FastifyInstance) {
   async function openEvent(token: string) {
     const event = await prisma.event.findUnique({ where: { registrationToken: token }, include: { organization: true } });
     // A3: solo las parroquias aprobadas reciben inscripciones públicas.
-    if (!event || event.organization.status !== "APPROVED" || !isRegistrationOpenNow(event)) {
-      throw notFound("La inscripción no está disponible. Consulta con la organización.");
-    }
+    if (!event || event.organization.status !== "APPROVED") throw notFound("La inscripción no está disponible. Consulta con la organización.");
+    // A4: estado derivado; el cupo cuenta solo participantes ACTIVE (las inscripciones pendientes no lo consumen).
+    const activeParticipants = await prisma.participant.count({ where: { eventId: event.id, status: "ACTIVE" } });
+    const state = deriveRegistrationState({ ...event, activeParticipants });
+    if (state === "FULL") throw new AppError(409, "EVENT_FULL", "El cupo del evento está completo. Consulta con la organización.");
+    if (state !== "OPEN") throw notFound("La inscripción no está disponible. Consulta con la organización.");
     return event;
   }
 
@@ -56,8 +59,16 @@ export default async function registrationRoutes(app: FastifyInstance) {
     try {
       const reg = await prisma.registration.create({
         data: {
-          eventId: event.id, firstName: body.firstName, lastName: body.lastName, documentNumber,
+          event: { connect: { id: event.id } }, firstName: body.firstName, lastName: body.lastName, documentNumber,
           phone: body.phone, phoneDigits: digitsOnly(body.phone),
+          // A4a: la inscripción pertenece a una Person (sin cuenta) de la organización del evento, creada en la misma
+          // transacción. Sin fusiones: el inscrito no puede confirmar identidades; el personal fusiona después si corresponde.
+          person: {
+            create: {
+              firstName: body.firstName, lastName: body.lastName, documentType: "DNI", documentNumber,
+              phone: body.phone, phoneDigits: digitsOnly(body.phone), ownerOrganization: { connect: { id: event.organizationId } },
+            },
+          },
           accessTokenHash: hashAccess(token), accessCodeHash: hashAccess(code),
           pilgrimSessions: {
             create: {

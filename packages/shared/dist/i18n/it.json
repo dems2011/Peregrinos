@@ -1,0 +1,21 @@
+{
+    "common.yes": "Sì",
+    "common.no": "No",
+    "common.save": "Salva",
+    "common.cancel": "Annulla",
+    "common.close": "Chiudi",
+    "common.back": "Indietro",
+    "common.edit": "Modifica",
+    "common.delete": "Elimina",
+    "common.search": "Cerca",
+    "common.loading": "Caricamento…",
+    "common.error": "Si è verificato un errore.",
+    "common.empty": "—",
+    "date.today": "Oggi",
+    "date.yesterday": "Ieri",
+    "date.tomorrow": "Domani",
+    "date.expiresOn": "Scade il {date}.",
+    "format.dateTime": "{date} · {time}",
+    "format.dateRange": "{start} – {end}",
+    "format.timeRange": "{start}–{end}"
+}

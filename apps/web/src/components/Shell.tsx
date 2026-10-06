@@ -1,8 +1,8 @@
 "use client";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Clock, CreditCard, Home, IdCard, LogOut, MapPin, Menu as MenuIcon, ScanLine, Settings, Users, Wallet } from "lucide-react";
-import { EVENT_TYPE_INFO, type Permission } from "@peregrinos/shared";
+import { Clock, CreditCard, HandHeart, Home, IdCard, LogOut, MapPin, Menu as MenuIcon, ScanLine, Settings, Users, Wallet } from "lucide-react";
+import { hasEventCapability, type EventCapability, type Permission } from "@peregrinos/shared";
 import { logout } from "@/lib/api";
 import { useApp } from "./AppContext";
 
@@ -15,18 +15,26 @@ export const NAV: NavItem[] = [
   { href: "/registrar", label: "Registrar llegada", icon: ScanLine, perm: "checkin:create" },
   { href: "/historial", label: "Historial", icon: Clock, perm: "checkin:read" },
   { href: "/credenciales", label: "Credenciales", icon: IdCard, perm: "credential:export" },
+  { href: "/voluntarios", label: "Voluntarios", icon: HandHeart, perm: "volunteer:manage" },
   { href: "/configuracion", label: "Configuración", icon: Settings, perm: "config" },
 ];
 
-/** Menú según permisos y tipo del evento activo: "Recorrido" solo en tipos con trayecto. */
+/** A4: cada sección del menú depende de una capacidad del evento activo (ya no del tipo). */
+const NAV_CAPABILITY: Partial<Record<string, EventCapability>> = {
+  "/personas": "PARTICIPANTS", "/pagos": "REGISTRATION", "/recorrido": "POINTS",
+  "/registrar": "CHECKIN", "/historial": "CHECKIN", "/credenciales": "PARTICIPANTS", "/voluntarios": "VOLUNTEERS",
+};
+
+/** Menú según permisos y capacidades del evento activo. */
 export function useNav() {
   const { can, event } = useApp();
-  const canConfig = can("event:update") || can("invitation:manage") || can("contact:manage") || can("audit:read");
-  const hasRoute = !event || EVENT_TYPE_INFO[event.type].hasRoute;
+  // Mismos permisos que las secciones de /configuracion (y que exige la API en cada una).
+  const canConfig = can("event:update") || can("invitation:manage") || can("user:manage") || can("contact:manage") || can("participant:manage") || can("audit:read");
+  const on = (c: EventCapability) => !event || hasEventCapability(event, c);
   return NAV
     .filter((n) => (n.perm === "config" ? canConfig : can(n.perm)))
-    .filter((n) => hasRoute || n.href !== "/recorrido")
-    .map((n) => (n.href === "/registrar" && !hasRoute ? { ...n, label: "Registrar asistencia" } : n));
+    .filter((n) => { const c = NAV_CAPABILITY[n.href]; return !c || on(c); })
+    .map((n) => (n.href === "/registrar" && !on("ROUTE") ? { ...n, label: "Registrar asistencia" } : n));
 }
 
 export function EventPicker() {
@@ -72,7 +80,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
         ))}
         <div className="foot">
           {me.user.name}<br />{roleLabel}
-          <button className="lnk" style={{ marginTop: 8, padding: 0, minHeight: 36 }} onClick={async () => { await logout(); router.replace("/login"); }}><LogOut size={18} /> Cerrar sesión</button>
+          <button className="lnk" style={{ marginTop: 8, padding: 0, minHeight: 36 }} onClick={async () => { await logout().catch(() => undefined); router.replace("/login"); }}><LogOut size={18} /> Cerrar sesión</button>
         </div>
       </aside>
 

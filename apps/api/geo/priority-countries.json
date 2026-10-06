@@ -1,0 +1,37 @@
+{
+  "$comment": "Países/territorios prioritarios iniciales de G1 (docs/ARQUITECTURA-INTERNACIONAL.md §2). Prioridad para perfil completo y geografía; NO son un límite: el catálogo mundial ISO 3166-1 se carga completo (D1a). Los nombres de producto se tomarán de Unicode CLDR en D1a; los de aquí son solo referencia legible.",
+  "decidedAt": "2026-10-05",
+  "countries": [
+    { "order": 1,  "code": "CA", "reference": "Canadá" },
+    { "order": 2,  "code": "US", "reference": "Estados Unidos" },
+    { "order": 3,  "code": "MX", "reference": "México" },
+    { "order": 4,  "code": "SV", "reference": "El Salvador" },
+    { "order": 5,  "code": "NI", "reference": "Nicaragua" },
+    { "order": 6,  "code": "GT", "reference": "Guatemala" },
+    { "order": 7,  "code": "PA", "reference": "Panamá" },
+    { "order": 8,  "code": "VE", "reference": "Venezuela" },
+    { "order": 9,  "code": "CO", "reference": "Colombia" },
+    { "order": 10, "code": "EC", "reference": "Ecuador" },
+    { "order": 11, "code": "BR", "reference": "Brasil" },
+    { "order": 12, "code": "PE", "reference": "Perú" },
+    { "order": 13, "code": "BO", "reference": "Bolivia" },
+    { "order": 14, "code": "CL", "reference": "Chile" },
+    { "order": 15, "code": "PY", "reference": "Paraguay" },
+    { "order": 16, "code": "AR", "reference": "Argentina" },
+    { "order": 17, "code": "UY", "reference": "Uruguay" },
+    { "order": 18, "code": "IT", "reference": "Italia" },
+    { "order": 19, "code": "ES", "reference": "España" },
+    { "order": 20, "code": "PT", "reference": "Portugal" },
+    { "order": 21, "code": "VA", "reference": "Ciudad del Vaticano" },
+    { "order": 22, "code": "CU", "reference": "Cuba" },
+    { "order": 23, "code": "PR", "reference": "Puerto Rico" },
+    { "order": 24, "code": "DO", "reference": "República Dominicana" }
+  ],
+  "profileFields": {
+    "$comment": "Datos de perfil a verificar en D1b. locales NO es demográfico: son los locales de producto soportados por Peregrinos.",
+    "currencyCode": "ISO 4217 (SIX List One), contrastado con CLDR currencyData",
+    "phonePrefix": "libphonenumber PhoneNumberMetadata (procesable) + contraste manual con la lista UIT-T E.164",
+    "timezones": "IANA tzdb zone.tab",
+    "locales": "Fijo para esta fase: [\"es\",\"en\",\"pt\",\"it\"] (locales de producto). Sin catálogo de idiomas oficiales por país."
+  }
+}

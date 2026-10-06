@@ -1,5 +1,5 @@
 import { Prisma } from "@prisma/client";
-import type { CheckinMethod } from "@peregrinos/shared";
+import { LEGACY_FORMAT_LOCALE, formatTime, resolveTimeZone, type CheckinMethod } from "@peregrinos/shared";
 import { prisma } from "./prisma";
 import { AppError, notFound } from "./errors";
 
@@ -20,7 +20,8 @@ export type RegisterResult =
   | { result: "CREATED" | "IDEMPOTENT"; checkinId: string }
   | { result: "CONFLICT"; checkinId: string; conflictOfId: string };
 
-const fmt = (d: Date) => d.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Argentina/Buenos_Aires" });
+/** Hora "HH:mm" en la zona del evento (cae a DEFAULT_TIMEZONE); idioma de formato heredado hasta que el pedido traiga el del usuario. */
+const fmt = (d: Date, zone?: string | null) => formatTime(d, { locale: LEGACY_FORMAT_LOCALE, timeZone: resolveTimeZone(zone) });
 
 /**
  * Núcleo del registro de llegadas.
@@ -49,12 +50,12 @@ export async function registerCheckin(input: RegisterInput, mode: "online" | "sy
   const findActive = () =>
     prisma.checkin.findFirst({
       where: { eventId: input.eventId, participantId: input.participantId, checkpointId: input.checkpointId, status: "ACTIVE" },
-      include: { operator: { select: { name: true } } },
+      include: { operator: { select: { name: true } }, event: { select: { timezone: true } } },
     });
 
   const alreadyError = (c: NonNullable<Awaited<ReturnType<typeof findActive>>>) =>
     new AppError(409, "ALREADY_CHECKED_IN", "Esta persona ya registró su llegada en este punto.", {
-      checkinId: c.id, timestamp: c.timestamp, operator: c.operator.name, checkpoint: checkpoint.name, time: fmt(c.timestamp),
+      checkinId: c.id, timestamp: c.timestamp, operator: c.operator.name, checkpoint: checkpoint.name, time: fmt(c.timestamp, c.event.timezone),
     });
 
   const base = {

@@ -24,12 +24,13 @@ export default function Accesos() {
       {st.loading ? <Loading /> : st.data && (
         <div className="grid2"><div className="card stat"><span className="l">Con acceso</span><span className="n">{st.data.withAccess}</span></div><div className="card stat"><span className="l">Sin acceso</span><span className="n">{st.data.without}</span></div></div>
       )}
-      <ErrorBox msg={err} />{msg && <div className="alert ok">{msg}</div>}
-      <button className="btn btn-primary btn-xl" disabled={busy || st.data?.without === 0} onClick={() => issue(false)}><Download size={24} /> Emitir a quienes faltan (CSV)</button>
+      {!eid && <div className="empty">No hay un evento seleccionado.</div>}
+      <ErrorBox msg={err ?? st.error} />{msg && <div className="alert ok" role="status">{msg}</div>}
+      <button className="btn btn-primary btn-xl" disabled={busy || !eid || st.data?.without === 0} onClick={() => issue(false)}><Download size={24} /> Emitir a quienes faltan (CSV)</button>
       <div className="card stack-sm">
         <h3><KeyRound size={18} style={{ verticalAlign: "-3px" }} /> Reemitir a todos</h3>
         <p className="muted">Genera enlaces nuevos para todos. Los anteriores y las sesiones abiertas dejan de funcionar. Úsalo solo si hubo una filtración.</p>
-        <button className="btn btn-danger" disabled={busy} onClick={() => { if (confirm("Todos los enlaces actuales dejarán de funcionar. ¿Continuar?")) issue(true); }}>Reemitir a todos</button>
+        <button className="btn btn-danger" disabled={busy || !eid} onClick={() => { if (confirm("Todos los enlaces actuales dejarán de funcionar. ¿Continuar?")) issue(true); }}>Reemitir a todos</button>
       </div>
     </Page>
   );

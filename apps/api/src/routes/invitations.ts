@@ -47,13 +47,17 @@ export default async function invitationRoutes(app: FastifyInstance) {
     return { items: items.map(publicView) };
   });
 
-  app.post("/", { preHandler: manage }, async (req, reply) => {
+  // A6 (§8.2): invitar otorga un rol → step-up.
+  app.post("/", { preHandler: [manage, app.requireRecentMfa] }, async (req, reply) => {
     const body = createInvitationSchema.parse(req.body);
     assertNotSuperadminGrant(body.role, "INVITATION");
     if (!canInviteRole(req.auth.role, body.role)) throw forbidden("No puedes invitar a un nivel superior al tuyo.");
     assertOrgCan(req.auth.organizationStatus, "INVITE_STAFF");
 
-    if (await prisma.user.findUnique({ where: { email: body.email } })) {
+    // Solo se informa si el correo ya es personal de ESTA organización: no se revela si existe una cuenta en otra
+    // organización o una cuenta PILGRIM (anti-enumeración entre organizaciones). Si existe fuera, la aceptación falla
+    // con USER_EXISTS y eso solo lo ve el dueño del buzón.
+    if (await prisma.user.findFirst({ where: { email: body.email, organizationId: req.auth.organizationId }, select: { id: true } })) {
       throw new AppError(409, "USER_EXISTS", "Ya existe un usuario con ese correo.");
     }
     const pending = await prisma.invitation.findFirst({
@@ -80,7 +84,7 @@ export default async function invitationRoutes(app: FastifyInstance) {
   });
 
   /** Reenviar: genera un enlace nuevo (el anterior deja de funcionar) y renueva el vencimiento. */
-  app.post("/:id/resend", { preHandler: manage }, async (req) => {
+  app.post("/:id/resend", { preHandler: [manage, app.requireRecentMfa] }, async (req) => {
     const { id } = idParam.parse(req.params);
     const inv = await prisma.invitation.findFirst({ where: { id, organizationId: req.auth.organizationId } });
     if (!inv) throw notFound("Invitación no encontrada.");
@@ -89,9 +93,13 @@ export default async function invitationRoutes(app: FastifyInstance) {
     assertNotSuperadminGrant(inv.role, "INVITATION");
     assertOrgCan(req.auth.organizationStatus, "INVITE_STAFF");
     const { raw, hash } = newOpaqueToken();
-    const renewed = await prisma.invitation.update({
-      where: { id }, data: { tokenHash: hash, expiresAt: new Date(Date.now() + cfg.INVITE_TTL_DAYS * 86_400_000) },
+    // Condicional: si entre tanto se aceptó o revocó, no se renueva un enlace de una invitación ya cerrada.
+    const r = await prisma.invitation.updateMany({
+      where: { id, organizationId: req.auth.organizationId, acceptedAt: null, revokedAt: null },
+      data: { tokenHash: hash, expiresAt: new Date(Date.now() + cfg.INVITE_TTL_DAYS * 86_400_000) },
     });
+    if (r.count !== 1) throw new AppError(409, "NOT_PENDING", "Esta invitación ya fue aceptada o revocada.");
+    const renewed = await prisma.invitation.findUniqueOrThrow({ where: { id } });
     await audit(req, { action: "INVITATION_RESENT", entityType: "Invitation", entityId: id, metadata: { email: inv.email } });
     return deliver(renewed, raw, req.auth.name);
   });
@@ -102,7 +110,9 @@ export default async function invitationRoutes(app: FastifyInstance) {
     if (!inv) throw notFound("Invitación no encontrada.");
     if (!canGrantRole(req.auth.role, inv.role)) throw forbidden();
     if (inv.acceptedAt) throw new AppError(409, "ALREADY_ACCEPTED", "Esta invitación ya fue aceptada.");
-    await prisma.invitation.update({ where: { id }, data: { revokedAt: new Date() } });
+    // Condicional: una aceptación simultánea gana; nunca queda "revocada" una invitación ya aceptada.
+    const r = await prisma.invitation.updateMany({ where: { id, organizationId: req.auth.organizationId, acceptedAt: null }, data: { revokedAt: new Date() } });
+    if (r.count !== 1) throw new AppError(409, "ALREADY_ACCEPTED", "Esta invitación ya fue aceptada.");
     await audit(req, { action: "INVITATION_REVOKED", entityType: "Invitation", entityId: id, metadata: { email: inv.email } });
     return reply.status(204).send();
   });
@@ -123,7 +133,7 @@ export default async function invitationRoutes(app: FastifyInstance) {
     const { token } = z.object({ token: z.string().min(20).max(200) }).parse(req.query);
     const inv = await findByToken(token);
     const cps = inv.checkpointIds.length
-      ? await prisma.checkpoint.findMany({ where: { id: { in: inv.checkpointIds } }, include: { event: { select: { name: true } } } })
+      ? await prisma.checkpoint.findMany({ where: { id: { in: inv.checkpointIds }, event: { organizationId: inv.organizationId } }, include: { event: { select: { name: true } } } })
       : [];
     return {
       email: inv.email, role: inv.role, organization: inv.organization.name, invitedBy: inv.invitedBy.name, expiresAt: inv.expiresAt,
@@ -142,13 +152,15 @@ export default async function invitationRoutes(app: FastifyInstance) {
       const user = await prisma.$transaction(async (tx) => {
         // Reclamo atómico: si dos personas abren el mismo enlace a la vez, solo una lo consigue.
         const claimed = await tx.invitation.updateMany({
-          where: { id: inv.id, acceptedAt: null, revokedAt: null, expiresAt: { gt: new Date() } }, data: { acceptedAt: new Date() },
+          // tokenHash en la condición: si se reenvió (enlace nuevo) entre la lectura y el reclamo, el enlace viejo ya no sirve.
+          where: { id: inv.id, tokenHash: sha256(body.token), acceptedAt: null, revokedAt: null, expiresAt: { gt: new Date() } }, data: { acceptedAt: new Date() },
         });
         if (claimed.count !== 1) throw new AppError(410, "INVITATION_USED", "Esta invitación ya fue utilizada.");
         const u = await tx.user.create({
           data: { organizationId: inv.organizationId, email: inv.email, name: body.name, role: inv.role, extraPermissions: inv.extraPermissions, passwordHash },
         });
-        const cps = inv.checkpointIds.length ? await tx.checkpoint.findMany({ where: { id: { in: inv.checkpointIds } }, select: { id: true, eventId: true } }) : [];
+        // Solo puntos de la organización que invita (defensa en profundidad: nunca asignaciones a eventos ajenos).
+        const cps = inv.checkpointIds.length ? await tx.checkpoint.findMany({ where: { id: { in: inv.checkpointIds }, event: { organizationId: inv.organizationId } }, select: { id: true, eventId: true } }) : [];
         if (cps.length) await tx.operatorAssignment.createMany({ data: cps.map((c) => ({ userId: u.id, checkpointId: c.id, eventId: c.eventId })) });
         await tx.invitation.update({ where: { id: inv.id }, data: { acceptedUserId: u.id } });
         return u;

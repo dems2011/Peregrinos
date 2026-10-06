@@ -10,6 +10,18 @@ const filters = paginationSchema.extend({
   action: z.string().max(60).optional(),
 });
 
+/**
+ * El historial de la organización solo identifica a su personal. Las acciones de una cuenta PILGRIM (p. ej. rechazar
+ * una solicitud de voluntariado o canjear un código) o de PLATFORM quedan registradas, pero sin exponer su nombre ni
+ * su id de cuenta a la organización (la cuenta personal no es un dato de la organización).
+ */
+export function auditItemView<T extends { userId: string | null; user: { id: string; name: string; role: string | null; accountType: string } | null }>(item: T) {
+  const { user, ...rest } = item;
+  if (!user) return { ...rest, user: null, actorType: null };
+  if (user.accountType !== "STAFF") return { ...rest, userId: null, user: null, actorType: user.accountType };
+  return { ...rest, user: { id: user.id, name: user.name, role: user.role }, actorType: "STAFF" };
+}
+
 export default async function auditRoutes(app: FastifyInstance) {
   app.get("/", { preHandler: app.requirePermission("audit:read") }, async (req) => {
     const q = filters.parse(req.query);
@@ -24,9 +36,9 @@ export default async function auditRoutes(app: FastifyInstance) {
       prisma.auditLog.count({ where }),
       prisma.auditLog.findMany({
         where, orderBy: { createdAt: "desc" }, skip: (q.page - 1) * q.pageSize, take: q.pageSize,
-        include: { user: { select: { id: true, name: true, role: true } } },
+        include: { user: { select: { id: true, name: true, role: true, accountType: true } } },
       }),
     ]);
-    return { total, page: q.page, pageSize: q.pageSize, items };
+    return { total, page: q.page, pageSize: q.pageSize, items: items.map(auditItemView) };
   });
 }

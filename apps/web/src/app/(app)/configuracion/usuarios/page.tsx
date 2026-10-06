@@ -9,10 +9,10 @@ import type { Checkpoint } from "@/lib/types";
 import { useApp } from "@/components/AppContext";
 import { copyText, ErrorBox, Loading, Modal, Page, StatusPill } from "@/components/ui";
 
-interface U { id: string; name: string; email: string; role: "SUPERADMIN" | "ADMIN" | "OPERATOR"; extraPermissions: string[]; isActive: boolean }
+interface U { id: string; name: string; email: string; role: "SUPERADMIN" | "ADMIN" | "OPERATOR"; extraPermissions: string[]; isActive: boolean; mfaEnabledAt: string | null }
 interface Inv { id: string; email: string; role: string; extraPermissions: string[]; status: "PENDING" | "ACCEPTED" | "REVOKED" | "EXPIRED"; expiresAt: string; invitedBy: string | null }
 const levelOf = (role: string, extras: string[]) => ACCESS_LEVELS.find((l) => l.role === role && l.extraPermissions.every((p) => extras.includes(p)) && (role !== "OPERATOR" || (l.extraPermissions.length > 0) === extras.includes("participant:create")));
-const INV: Record<string, [string, string]> = { PENDING: ["Pendiente", "warn"], ACCEPTED: ["Aceptada", "ok"], REVOKED: ["Revocada", "gray"], EXPIRED: ["Vencida", "err"] };
+const INV: Record<string, [string, string]> ={ PENDING: ["Pendiente", "warn"], ACCEPTED: ["Aceptada", "ok"], REVOKED: ["Revocada", "gray"], EXPIRED: ["Vencida", "err"] };
 
 export default function Usuarios() {
   const { me, event, can } = useApp();
@@ -24,13 +24,19 @@ export default function Usuarios() {
   const [assign, setAssign] = useState<U | null>(null);
   const [shown, setShown] = useState<{ url: string; emailSent: boolean; email: string } | null>(null);
   const [err, setErr] = useState<string | null>(null);
-  const run = async (fn: () => Promise<void>) => { setErr(null); try { await fn(); } catch (e) { setErr(e instanceof ApiError ? e.message : "No se pudo completar la acción."); } };
+  const run = async (fn: () => Promise<void>) => {
+    setErr(null);
+    // A6: si la API pide step-up (403 STEP_UP_REQUIRED), el cliente abre StepUpDialog y reintenta solo.
+    try { await fn(); }
+    catch (e) { setErr(e instanceof ApiError ? e.message : "No se pudo completar la acción."); }
+  };
 
   return (
     <Page title="Usuarios e invitaciones" back="/configuracion" action={can("invitation:manage") ? <button className="ic" aria-label="Invitar" onClick={() => setInviting(true)}><MailPlus size={24} /></button> : undefined}>
-      <ErrorBox msg={err} />
+      <ErrorBox msg={err ?? invs.error ?? users.error} />
       {can("invitation:manage") && <button className="btn btn-primary" onClick={() => setInviting(true)}><MailPlus size={20} /> Invitar por correo</button>}
 
+      {invs.loading && can("invitation:manage") && <Loading />}
       {invs.data && (<>
         <div className="sec-title">Invitaciones</div>
         <div className="card flat">
@@ -52,8 +58,11 @@ export default function Usuarios() {
         <div className="card flat">
           {users.data.items.map((u) => (
             <div className="list-item" key={u.id} style={{ cursor: "default", opacity: u.isActive ? 1 : .55 }}>
-              <span className="grow"><span className="t">{u.name}</span> {!u.isActive && <StatusPill s="INACTIVE" />}<br /><span className="s">{u.email} · {levelOf(u.role, u.extraPermissions)?.label ?? u.role}</span></span>
-              {u.role === "OPERATOR" && <button className="btn btn-sm" aria-label="Puntos asignados" onClick={() => setAssign(u)}><UserCog size={16} /> Puntos</button>}
+              <span className="grow"><span className="t">{u.name}</span> {!u.isActive && <StatusPill s="INACTIVE" />}<br /><span className="s">{u.email} · {levelOf(u.role, u.extraPermissions)?.label ?? u.role}{u.mfaEnabledAt ? " · 2 pasos" : ""}</span></span>
+              {u.mfaEnabledAt && u.id !== me.user.id && can("user:manage") && (u.role !== "SUPERADMIN" || me.user.role === "SUPERADMIN") && (
+                <button className="btn btn-sm" onClick={() => run(async () => { if (!confirm(`¿Restablecer la verificación en dos pasos de ${u.name}? Deberá activarla de nuevo y se cerrarán sus sesiones.`)) return; await post(`/users/${u.id}/mfa/reset`); users.reload(); })}>Restablecer 2 pasos</button>
+              )}
+              {u.role === "OPERATOR" && can("assignment:manage") && <button className="btn btn-sm" aria-label="Puntos asignados" onClick={() => setAssign(u)}><UserCog size={16} /> Puntos</button>}
               {u.id !== me.user.id && <button className="btn btn-sm" onClick={() => run(async () => { if (u.isActive && !confirm(`¿Desactivar a ${u.name}? Perderá el acceso de inmediato.`)) return; await patch(`/users/${u.id}`, { isActive: !u.isActive }); users.reload(); })}>{u.isActive ? "Desactivar" : "Activar"}</button>}
             </div>
           ))}

@@ -43,7 +43,7 @@ export default function Pagos() {
                   <span className="t">{r.firstName} {r.lastName}</span>{" "}
                   {r.participant && <span className="pill ok">N.º {String(r.participant.number).padStart(3, "0")}</span>}
                   {pr?.duplicateOfOther && <span className="pill err" style={{ marginLeft: 6 }}><TriangleAlert size={12} style={{ verticalAlign: "-1px" }} /> comprobante repetido</span>}
-                  <br /><span className="s">DNI {fmtDoc(r.documentNumber)} · {pr ? `${pr.amount ? money(pr.amount) + " · " : ""}${fmtDateTime(pr.createdAt, event?.timezone)}` : "esperando comprobante"}</span>
+                  <br /><span className="s">Doc. {fmtDoc(r.documentNumber)} · {pr ? `${pr.amount ? money(pr.amount) + " · " : ""}${fmtDateTime(pr.createdAt, event?.timezone)}` : "esperando comprobante"}</span>
                 </span>
                 <StatusPill s={r.status} /><ChevronRight className="chev" />
               </Link>

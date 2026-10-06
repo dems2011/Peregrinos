@@ -1,0 +1,45 @@
+{
+  "$comment": "Contraste de prefijos (libphonenumber v9.0.40) contra la referencia UIT-T E.164. La UIT es la referencia primaria; libphonenumber, la fuente procesable. Estados: PENDING | CONFIRMED | DIFFERS. Verificación cerrada en D1.1 (ver geo/research/D1.1-evidencias.md).",
+  "reference": "UIT-T: lista E.164 de códigos asignados, anexo al OB 1114 (posición 15-XII-2016) + enmiendas n.º 1 a 49 (OB 1115–1349, 1-X-2026), revisadas en los PDF oficiales. Recomendación E.164 vigente: 02/2026.",
+  "operationalOverrides": {
+    "VA": {
+      "operationalPrefix": "+39",
+      "ituAssigned": [
+        "+39",
+        "+379"
+      ],
+      "decision": "Valor del catálogo: +39 (decisión de producto aprobada en D1.1). La UIT asigna al Vaticano tanto 39 (compartido con Italia) como 379 (asignación adicional, vigente en OB 1114 y no modificada por ninguna enmienda). +379 no es inexistente; simplemente no es el valor del catálogo."
+    }
+  },
+  "contrast": {
+    "CA": "CONFIRMED",
+    "US": "CONFIRMED",
+    "MX": "CONFIRMED",
+    "SV": "CONFIRMED",
+    "NI": "CONFIRMED",
+    "GT": "CONFIRMED",
+    "PA": "CONFIRMED",
+    "VE": "CONFIRMED",
+    "CO": "CONFIRMED",
+    "EC": "CONFIRMED",
+    "BR": "CONFIRMED",
+    "PE": "CONFIRMED",
+    "BO": "CONFIRMED",
+    "CL": "CONFIRMED",
+    "PY": "CONFIRMED",
+    "AR": "CONFIRMED",
+    "UY": "CONFIRMED",
+    "IT": "CONFIRMED",
+    "ES": "CONFIRMED",
+    "PT": "CONFIRMED",
+    "VA": "CONFIRMED",
+    "CU": "CONFIRMED",
+    "PR": "CONFIRMED",
+    "DO": "CONFIRMED"
+  },
+  "verifiedAt": "2026-10-05",
+  "shared": {
+    "+1": "CA, US, PR, DO y otras entidades del plan integrado NANP (nota b de la UIT)",
+    "+39": "IT y VA"
+  }
+}

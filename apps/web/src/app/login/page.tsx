@@ -2,7 +2,8 @@
 
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import { ApiError, login } from "@/lib/api";
+import { isMfaChallenge } from "@peregrinos/shared";
+import { ApiError, cancelMfaLogin, login, verifyMfaLogin } from "@/lib/api";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -10,6 +11,36 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // A6: segundo paso del login (cuentas con verificación en dos pasos).
+  const [mfaStep, setMfaStep] = useState(false);
+  const [useRecovery, setUseRecovery] = useState(false);
+  const [code, setCode] = useState("");
+  const codeValid = useRecovery ? code.replace(/[^A-Za-z0-9]/g, "").length === 10 : /^\d{6}$/.test(code.replace(/\s/g, ""));
+
+  async function onSubmitCode(e: FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      await verifyMfaLogin(useRecovery ? { recoveryCode: code.trim() } : { code: code.replace(/\s/g, "") });
+      router.replace("/");
+    } catch (err) {
+      setCode("");
+      if (err instanceof ApiError && err.status === 401) {
+        // El desafío venció (5 minutos): se vuelve a la contraseña.
+        setMfaStep(false);
+        setPassword("");
+      }
+      setError(err instanceof ApiError ? err.message : "No se pudo conectar con el servidor.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function backToPassword() {
+    await cancelMfaLogin().catch(() => undefined);
+    setMfaStep(false); setCode(""); setPassword(""); setError(null); setUseRecovery(false);
+  }
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -17,8 +48,13 @@ export default function LoginPage() {
     setError(null);
 
     try {
-      await login(email, password);
-      router.replace("/");
+      const r = await login(email, password);
+      if (isMfaChallenge(r)) {
+        setMfaStep(true);
+        return;
+      }
+      // A5.0: con credenciales de peregrino la API abre la sesión de su cuenta (no la del personal): va a /cuenta.
+      router.replace((r as { kind?: string }).kind === "pilgrim" ? "/cuenta" : "/");
     } catch (err) {
       setError(
         err instanceof ApiError
@@ -55,6 +91,42 @@ export default function LoginPage() {
         <p>Control de Recorrido</p>
       </div>
 
+      {mfaStep ? (
+        <form onSubmit={onSubmitCode} noValidate>
+          {error && (
+            <div className="error" role="alert">
+              {error}
+            </div>
+          )}
+          <p style={{ margin: "0 0 12px", fontSize: "14px" }}>
+            {useRecovery
+              ? "Ingresa uno de tus códigos de recuperación. Cada código sirve una sola vez."
+              : "Ingresa el código de 6 dígitos de tu app de verificación."}
+          </p>
+          <div className="field">
+            <label htmlFor="mfa-code">{useRecovery ? "Código de recuperación" : "Código de verificación"}</label>
+            <input
+              id="mfa-code"
+              autoFocus
+              autoComplete="one-time-code"
+              inputMode={useRecovery ? "text" : "numeric"}
+              maxLength={useRecovery ? 14 : 7}
+              value={code}
+              onChange={(e) => setCode(e.target.value)}
+              required
+            />
+          </div>
+          <button className="btn btn-primary" disabled={busy || !codeValid}>
+            {busy ? "Verificando…" : "Verificar"}
+          </button>
+          <button type="button" className="btn" style={{ marginTop: 10 }} onClick={() => { setUseRecovery(!useRecovery); setCode(""); setError(null); }}>
+            {useRecovery ? "Usar la app de verificación" : "Usar un código de recuperación"}
+          </button>
+          <button type="button" className="btn" style={{ marginTop: 10 }} onClick={() => void backToPassword()}>
+            Volver
+          </button>
+        </form>
+      ) : (
       <form onSubmit={onSubmit} noValidate>
         {error && (
           <div className="error" role="alert">
@@ -111,8 +183,9 @@ export default function LoginPage() {
             ¿Eres peregrino y todavía no tienes una cuenta?
           </p>
 
+          {/* /registrar es la pantalla de llegadas del personal; el alta del peregrino es /cuenta/registro. */}
           <a
-            href="/registrar"
+            href="/cuenta/registro"
             style={{
               color: "#1677FF",
               fontWeight: 700,
@@ -122,10 +195,19 @@ export default function LoginPage() {
           >
             Crear cuenta de peregrino
           </a>
+          <p style={{ margin: "10px 0 0", fontSize: "14px", color: "#111827" }}>
+            ¿Ya tienes cuenta de peregrino?{" "}
+            <a href="/cuenta/ingresar" style={{ color: "#1677FF", fontWeight: 700, textDecoration: "none" }}>Ingresar a mi cuenta</a>
+          </p>
+          <p style={{ margin: "10px 0 0", fontSize: "14px", color: "#111827" }}>
+            ¿Tu parroquia todavía no usa Peregrinos?{" "}
+            <a href="/solicitud-parroquia" style={{ color: "#1677FF", fontWeight: 700, textDecoration: "none" }}>Solicitar el alta</a>
+          </p>
         </div>
 
         <p className="tagline">Juntos en el camino</p>
       </form>
+      )}
     </main>
   );
 }

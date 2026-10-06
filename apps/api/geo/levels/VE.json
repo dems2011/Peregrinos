@@ -1,0 +1,74 @@
+{
+  "$comment": "PROPUESTA de CountryAreaLevel para Venezuela (D2). El rango 1 se contrasta con ISO 3166-2 (iso-codes v4.20.1, verificado). Los rangos 2 y 3 quedan PENDING_SOURCE: COD-AB/INE no aprobados ni descargados. reviewStatus=PENDING. No se generan áreas de VE en esta fase.",
+  "status": "PROVISIONAL",
+  "countryCode": "VE",
+  "sourceCandidates": [
+    "COD-AB (OCHA HDX cod-ab-ven, datos del INE)",
+    "INE Venezuela (si se confirma una fuente descargable adecuada)"
+  ],
+  "levels": [
+    {
+      "rank": 1,
+      "kind": "ADMIN",
+      "isRequired": true,
+      "labels": {
+        "es": "Estado",
+        "en": "State",
+        "pt": "Estado",
+        "it": "Stato"
+      },
+      "note": "ISO 3166-2: 23 State + 1 Capital district (VE-A) + 1 Federal dependency (VE-W) = 25, coincide con las 25 unidades admin1 que declara COD-AB.",
+      "contrast": {
+        "source": "ISO3166-2",
+        "expectedCount": 25,
+        "iso3166_2Types": [
+          "State",
+          "Capital district",
+          "Federal dependency"
+        ]
+      }
+    },
+    {
+      "rank": 2,
+      "kind": "ADMIN",
+      "isRequired": false,
+      "labels": {
+        "es": "Municipio",
+        "en": "Municipality",
+        "pt": "Município",
+        "it": "Comune"
+      },
+      "note": "COD-AB declara 335 unidades admin2 (incluye un marcador artificial, ver placeholders).",
+      "contrast": {
+        "source": "COD-AB",
+        "expectedCount": 335
+      }
+    },
+    {
+      "rank": 3,
+      "kind": "ADMIN",
+      "isRequired": false,
+      "labels": {
+        "es": "Parroquia",
+        "en": "Parish",
+        "pt": "Paróquia",
+        "it": "Parrocchia"
+      },
+      "note": "COD-AB declara 1.134 unidades admin3 (incluye un marcador artificial). Parroquia civil, NO eclesiástica.",
+      "contrast": {
+        "source": "COD-AB",
+        "expectedCount": 1134
+      }
+    }
+  ],
+  "placeholders": {
+    "issue": "Según las advertencias de COD-AB, Dependencias Federales no tiene subdivisiones reales; HDX creó marcadores VE25 → VE2501 → VE250101 para completar la jerarquía.",
+    "proposal": "Cargar solo VE25 como nivel 1 y NO importar VE2501 ni VE250101 (no son divisiones reales). Pendiente de aprobación."
+  },
+  "localities": "Sin nivel LOCALITY en esta fase. Candidato futuro: nomencladores de centros poblados del INE por estado (ine.gob.ve). Mientras tanto: Address.localityText.",
+  "openQuestions": [
+    "Confirmar en el XLSX descargado: columnas de P-code y P-code del padre, nombres, cantidades exactas por nivel.",
+    "Evaluar si PROYECCION-POBLACION-PARROQUIAS.xls del INE contiene códigos oficiales estado/municipio/parroquia utilizables como fuente primaria.",
+    "Licencia de COD-AB: CC BY-IGO (según metadatos HDX); confirmar requisitos de atribución."
+  ]
+}

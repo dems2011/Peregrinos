@@ -1,0 +1,16 @@
+{
+  "$comment": "Typecheck del importador geográfico (fuera de src/, no forma parte del build de la API).",
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "lib": ["ES2022"],
+    "types": ["node"],
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "noEmit": true
+  },
+  "include": ["importers/**/*.ts"]
+}

@@ -8,3 +8,6 @@ apps/api/uploads/
 *.tsbuildinfo
 # Android: los build/ y .gradle/ ya los ignora apps/web/android/.gitignore
 apps/web/android/.idea/
+apps/api/geo/.downloads/
+# Reportes generados por npm run geo:dry-run
+apps/api/geo/reports/

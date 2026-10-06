@@ -1,0 +1,18 @@
+{
+  "$comment": "Decisiones de moneda APROBADAS en D1.1 para los casos en que ISO 4217 y CLDR no determinan una única moneda. Country.currencyCode = moneda nacional/principal del catálogo geográfico (NO la moneda comercial de suscripciones). Solo se aplica si el código está en ISO 4217 List One para ese país. Evidencia: geo/research/D1.1-evidencias.md.",
+  "approvedAt": "2026-10-05",
+  "decisions": {
+    "SV": {
+      "currencyCode": "USD",
+      "basis": "Ley de Integración Monetaria (D.L. 201/2000): art. 3 curso legal irrestricto del dólar; art. 9 operaciones y registros contables del sistema financiero en dólares."
+    },
+    "VE": {
+      "currencyCode": "VES",
+      "basis": "ISO 4217 Amendment 170 (SIX, 2021-10-01): VED solo para necesidades internas; VES/928 sigue siendo el código oficial válido."
+    },
+    "PA": {
+      "currencyCode": "PAB",
+      "basis": "Ley 84 de 1904: el Balboa es la unidad monetaria nacional; el dólar estadounidense tiene curso legal y circula a la par."
+    }
+  }
+}

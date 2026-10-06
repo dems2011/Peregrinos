@@ -1,16 +1,22 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 
 type Status = "loading" | "success" | "error";
 
 export default function VerifyEmailClient() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const [status, setStatus] = useState<Status>("loading");
   const [message, setMessage] = useState("Verificando tu correo...");
 
+  // El token es de un solo uso: se lee y se canjea una única vez. Al quitarlo de la URL, useSearchParams cambia
+  // (y en desarrollo el efecto corre dos veces); sin esta guarda se mostraría "sin token" o "ya usado" tras el éxito.
+  const started = useRef(false);
   useEffect(() => {
+    if (started.current) return;
+    started.current = true;
     const token = searchParams.get("token");
 
     if (!token) {
@@ -43,6 +49,8 @@ export default function VerifyEmailClient() {
         setMessage(
           data?.message || "Correo verificado correctamente."
         );
+        // A5.0: después de verificar, al ingreso de la cuenta del peregrino.
+        setTimeout(() => router.replace("/cuenta/ingresar"), 2500);
       } catch (error) {
         setStatus("error");
         setMessage(
@@ -53,8 +61,10 @@ export default function VerifyEmailClient() {
       }
     };
 
+    // El token no queda en la barra de direcciones ni en el historial del navegador.
+    window.history.replaceState(null, "", window.location.pathname);
     verify();
-  }, [searchParams]);
+  }, [searchParams, router]);
 
   return (
     <main
@@ -131,7 +141,7 @@ export default function VerifyEmailClient() {
 
         {status === "success" && (
           <a
-            href="/login"
+            href="/cuenta/ingresar"
             style={{
               display: "inline-block",
               padding: "13px 24px",
@@ -142,13 +152,13 @@ export default function VerifyEmailClient() {
               fontWeight: 700,
             }}
           >
-            Ir a iniciar sesión
+            Ingresar a mi cuenta
           </a>
         )}
 
         {status === "error" && (
           <a
-            href="/register"
+            href="/cuenta/ingresar?reenviar=1"
             style={{
               display: "inline-block",
               padding: "13px 24px",
@@ -159,7 +169,7 @@ export default function VerifyEmailClient() {
               fontWeight: 700,
             }}
           >
-            Volver al registro
+            Pedir otro enlace
           </a>
         )}
       </section>

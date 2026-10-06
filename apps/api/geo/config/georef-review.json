@@ -1,0 +1,24 @@
+{
+  "$comment": "Registros de Georef retenidos o excluidos explícitamente. decision=EXCLUDE: excluido por decisión aprobada (no se importa). Sin decision: REVIEW_REQUIRED. Regla de autoridad (D1.1): si el archivo descargado y la API oficial actual de Georef discrepan, no se resuelve por inferencia; la diferencia se registra y el registro queda fuera del catálogo hasta tener evidencia suficiente.",
+  "source": "S6-georef-localidades",
+  "review": {
+    "localidades:02014010": {
+      "name": "Ciudad de Buenos Aires",
+      "reason": "Único registro de 8 dígitos de CABA. Representa la ciudad entera pero viene con departamento.id=02014 (Comuna 2) y gobierno_local=022007 (Comuna 1): los campos explícitos se contradicen y ubicar la ciudad completa como localidad de una comuna no es inequívoco.",
+      "foundAt": "2026-10-05",
+      "decision": "EXCLUDE",
+      "decidedAt": "2026-10-05",
+      "decisionNote": "Aprobado en D1.1: AR-C representa la ciudad; las 15 comunas son rank 2. Este registro no se importa como LOCALITY ni se asigna a Comuna 1 ni 2. Los 48 barrios tampoco se importan como LOCALITY.",
+      "sourceDiscrepancy": {
+        "downloadedFile": {
+          "localidad_censal": "02014010 CABA - Comuna 2",
+          "field": "gobierno_local 022007"
+        },
+        "liveApi20261005": {
+          "localidad_censal": "02000010 Ciudad Autónoma de Buenos Aires",
+          "field": "municipio 022007"
+        }
+      }
+    }
+  }
+}

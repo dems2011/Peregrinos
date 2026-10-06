@@ -1,0 +1,30 @@
+{
+  "$comment": "Cruce EXACTO alfa-2 → nombre CtryNm de ISO 4217 List One (SIX, Pblshd 2026-09-17). ISO 4217 identifica países por nombre en inglés, no por código. Cada nombre se copió literalmente del archivo descargado y un test verifica que exista. Solo los 24 prioritarios (los demás países no reciben moneda en esta fase).",
+  "source": "S3-iso4217-list-one",
+  "names": {
+    "CA": "CANADA",
+    "US": "UNITED STATES OF AMERICA (THE)",
+    "MX": "MEXICO",
+    "SV": "EL SALVADOR",
+    "NI": "NICARAGUA",
+    "GT": "GUATEMALA",
+    "PA": "PANAMA",
+    "VE": "VENEZUELA (BOLIVARIAN REPUBLIC OF)",
+    "CO": "COLOMBIA",
+    "EC": "ECUADOR",
+    "BR": "BRAZIL",
+    "PE": "PERU",
+    "BO": "BOLIVIA (PLURINATIONAL STATE OF)",
+    "CL": "CHILE",
+    "PY": "PARAGUAY",
+    "AR": "ARGENTINA",
+    "UY": "URUGUAY",
+    "IT": "ITALY",
+    "ES": "SPAIN",
+    "PT": "PORTUGAL",
+    "VA": "HOLY SEE (THE)",
+    "CU": "CUBA",
+    "PR": "PUERTO RICO",
+    "DO": "DOMINICAN REPUBLIC (THE)"
+  }
+}

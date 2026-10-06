@@ -68,8 +68,12 @@ async function main() {
   ] as const;
   const parts = [];
   for (const [number, firstName, lastName, documentNumber, phone] of people) {
+    // A4a: cada participación pertenece a una Person (sin cuenta) de la organización.
+    const person = await prisma.person.create({
+      data: { firstName, lastName, documentType: "DNI", documentNumber, phone, phoneDigits: phone.replace(/\D/g, ""), ownerOrganizationId: event.organizationId },
+    });
     parts.push(await prisma.participant.create({
-      data: { eventId: event.id, number, firstName, lastName, documentNumber, phone, phoneDigits: phone.replace(/\D/g, ""), qrToken: newQrToken() },
+      data: { eventId: event.id, personId: person.id, number, firstName, lastName, documentNumber, phone, phoneDigits: phone.replace(/\D/g, ""), qrToken: newQrToken() },
     }));
   }
 

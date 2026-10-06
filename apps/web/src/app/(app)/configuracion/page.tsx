@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { CalendarCog, CalendarDays, ChevronRight, History, KeyRound, LogOut, Phone, Users } from "lucide-react";
+import { CalendarCog, CalendarDays, ChevronRight, History, KeyRound, LogOut, Phone, ShieldCheck, Users } from "lucide-react";
 import { logout } from "@/lib/api";
 import { useApp } from "@/components/AppContext";
 import { Page } from "@/components/ui";
@@ -16,6 +16,8 @@ export default function Configuracion() {
     can("contact:manage") && { href: "/configuracion/contactos", icon: Phone, c: "#18A957", t: "Contactos del evento", s: "A quién pueden llamar los peregrinos" },
     can("participant:manage") && { href: "/configuracion/accesos", icon: KeyRound, c: "#F29B18", t: "Acceso de peregrinos", s: "Enlaces y códigos personales" },
     can("audit:read") && { href: "/configuracion/auditoria", icon: History, c: "#4A5563", t: "Auditoría", s: "Quién hizo cada acción" },
+    // A6: disponible para todo el personal (cada cuenta administra su propio segundo factor).
+    { href: "/configuracion/seguridad", icon: ShieldCheck, c: "#0F766E", t: "Seguridad de la cuenta", s: "Verificación en dos pasos y códigos de recuperación" },
   ].filter(Boolean) as { href: string; icon: typeof Users; c: string; t: string; s: string }[];
   return (
     <Page title="Configuración">
@@ -26,7 +28,7 @@ export default function Configuracion() {
             <span className="grow"><span className="t">{i.t}</span><br /><span className="s">{i.s}</span></span><ChevronRight className="chev" />
           </Link>
         ))}
-        <button className="list-item" onClick={async () => { await logout(); router.replace("/login"); }}>
+        <button className="list-item" onClick={async () => { await logout().catch(() => undefined); router.replace("/login"); }}>
           <span className="tile" style={{ background: "#D94343" }}><LogOut size={24} /></span><span className="grow"><span className="t">Cerrar sesión</span><br /><span className="s">Salir de la aplicación</span></span>
         </button>
       </div>

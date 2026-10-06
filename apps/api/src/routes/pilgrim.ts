@@ -12,6 +12,7 @@ import { newOpaqueToken, sha256 } from "../lib/tokens";
 import { hashAccess, normalizeCode } from "../lib/pilgrim";
 import { cookieBase } from "../lib/session";
 import { saveProof } from "../lib/storage";
+import { assertEventCapability } from "../lib/eventLifecycle";
 import { PILGRIM_COOKIE } from "../plugins/auth";
 
 const COOKIE_PATH = "/api/pilgrim";
@@ -126,8 +127,14 @@ export default async function pilgrimRoutes(app: FastifyInstance) {
   app.post("/payment-proof", { preHandler: app.authenticatePilgrim, config: { rateLimit: { max: 6, timeWindow: "1 minute" } } }, async (req, reply) => {
     const regId = req.pilgrim.registrationId;
     if (!regId) throw new AppError(409, "NOT_APPLICABLE", "Tu inscripción ya fue verificada: no necesitas enviar comprobante.");
-    const reg = await prisma.registration.findUniqueOrThrow({ where: { id: regId }, include: { _count: { select: { proofs: true } } } });
+    const reg = await prisma.registration.findUniqueOrThrow({
+      where: { id: regId },
+      include: { _count: { select: { proofs: true } }, event: { select: { status: true, capabilities: true, organizationId: true } } },
+    });
     if (!["PENDING_PROOF", "IN_REVIEW", "REJECTED"].includes(reg.status)) throw new AppError(409, "NOT_APPLICABLE", "No se pueden enviar comprobantes en este estado.");
+    // A4: como aprobar y reabrir, el comprobante (→ IN_REVIEW) respeta el ciclo de vida del evento y su capacidad.
+    if (reg.event.status === "FINISHED" || reg.event.status === "CANCELLED") throw new AppError(409, "EVENT_CLOSED", "El evento ya terminó o fue cancelado.");
+    assertEventCapability(reg.event, "REGISTRATION");
     if (reg._count.proofs >= 10) throw new AppError(429, "TOO_MANY_PROOFS", "Llegaste al máximo de envíos. Contacta a la organización.");
 
     const fields: Record<string, string> = {};
@@ -143,13 +150,18 @@ export default async function pilgrimRoutes(app: FastifyInstance) {
     if (await prisma.paymentProof.findFirst({ where: { registrationId: regId, sha256: saved.sha256 } })) {
       throw new AppError(409, "DUPLICATE_FILE", "Ya enviaste este mismo archivo.");
     }
-    await prisma.$transaction([
-      prisma.paymentProof.create({
+    await prisma.$transaction(async (tx) => {
+      // A4: PENDING_PROOF/IN_REVIEW/REJECTED → IN_REVIEW, condicional: si una aprobación o cancelación se adelantó, no se pisa.
+      const claimed = await tx.registration.updateMany({
+        where: { id: regId, status: { in: ["PENDING_PROOF", "IN_REVIEW", "REJECTED"] } },
+        data: { status: "IN_REVIEW", rejectionReason: null },
+      });
+      if (claimed.count !== 1) throw new AppError(409, "NOT_APPLICABLE", "No se pueden enviar comprobantes en este estado.");
+      await tx.paymentProof.create({
         data: { registrationId: regId, storageKey: saved.key, mimeType: saved.mime, sizeBytes: saved.size, sha256: saved.sha256, amount: data.amount, reference: data.reference, paidAt: data.paidAt, note: data.note },
-      }),
-      prisma.registration.update({ where: { id: regId }, data: { status: "IN_REVIEW", rejectionReason: null } }),
-    ]);
-    await audit(req, { action: "PAYMENT_PROOF_SUBMITTED", entityType: "Registration", entityId: regId, eventId: reg.eventId, metadata: { mime: saved.mime, bytes: saved.size } });
+      });
+    });
+    await audit(req, { action: "PAYMENT_PROOF_SUBMITTED", entityType: "Registration", entityId: regId, eventId: reg.eventId, organizationId: reg.event.organizationId, metadata: { mime: saved.mime, bytes: saved.size } });
     publish(reg.eventId, { type: "registration.updated", data: { registrationId: regId, status: "IN_REVIEW" } });
     reply.header("Cache-Control", "no-store");
     return reply.status(201).send(await buildRegistrationMe(regId));

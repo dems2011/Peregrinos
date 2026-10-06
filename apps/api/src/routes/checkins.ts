@@ -8,7 +8,7 @@ import {
 import { prisma } from "../lib/prisma";
 import { audit } from "../lib/audit";
 import { AppError, notFound } from "../lib/errors";
-import { assertCanUseCheckpoint, assertEventOpen, eventParam, loadEvent } from "../lib/access";
+import { assertCanUseCheckpoint, assertEventOpen, eventParam, loadEvent, loadEventWith } from "../lib/access";
 import { registerCheckin } from "../lib/checkins";
 
 const idParam = eventParam.extend({ id: z.string().uuid() });
@@ -22,7 +22,7 @@ export default async function checkinRoutes(app: FastifyInstance) {
   /** Registrar llegada. El resultado trae todo lo que necesita la pantalla verde de confirmación. */
   app.post("/", { preHandler: app.requirePermission("checkin:create") }, async (req, reply) => {
     const { eventId } = eventParam.parse(req.params);
-    const event = await loadEvent(req, eventId);
+    const event = await loadEventWith(req, eventId, "CHECKIN");
     assertEventOpen(event.status);
     const body = createCheckinSchema.parse(req.body);
     await assertCanUseCheckpoint(req, body.checkpointId);
@@ -96,14 +96,17 @@ export default async function checkinRoutes(app: FastifyInstance) {
   /** Anular un registro (nunca se borra): queda CANCELLED con motivo, quién y cuándo. */
   app.post("/:id/cancel", { preHandler: app.requirePermission("checkin:correct") }, async (req) => {
     const { eventId, id } = idParam.parse(req.params);
-    await loadEvent(req, eventId);
+    await loadEventWith(req, eventId, "CHECKIN");
     const { reason } = cancelCheckinSchema.parse(req.body);
     const c = await prisma.checkin.findFirst({ where: { id, eventId }, include });
     if (!c) throw notFound("Registro no encontrado.");
     if (c.status === "CANCELLED") throw new AppError(409, "ALREADY_CANCELLED", "Este registro ya estaba anulado.");
-    const updated = await prisma.checkin.update({
-      where: { id }, data: { status: "CANCELLED", cancelReason: reason, cancelledById: req.auth.id, cancelledAt: new Date() }, include,
+    // Condicional sobre el estado leído: dos anulaciones/resoluciones simultáneas no se pisan (ni el motivo ni el autor).
+    const claimed = await prisma.checkin.updateMany({
+      where: { id, eventId, status: c.status }, data: { status: "CANCELLED", cancelReason: reason, cancelledById: req.auth.id, cancelledAt: new Date() },
     });
+    if (claimed.count !== 1) throw new AppError(409, "CHECKIN_CHANGED", "El registro cambió. Vuelve a cargarlo.");
+    const updated = await prisma.checkin.findUniqueOrThrow({ where: { id }, include });
     await audit(req, { action: "CHECKIN_CANCELLED", entityType: "Checkin", entityId: id, eventId, metadata: { reason, participant: c.participant.number, checkpoint: c.checkpoint.name, previousStatus: c.status } });
     publish(eventId, { type: "checkin.updated", data: { checkinId: id } });
     return updated;
@@ -112,7 +115,7 @@ export default async function checkinRoutes(app: FastifyInstance) {
   /** Corregir hora y/o punto de un registro activo. Exige motivo y deja el antes/después en la auditoría. */
   app.patch("/:id", { preHandler: app.requirePermission("checkin:correct") }, async (req) => {
     const { eventId, id } = idParam.parse(req.params);
-    await loadEvent(req, eventId);
+    await loadEventWith(req, eventId, "CHECKIN");
     const body = correctCheckinSchema.parse(req.body);
     const c = await prisma.checkin.findFirst({ where: { id, eventId }, include });
     if (!c) throw notFound("Registro no encontrado.");
@@ -122,9 +125,12 @@ export default async function checkinRoutes(app: FastifyInstance) {
       if (!cp) throw notFound("El punto de control no pertenece a este evento.");
     }
     try {
-      const updated = await prisma.checkin.update({
-        where: { id }, data: { ...(body.timestamp && { timestamp: body.timestamp }), ...(body.checkpointId && { checkpointId: body.checkpointId }) }, include,
+      // Condicional: solo se corrige si sigue ACTIVE (una anulación simultánea gana).
+      const claimed = await prisma.checkin.updateMany({
+        where: { id, eventId, status: "ACTIVE" }, data: { ...(body.timestamp && { timestamp: body.timestamp }), ...(body.checkpointId && { checkpointId: body.checkpointId }) },
       });
+      if (claimed.count !== 1) throw new AppError(409, "NOT_ACTIVE", "Solo se pueden corregir registros activos.");
+      const updated = await prisma.checkin.findUniqueOrThrow({ where: { id }, include });
       await audit(req, {
         action: "CHECKIN_CORRECTED", entityType: "Checkin", entityId: id, eventId,
         metadata: { reason: body.reason, before: { timestamp: c.timestamp.toISOString(), checkpointId: c.checkpointId }, after: { timestamp: updated.timestamp.toISOString(), checkpointId: updated.checkpointId } },
@@ -147,7 +153,7 @@ export default async function checkinRoutes(app: FastifyInstance) {
    */
   app.post("/:id/resolve", { preHandler: app.requirePermission("checkin:correct") }, async (req) => {
     const { eventId, id } = idParam.parse(req.params);
-    await loadEvent(req, eventId);
+    await loadEventWith(req, eventId, "CHECKIN");
     const { action, reason } = resolveConflictSchema.parse(req.body);
     const c = await prisma.checkin.findFirst({ where: { id, eventId } });
     if (!c || c.status !== "CONFLICT") throw notFound("No hay un conflicto pendiente con ese identificador.");
@@ -155,13 +161,17 @@ export default async function checkinRoutes(app: FastifyInstance) {
     const note = reason?.trim() || (action === "KEEP_ORIGINAL" ? "Conflicto resuelto: se conserva el registro original" : "Conflicto resuelto: se reemplaza el registro original");
 
     await prisma.$transaction(async (tx) => {
+      // Reclamo condicional del conflicto: dos resoluciones simultáneas (KEEP vs USE) no pueden aplicarse ambas.
+      const conflictGone = () => new AppError(409, "CONFLICT_RESOLVED", "Este conflicto ya fue resuelto. Vuelve a cargarlo.");
       if (action === "KEEP_ORIGINAL") {
-        await tx.checkin.update({ where: { id }, data: { status: "CANCELLED", cancelReason: note, cancelledById: req.auth.id, cancelledAt: now } });
+        const r = await tx.checkin.updateMany({ where: { id, eventId, status: "CONFLICT" }, data: { status: "CANCELLED", cancelReason: note, cancelledById: req.auth.id, cancelledAt: now } });
+        if (r.count !== 1) throw conflictGone();
       } else {
         if (c.conflictOfId) {
-          await tx.checkin.update({ where: { id: c.conflictOfId }, data: { status: "CANCELLED", cancelReason: note, cancelledById: req.auth.id, cancelledAt: now } });
+          await tx.checkin.updateMany({ where: { id: c.conflictOfId, eventId, status: { not: "CANCELLED" } }, data: { status: "CANCELLED", cancelReason: note, cancelledById: req.auth.id, cancelledAt: now } });
         }
-        await tx.checkin.update({ where: { id }, data: { status: "ACTIVE", conflictOfId: null } });
+        const r = await tx.checkin.updateMany({ where: { id, eventId, status: "CONFLICT" }, data: { status: "ACTIVE", conflictOfId: null } });
+        if (r.count !== 1) throw conflictGone();
       }
     });
     await audit(req, { action: "CHECKIN_CONFLICT_RESOLVED", entityType: "Checkin", entityId: id, eventId, metadata: { action, originalId: c.conflictOfId, note } });

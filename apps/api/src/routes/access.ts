@@ -5,7 +5,7 @@ import { cfg } from "../config";
 import { prisma } from "../lib/prisma";
 import { audit } from "../lib/audit";
 import { notFound } from "../lib/errors";
-import { eventParam, loadEvent } from "../lib/access";
+import { eventParam, loadEvent, loadEventWith } from "../lib/access";
 import { formatCode, hashAccess, newAccessCode, newAccessToken } from "../lib/pilgrim";
 
 const linkFor = (token: string) => `${cfg.WEB_ORIGIN}/p/${token}`;
@@ -39,9 +39,10 @@ export default async function accessRoutes(app: FastifyInstance) {
    * Con `reissue: true`: reemite aunque ya tengan (el enlace anterior y sus sesiones dejan de funcionar).
    * ?format=csv descarga la lista lista para enviar o imprimir.
    */
-  app.post("/issue", { preHandler: manage }, async (req, reply) => {
+  // A6 (§8.2): emitir enlaces personales en lote es una exportación de datos personales → step-up.
+  app.post("/issue", { preHandler: [manage, app.requireRecentMfa] }, async (req, reply) => {
     const { eventId } = eventParam.parse(req.params);
-    await loadEvent(req, eventId);
+    await loadEventWith(req, eventId, "PARTICIPANTS");
     const body = issueAccessSchema.parse(req.body ?? {});
     const format = z.enum(["json", "csv"]).default("json").parse((req.query as { format?: string }).format);
 
@@ -87,7 +88,7 @@ export default async function accessRoutes(app: FastifyInstance) {
   /** Reemite el acceso de una persona (p. ej. perdió el enlace). */
   app.post("/participants/:id/reissue", { preHandler: manage }, async (req, reply) => {
     const { eventId, id } = eventParam.extend({ id: z.string().uuid() }).parse(req.params);
-    await loadEvent(req, eventId);
+    await loadEventWith(req, eventId, "PARTICIPANTS");
     const p = await prisma.participant.findFirst({ where: { id, eventId } });
     if (!p) throw notFound("Persona no encontrada.");
     const token = newAccessToken(), code = newAccessCode();

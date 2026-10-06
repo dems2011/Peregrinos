@@ -6,23 +6,54 @@ export type AccountType = "STAFF" | "PILGRIM" | "PLATFORM";
 export declare const ORGANIZATION_STATUSES: readonly ["DRAFT", "PENDING_REVIEW", "APPROVED", "REJECTED", "SUSPENDED", "ARCHIVED"];
 export type OrganizationStatus = (typeof ORGANIZATION_STATUSES)[number];
 export declare const ORGANIZATION_STATUS_LABEL: Record<OrganizationStatus, string>;
-/** DRAFT: en preparación, no operativo · SCHEDULED: programado · IN_PROGRESS: activo · FINISHED: cerrado · CANCELLED: cancelado. */
+/**
+ * Ciclo de vida del evento (independiente del de la inscripción).
+ * DRAFT: en preparación · SCHEDULED: publicado · IN_PROGRESS: en curso · FINISHED: finalizado · CANCELLED: cancelado.
+ */
 export declare const EVENT_STATUSES: readonly ["DRAFT", "SCHEDULED", "IN_PROGRESS", "FINISHED", "CANCELLED"];
 export type EventStatus = (typeof EVENT_STATUSES)[number];
 export declare const EVENT_STATUS_LABEL: Record<EventStatus, string>;
+/** A4: estados con los que se puede crear un evento (crear publicado = DRAFT → SCHEDULED en un paso). */
+export declare const EVENT_INITIAL_STATUSES: readonly ["DRAFT", "SCHEDULED"];
+/** A4: únicas transiciones permitidas. FINISHED y CANCELLED son terminales. */
+export declare const EVENT_TRANSITIONS: Readonly<Record<EventStatus, readonly EventStatus[]>>;
+export declare const canTransitionEvent: (from: EventStatus, to: EventStatus) => boolean;
+export declare const EVENT_CAPABILITIES: readonly ["INFO", "LOCATION", "REGISTRATION", "PARTICIPANTS", "CHECKIN", "ROUTE", "POINTS", "CONTACTS", "CERTIFICATES", "VOLUNTEERS", "COMMUNICATIONS", "DOCUMENTS"];
+export type EventCapability = (typeof EVENT_CAPABILITIES)[number];
+/** Reservadas: el servidor las rechaza hasta que exista su módulo (también hay CHECK en la BD). A5.1 habilitó VOLUNTEERS. */
+export declare const RESERVED_EVENT_CAPABILITIES: readonly ["COMMUNICATIONS", "DOCUMENTS"];
+export type ImplementedEventCapability = Exclude<EventCapability, (typeof RESERVED_EVENT_CAPABILITIES)[number]>;
+export declare const IMPLEMENTED_EVENT_CAPABILITIES: ImplementedEventCapability[];
+/**
+ * Valor inicial si el alta no indica capacidades: lo mismo que antes de A4 (todo lo implementado hasta A4).
+ * VOLUNTEERS (A5.1) se activa por evento cuando se necesita; no forma parte del valor inicial.
+ */
+export declare const DEFAULT_EVENT_CAPABILITIES: readonly EventCapability[];
+export declare const EVENT_CAPABILITY_LABEL: Record<EventCapability, string>;
+/** Dependencias que impone el modelo de datos (también hay CHECK en la BD). */
+export declare const EVENT_CAPABILITY_REQUIRES: Partial<Record<EventCapability, readonly EventCapability[]>>;
+/** INFO siempre está: nombre y fecha son obligatorios en todo evento. */
+export declare function validateEventCapabilities(caps: readonly EventCapability[]): {
+    field: string;
+    message: string;
+}[];
+export declare const hasEventCapability: (e: {
+    capabilities: readonly string[];
+}, c: EventCapability) => boolean;
 /** Estados en los que el evento no admite operación (llegadas, altas desde inscripciones). */
 export declare const isEventOperable: (s: EventStatus) => s is "SCHEDULED" | "IN_PROGRESS";
 export declare const EVENT_TYPES: readonly ["PILGRIMAGE", "PROCESSION", "PATRONAL_FEAST", "LITURGICAL_CELEBRATION", "ROSARY", "RETREAT", "GATHERING", "COMMUNITY_ACTIVITY", "CULTURAL_ACTIVITY", "OTHER"];
 export type EventType = (typeof EVENT_TYPES)[number];
-/** Qué habilita cada tipo. hasRoute: admite trayecto (EventRoute) y la gestión de recorrido. */
+/** Etiqueta de cada tipo. A4: el tipo ya no habilita módulos; eso lo deciden las capacidades del evento. */
 export declare const EVENT_TYPE_INFO: Record<EventType, {
     label: string;
-    hasRoute: boolean;
 }>;
 export declare const EVENT_VISIBILITIES: readonly ["PRIVATE", "UNLISTED", "PUBLIC"];
 export type EventVisibility = (typeof EVENT_VISIBILITIES)[number];
 export declare const EVENT_VISIBILITY_LABEL: Record<EventVisibility, string>;
-export type Permission = "event:read" | "event:create" | "event:update" | "user:manage" | "assignment:manage" | "participant:read" | "participant:create" | "participant:manage" | "checkpoint:read" | "checkpoint:manage" | "checkin:create" | "checkin:read" | "checkin:correct" | "report:read" | "export:run" | "backup:run" | "audit:read" | "contact:manage" | "invitation:manage" | "payment:review" | "credential:export";
+export type Permission = "event:read" | "event:create" | "event:update" | "user:manage" | "assignment:manage" | "participant:read" | "participant:create" | "participant:manage" | "checkpoint:read" | "checkpoint:manage" | "checkin:create" | "checkin:read" | "checkin:correct" | "report:read" | "export:run" | "backup:run" | "audit:read" | "contact:manage" | "invitation:manage" | "payment:review" | "credential:export"
+/** A5.1: gestionar voluntarios, equipos, zonas, funciones, turnos y asignaciones de los eventos de la organización. */
+ | "volunteer:manage";
 export declare const ROLE_PERMISSIONS: Record<Role, ReadonlySet<Permission>>;
 export declare function can(role: Role, permission: Permission): boolean;
 export declare const loginSchema: z.ZodObject<{
@@ -34,6 +65,42 @@ export declare const loginSchema: z.ZodObject<{
 }, {
     email: string;
     password: string;
+}>;
+/** Reenvío de verificación y pedido de recuperación: solo el correo (la respuesta nunca revela si existe). */
+export declare const accountEmailSchema: z.ZodObject<{
+    email: z.ZodString;
+}, "strict", z.ZodTypeAny, {
+    email: string;
+}, {
+    email: string;
+}>;
+/** Restablecer con el token del correo (llega en el cuerpo, nunca en la URL de la API). */
+export declare const passwordResetConfirmSchema: z.ZodObject<{
+    token: z.ZodString;
+    password: z.ZodString;
+}, "strict", z.ZodTypeAny, {
+    password: string;
+    token: string;
+}, {
+    password: string;
+    token: string;
+}>;
+/** Cambio de contraseña con la sesión iniciada: exige la contraseña actual. */
+export declare const changePasswordSchema: z.ZodEffects<z.ZodObject<{
+    currentPassword: z.ZodString;
+    newPassword: z.ZodString;
+}, "strict", z.ZodTypeAny, {
+    currentPassword: string;
+    newPassword: string;
+}, {
+    currentPassword: string;
+    newPassword: string;
+}>, {
+    currentPassword: string;
+    newPassword: string;
+}, {
+    currentPassword: string;
+    newPassword: string;
 }>;
 export declare const registerPilgrimSchema: z.ZodObject<{
     firstName: z.ZodString;
@@ -60,6 +127,104 @@ export declare const registerPilgrimSchema: z.ZodObject<{
     phone: string;
     acceptTerms: true;
 }>;
+/** Alta manual por el personal. Si hay coincidencias, se pide confirmar (confirmNewPerson) o elegir la existente. */
+export declare const createPersonSchema: z.ZodObject<{
+    confirmNewPerson: z.ZodOptional<z.ZodLiteral<true>>;
+    firstName: z.ZodString;
+    lastName: z.ZodOptional<z.ZodString>;
+    documentType: z.ZodOptional<z.ZodString>;
+    documentNumber: z.ZodOptional<z.ZodEffects<z.ZodString, string, string>>;
+    phone: z.ZodOptional<z.ZodEffects<z.ZodString, string, string>>;
+    email: z.ZodOptional<z.ZodString>;
+    birthDate: z.ZodOptional<z.ZodEffects<z.ZodDate, Date, Date>>;
+}, "strict", z.ZodTypeAny, {
+    firstName: string;
+    email?: string | undefined;
+    lastName?: string | undefined;
+    documentNumber?: string | undefined;
+    phone?: string | undefined;
+    confirmNewPerson?: true | undefined;
+    documentType?: string | undefined;
+    birthDate?: Date | undefined;
+}, {
+    firstName: string;
+    email?: string | undefined;
+    lastName?: string | undefined;
+    documentNumber?: string | undefined;
+    phone?: string | undefined;
+    confirmNewPerson?: true | undefined;
+    documentType?: string | undefined;
+    birthDate?: Date | undefined;
+}>;
+export declare const updatePersonSchema: z.ZodObject<{
+    firstName: z.ZodOptional<z.ZodString>;
+    lastName: z.ZodOptional<z.ZodOptional<z.ZodString>>;
+    documentType: z.ZodOptional<z.ZodOptional<z.ZodString>>;
+    documentNumber: z.ZodOptional<z.ZodOptional<z.ZodEffects<z.ZodString, string, string>>>;
+    phone: z.ZodOptional<z.ZodOptional<z.ZodEffects<z.ZodString, string, string>>>;
+    email: z.ZodOptional<z.ZodOptional<z.ZodString>>;
+    birthDate: z.ZodOptional<z.ZodOptional<z.ZodEffects<z.ZodDate, Date, Date>>>;
+}, "strict", z.ZodTypeAny, {
+    email?: string | undefined;
+    firstName?: string | undefined;
+    lastName?: string | undefined;
+    documentNumber?: string | undefined;
+    phone?: string | undefined;
+    documentType?: string | undefined;
+    birthDate?: Date | undefined;
+}, {
+    email?: string | undefined;
+    firstName?: string | undefined;
+    lastName?: string | undefined;
+    documentNumber?: string | undefined;
+    phone?: string | undefined;
+    documentType?: string | undefined;
+    birthDate?: Date | undefined;
+}>;
+export declare const personListSchema: z.ZodObject<{
+    q: z.ZodOptional<z.ZodString>;
+    page: z.ZodDefault<z.ZodNumber>;
+    pageSize: z.ZodDefault<z.ZodNumber>;
+}, "strip", z.ZodTypeAny, {
+    page: number;
+    pageSize: number;
+    q?: string | undefined;
+}, {
+    q?: string | undefined;
+    page?: number | undefined;
+    pageSize?: number | undefined;
+}>;
+/** Fusión explícita de duplicados: nunca automática. */
+export declare const mergePersonSchema: z.ZodObject<{
+    intoPersonId: z.ZodString;
+    confirm: z.ZodLiteral<true>;
+}, "strict", z.ZodTypeAny, {
+    intoPersonId: string;
+    confirm: true;
+}, {
+    intoPersonId: string;
+    confirm: true;
+}>;
+/** El titular canjea desde su cuenta (email verificado) el código que le entregó la organización (prueba de posesión). */
+export declare const claimPersonSchema: z.ZodObject<{
+    code: z.ZodString;
+    /** A5.0: confirmación explícita del titular para unir el registro de la organización a su cuenta. */
+    confirm: z.ZodLiteral<true>;
+}, "strict", z.ZodTypeAny, {
+    code: string;
+    confirm: true;
+}, {
+    code: string;
+    confirm: true;
+}>;
+/** Desvinculación de una cuenta por la organización dueña de la Person: siempre con motivo (queda auditado). */
+export declare const unlinkAccountSchema: z.ZodObject<{
+    reason: z.ZodString;
+}, "strict", z.ZodTypeAny, {
+    reason: string;
+}, {
+    reason: string;
+}>;
 export declare const bootstrapSchema: z.ZodObject<{
     organizationName: z.ZodString;
     name: z.ZodString;
@@ -76,7 +241,7 @@ export declare const bootstrapSchema: z.ZodObject<{
     organizationName: string;
     name: string;
 }>;
-/** Trayecto (origen → destino). Solo para tipos con EVENT_TYPE_INFO[type].hasRoute. */
+/** Trayecto (origen → destino). Requiere la capacidad ROUTE. */
 export declare const eventRouteSchema: z.ZodObject<{
     originName: z.ZodOptional<z.ZodNullable<z.ZodString>>;
     originAddress: z.ZodOptional<z.ZodNullable<z.ZodString>>;
@@ -113,12 +278,15 @@ export declare const eventSettingsSchemas: Record<EventType, z.ZodTypeAny>;
 /** Sin `type` se asume OTHER (compatibilidad con clientes que aún no lo envían). */
 export declare const createEventSchema: z.ZodObject<{
     type: z.ZodDefault<z.ZodEnum<["PILGRIMAGE", "PROCESSION", "PATRONAL_FEAST", "LITURGICAL_CELEBRATION", "ROSARY", "RETREAT", "GATHERING", "COMMUNITY_ACTIVITY", "CULTURAL_ACTIVITY", "OTHER"]>>;
+    status: z.ZodDefault<z.ZodEnum<["DRAFT", "SCHEDULED"]>>;
     name: z.ZodString;
     description: z.ZodOptional<z.ZodString>;
     startsAt: z.ZodDate;
     endsAt: z.ZodOptional<z.ZodNullable<z.ZodDate>>;
-    timezone: z.ZodDefault<z.ZodString>;
-    status: z.ZodDefault<z.ZodEnum<["DRAFT", "SCHEDULED", "IN_PROGRESS", "FINISHED", "CANCELLED"]>>;
+    /** Zona horaria IANA del evento: todas sus fechas se muestran en ella. */
+    timezone: z.ZodDefault<z.ZodEffects<z.ZodString, string, string>>;
+    /** A4: capacidades del evento. Sin indicar, el alta usa DEFAULT_EVENT_CAPABILITIES. */
+    capabilities: z.ZodOptional<z.ZodArray<z.ZodEnum<["INFO", "LOCATION", "REGISTRATION", "PARTICIPANTS", "CHECKIN", "ROUTE", "POINTS", "CONTACTS", "CERTIFICATES", "VOLUNTEERS", "COMMUNICATIONS", "DOCUMENTS"]>, "many">>;
     /** Nombre de la parroquia que se imprime en la credencial. */
     parishName: z.ZodOptional<z.ZodNullable<z.ZodString>>;
     locationName: z.ZodOptional<z.ZodNullable<z.ZodString>>;
@@ -169,10 +337,11 @@ export declare const createEventSchema: z.ZodObject<{
     }>>>;
 }, "strip", z.ZodTypeAny, {
     type: "PILGRIMAGE" | "PROCESSION" | "PATRONAL_FEAST" | "LITURGICAL_CELEBRATION" | "ROSARY" | "RETREAT" | "GATHERING" | "COMMUNITY_ACTIVITY" | "CULTURAL_ACTIVITY" | "OTHER";
-    status: "DRAFT" | "SCHEDULED" | "IN_PROGRESS" | "FINISHED" | "CANCELLED";
+    status: "DRAFT" | "SCHEDULED";
     name: string;
     startsAt: Date;
     timezone: string;
+    capabilities?: ("INFO" | "LOCATION" | "REGISTRATION" | "PARTICIPANTS" | "CHECKIN" | "ROUTE" | "POINTS" | "CONTACTS" | "CERTIFICATES" | "VOLUNTEERS" | "COMMUNICATIONS" | "DOCUMENTS")[] | undefined;
     description?: string | undefined;
     endsAt?: Date | null | undefined;
     parishName?: string | null | undefined;
@@ -204,8 +373,9 @@ export declare const createEventSchema: z.ZodObject<{
 }, {
     name: string;
     startsAt: Date;
+    capabilities?: ("INFO" | "LOCATION" | "REGISTRATION" | "PARTICIPANTS" | "CHECKIN" | "ROUTE" | "POINTS" | "CONTACTS" | "CERTIFICATES" | "VOLUNTEERS" | "COMMUNICATIONS" | "DOCUMENTS")[] | undefined;
     type?: "PILGRIMAGE" | "PROCESSION" | "PATRONAL_FEAST" | "LITURGICAL_CELEBRATION" | "ROSARY" | "RETREAT" | "GATHERING" | "COMMUNITY_ACTIVITY" | "CULTURAL_ACTIVITY" | "OTHER" | undefined;
-    status?: "DRAFT" | "SCHEDULED" | "IN_PROGRESS" | "FINISHED" | "CANCELLED" | undefined;
+    status?: "DRAFT" | "SCHEDULED" | undefined;
     description?: string | undefined;
     endsAt?: Date | null | undefined;
     timezone?: string | undefined;
@@ -242,8 +412,9 @@ export declare const updateEventSchema: z.ZodObject<{
     type: z.ZodOptional<z.ZodEnum<["PILGRIMAGE", "PROCESSION", "PATRONAL_FEAST", "LITURGICAL_CELEBRATION", "ROSARY", "RETREAT", "GATHERING", "COMMUNITY_ACTIVITY", "CULTURAL_ACTIVITY", "OTHER"]>>;
     startsAt: z.ZodOptional<z.ZodDate>;
     endsAt: z.ZodOptional<z.ZodOptional<z.ZodNullable<z.ZodDate>>>;
-    timezone: z.ZodOptional<z.ZodDefault<z.ZodString>>;
+    timezone: z.ZodOptional<z.ZodDefault<z.ZodEffects<z.ZodString, string, string>>>;
     status: z.ZodOptional<z.ZodDefault<z.ZodEnum<["DRAFT", "SCHEDULED", "IN_PROGRESS", "FINISHED", "CANCELLED"]>>>;
+    capabilities: z.ZodOptional<z.ZodOptional<z.ZodArray<z.ZodEnum<["INFO", "LOCATION", "REGISTRATION", "PARTICIPANTS", "CHECKIN", "ROUTE", "POINTS", "CONTACTS", "CERTIFICATES", "VOLUNTEERS", "COMMUNICATIONS", "DOCUMENTS"]>, "many">>>;
     parishName: z.ZodOptional<z.ZodOptional<z.ZodNullable<z.ZodString>>>;
     locationName: z.ZodOptional<z.ZodOptional<z.ZodNullable<z.ZodString>>>;
     address: z.ZodOptional<z.ZodOptional<z.ZodNullable<z.ZodString>>>;
@@ -291,6 +462,7 @@ export declare const updateEventSchema: z.ZodObject<{
         distanceKm?: number | null | undefined;
     }>>>>;
 }, "strip", z.ZodTypeAny, {
+    capabilities?: ("INFO" | "LOCATION" | "REGISTRATION" | "PARTICIPANTS" | "CHECKIN" | "ROUTE" | "POINTS" | "CONTACTS" | "CERTIFICATES" | "VOLUNTEERS" | "COMMUNICATIONS" | "DOCUMENTS")[] | undefined;
     type?: "PILGRIMAGE" | "PROCESSION" | "PATRONAL_FEAST" | "LITURGICAL_CELEBRATION" | "ROSARY" | "RETREAT" | "GATHERING" | "COMMUNITY_ACTIVITY" | "CULTURAL_ACTIVITY" | "OTHER" | undefined;
     status?: "DRAFT" | "SCHEDULED" | "IN_PROGRESS" | "FINISHED" | "CANCELLED" | undefined;
     name?: string | undefined;
@@ -325,6 +497,7 @@ export declare const updateEventSchema: z.ZodObject<{
         distanceKm?: number | null | undefined;
     } | null | undefined;
 }, {
+    capabilities?: ("INFO" | "LOCATION" | "REGISTRATION" | "PARTICIPANTS" | "CHECKIN" | "ROUTE" | "POINTS" | "CONTACTS" | "CERTIFICATES" | "VOLUNTEERS" | "COMMUNICATIONS" | "DOCUMENTS")[] | undefined;
     type?: "PILGRIMAGE" | "PROCESSION" | "PATRONAL_FEAST" | "LITURGICAL_CELEBRATION" | "ROSARY" | "RETREAT" | "GATHERING" | "COMMUNITY_ACTIVITY" | "CULTURAL_ACTIVITY" | "OTHER" | undefined;
     status?: "DRAFT" | "SCHEDULED" | "IN_PROGRESS" | "FINISHED" | "CANCELLED" | undefined;
     name?: string | undefined;
@@ -384,17 +557,46 @@ export declare function validateEventCoherence(e: {
     hasRoute: boolean;
     latitude?: number | null;
     longitude?: number | null;
+    /** A4: capacidades finales y datos del propio evento que dependen de ellas. */
+    capabilities: readonly EventCapability[];
+    hasLocation: boolean;
+    registrationOpen: boolean;
+    certificateEnabled: boolean;
 }): {
     field: string;
     message: string;
 }[];
-/** Inscripción abierta ahora: interruptor + estado operable + ventana opcional. */
-export declare function isRegistrationOpenNow(e: {
+/**
+ * A4: estado de la inscripción, DERIVADO (no se guarda y nunca cambia el estado del evento).
+ * DISABLED: sin capacidad REGISTRATION · CLOSED: interruptor apagado, evento no publicado/en curso o ventana vencida
+ * · NOT_YET_OPEN: antes de registrationOpensAt · FULL: participantes ACTIVE >= capacity · OPEN: admite inscripciones.
+ * El cupo cuenta solo Participant ACTIVE: las inscripciones pendientes no lo consumen.
+ */
+export declare const REGISTRATION_STATES: readonly ["DISABLED", "NOT_YET_OPEN", "OPEN", "FULL", "CLOSED"];
+export type RegistrationState = (typeof REGISTRATION_STATES)[number];
+/** Cupo agotado: solo con capacity definido; cuenta únicamente participantes ACTIVE. */
+export declare const isCapacityFull: (capacity: number | null | undefined, activeParticipants: number) => boolean;
+export declare function deriveRegistrationState(e: {
+    capabilities: readonly string[];
     registrationOpen: boolean;
     status: EventStatus;
     registrationOpensAt?: Date | null;
     registrationClosesAt?: Date | null;
-}, now?: Date): boolean;
+    capacity?: number | null;
+    activeParticipants: number;
+}, now?: Date): RegistrationState;
+/** Inscripción abierta ahora (capacidad + interruptor + estado operable + ventana opcional). */
+export declare const isRegistrationOpenNow: (e: Parameters<typeof deriveRegistrationState>[0], now?: Date) => boolean;
+/**
+ * A4: asistencia DERIVADA (sin columna). ATTENDED: tiene al menos una llegada ACTIVE.
+ * NO_SHOW: evento finalizado, participante ACTIVE y sin llegadas. null: todavía no se puede determinar.
+ */
+export type Attendance = "ATTENDED" | "NO_SHOW";
+export declare function deriveAttendance(p: {
+    eventStatus: EventStatus;
+    participantStatus: string;
+    activeCheckins: number;
+}): Attendance | null;
 export declare const createUserSchema: z.ZodObject<{
     name: z.ZodString;
     email: z.ZodString;
@@ -474,10 +676,59 @@ export interface MeResponse {
     assignments: AssignmentView[];
     /** Punto de control actual (solo operadores): se abre directo en "Registrar llegada". */
     currentCheckpoint: AssignmentView | null;
+    /** A6: estado del segundo factor de la cuenta y de esta sesión. */
+    mfa: MfaStatus;
 }
+export interface MfaStatus {
+    enabled: boolean;
+    /** SUPERADMIN sin MFA: la sesión solo permite enrolarse (la API responde 403 MFA_ENROLLMENT_REQUIRED). */
+    enrollmentRequired: boolean;
+    /** Hasta cuándo vale el último segundo factor de esta sesión para acciones sensibles (ISO) o null. */
+    stepUpValidUntil: string | null;
+    recoveryCodesRemaining: number;
+}
+/** Login en dos pasos: la contraseña fue correcta y falta el segundo factor (no hay sesión todavía). */
+export interface MfaChallengeResponse {
+    mfaRequired: true;
+}
+export declare const isMfaChallenge: (v: unknown) => v is MfaChallengeResponse;
+/** Segundo paso del login y step-up: un código TOTP o un código de recuperación (exactamente uno). */
+export declare const mfaVerifySchema: z.ZodEffects<z.ZodObject<{
+    code: z.ZodOptional<z.ZodEffects<z.ZodString, string, string>>;
+    recoveryCode: z.ZodOptional<z.ZodString>;
+}, "strict", z.ZodTypeAny, {
+    code?: string | undefined;
+    recoveryCode?: string | undefined;
+}, {
+    code?: string | undefined;
+    recoveryCode?: string | undefined;
+}>, {
+    code?: string | undefined;
+    recoveryCode?: string | undefined;
+}, {
+    code?: string | undefined;
+    recoveryCode?: string | undefined;
+}>;
+/** Confirmar el enrolamiento: el primer código generado por la app. */
+export declare const mfaConfirmSchema: z.ZodObject<{
+    code: z.ZodEffects<z.ZodString, string, string>;
+}, "strict", z.ZodTypeAny, {
+    code: string;
+}, {
+    code: string;
+}>;
+/** Desactivar MFA o regenerar códigos: exige la contraseña además del step-up. */
+export declare const mfaPasswordSchema: z.ZodObject<{
+    password: z.ZodString;
+}, "strict", z.ZodTypeAny, {
+    password: string;
+}, {
+    password: string;
+}>;
 /** Número visible con ceros: 1 -> "001" */
 export declare const formatParticipantNumber: (n: number) => string;
-export declare const PARTICIPANT_STATUSES: readonly ["ACTIVE", "INACTIVE", "CANCELLED"];
+/** A4: participación oficial confirmada (ACTIVE) o cancelada. La asistencia se deriva (deriveAttendance). */
+export declare const PARTICIPANT_STATUSES: readonly ["ACTIVE", "CANCELLED"];
 export declare const CHECKIN_METHODS: readonly ["NUMBER", "QR", "SEARCH"];
 export type CheckinMethod = (typeof CHECKIN_METHODS)[number];
 /** Prefijo del contenido del QR: "PG1:<token opaco>". Nunca lleva datos personales. */
@@ -486,7 +737,13 @@ export declare const qrContent: (token: string) => string;
 export declare const parseQrContent: (raw: string) => string | null;
 export declare const normalizeDocument: (s: string) => string;
 export declare const digitsOnly: (s: string) => string;
+/**
+ * A4a: la participación pertenece a una Person. personId elige una existente de la organización; sin personId se crea
+ * una nueva, salvo que haya coincidencias por documento o teléfono: entonces se exige elegir o confirmNewPerson.
+ */
 export declare const createParticipantSchema: z.ZodObject<{
+    personId: z.ZodOptional<z.ZodString>;
+    confirmNewPerson: z.ZodOptional<z.ZodLiteral<true>>;
     firstName: z.ZodString;
     lastName: z.ZodString;
     documentNumber: z.ZodEffects<z.ZodString, string, string>;
@@ -501,6 +758,8 @@ export declare const createParticipantSchema: z.ZodObject<{
     phone: string;
     documentType: string;
     number?: number | undefined;
+    confirmNewPerson?: true | undefined;
+    personId?: string | undefined;
     notes?: string | undefined;
 }, {
     firstName: string;
@@ -508,7 +767,9 @@ export declare const createParticipantSchema: z.ZodObject<{
     documentNumber: string;
     phone: string;
     number?: number | undefined;
+    confirmNewPerson?: true | undefined;
     documentType?: string | undefined;
+    personId?: string | undefined;
     notes?: string | undefined;
 }>;
 export declare const updateParticipantSchema: z.ZodObject<{
@@ -520,10 +781,10 @@ export declare const updateParticipantSchema: z.ZodObject<{
     notes: z.ZodOptional<z.ZodOptional<z.ZodString>>;
     number: z.ZodOptional<z.ZodOptional<z.ZodNumber>>;
 } & {
-    status: z.ZodOptional<z.ZodEnum<["ACTIVE", "INACTIVE", "CANCELLED"]>>;
+    status: z.ZodOptional<z.ZodEnum<["ACTIVE", "CANCELLED"]>>;
 }, "strip", z.ZodTypeAny, {
     number?: number | undefined;
-    status?: "CANCELLED" | "ACTIVE" | "INACTIVE" | undefined;
+    status?: "CANCELLED" | "ACTIVE" | undefined;
     firstName?: string | undefined;
     lastName?: string | undefined;
     documentNumber?: string | undefined;
@@ -532,7 +793,7 @@ export declare const updateParticipantSchema: z.ZodObject<{
     notes?: string | undefined;
 }, {
     number?: number | undefined;
-    status?: "CANCELLED" | "ACTIVE" | "INACTIVE" | undefined;
+    status?: "CANCELLED" | "ACTIVE" | undefined;
     firstName?: string | undefined;
     lastName?: string | undefined;
     documentNumber?: string | undefined;
@@ -545,17 +806,17 @@ export declare const participantListSchema: z.ZodObject<{
     pageSize: z.ZodDefault<z.ZodNumber>;
 } & {
     q: z.ZodOptional<z.ZodString>;
-    status: z.ZodOptional<z.ZodEnum<["ACTIVE", "INACTIVE", "CANCELLED"]>>;
+    status: z.ZodOptional<z.ZodEnum<["ACTIVE", "CANCELLED"]>>;
 }, "strip", z.ZodTypeAny, {
     page: number;
     pageSize: number;
-    status?: "CANCELLED" | "ACTIVE" | "INACTIVE" | undefined;
+    status?: "CANCELLED" | "ACTIVE" | undefined;
     q?: string | undefined;
 }, {
-    status?: "CANCELLED" | "ACTIVE" | "INACTIVE" | undefined;
+    status?: "CANCELLED" | "ACTIVE" | undefined;
+    q?: string | undefined;
     page?: number | undefined;
     pageSize?: number | undefined;
-    q?: string | undefined;
 }>;
 export declare const createCheckpointSchema: z.ZodObject<{
     latitude: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
@@ -790,12 +1051,12 @@ export declare const acceptInvitationSchema: z.ZodObject<{
     password: z.ZodString;
 }, "strict", z.ZodTypeAny, {
     password: string;
-    name: string;
     token: string;
+    name: string;
 }, {
     password: string;
-    name: string;
     token: string;
+    name: string;
 }>;
 /** Solicitud pública de una nueva parroquia. No incluye estado, rol ni organización: los decide la plataforma. */
 export declare const organizationRequestSchema: z.ZodObject<{
@@ -843,8 +1104,8 @@ export declare const resubmitOrganizationRequestSchema: z.ZodObject<{
     notes: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, string | undefined>;
     token: z.ZodString;
 }, "strict", z.ZodTypeAny, {
-    parishName: string;
     token: string;
+    parishName: string;
     contactName: string;
     contactEmail: string;
     countryCode: string;
@@ -853,8 +1114,8 @@ export declare const resubmitOrganizationRequestSchema: z.ZodObject<{
     contactPhone?: string | undefined;
     locality?: string | undefined;
 }, {
-    parishName: string;
     token: string;
+    parishName: string;
     contactName: string;
     contactEmail: string;
     countryCode: string;
@@ -1054,17 +1315,17 @@ export declare const createRegistrationSchema: z.ZodObject<{
     documentNumber: z.ZodEffects<z.ZodString, string, string>;
     phone: z.ZodEffects<z.ZodString, string, string>;
 }, "strip", z.ZodTypeAny, {
+    token: string;
     firstName: string;
     lastName: string;
     documentNumber: string;
     phone: string;
-    token: string;
 }, {
+    token: string;
     firstName: string;
     lastName: string;
     documentNumber: string;
     phone: string;
-    token: string;
 }>;
 export declare const proofFieldsSchema: z.ZodObject<{
     amount: z.ZodEffects<z.ZodOptional<z.ZodNumber>, number | undefined, unknown>;
@@ -1095,9 +1356,9 @@ export declare const registrationListSchema: z.ZodObject<{
     q?: string | undefined;
 }, {
     status?: "APPROVED" | "REJECTED" | "CANCELLED" | "PENDING_PROOF" | "IN_REVIEW" | undefined;
+    q?: string | undefined;
     page?: number | undefined;
     pageSize?: number | undefined;
-    q?: string | undefined;
 }>;
 export declare const approveRegistrationSchema: z.ZodObject<{
     /** Opcional: número a asignar. Si falta, se toma el siguiente libre. */
@@ -1114,6 +1375,14 @@ export declare const approveRegistrationSchema: z.ZodObject<{
 export declare const rejectRegistrationSchema: z.ZodObject<{
     reason: z.ZodString;
 }, "strip", z.ZodTypeAny, {
+    reason: string;
+}, {
+    reason: string;
+}>;
+/** A4: el personal reabre una inscripción rechazada (REJECTED → IN_REVIEW). Siempre con motivo; aprobar sigue pasando por IN_REVIEW. */
+export declare const reopenRegistrationSchema: z.ZodObject<{
+    reason: z.ZodString;
+}, "strict", z.ZodTypeAny, {
     reason: string;
 }, {
     reason: string;
@@ -1164,3 +1433,199 @@ export interface PilgrimRegistrationMe {
     };
     contacts: PilgrimMe["contacts"];
 }
+/**
+ * Estado de la participación como voluntario (no es un rol de cuenta). ASSIGNED/ACTIVE no son estados:
+ * se derivan de las asignaciones vigentes y de los turnos.
+ */
+export declare const VOLUNTEER_STATUSES: readonly ["REQUESTED", "UNDER_REVIEW", "APPROVED", "REJECTED", "WITHDRAWN", "REVOKED", "COMPLETED"];
+export type VolunteerStatus = (typeof VOLUNTEER_STATUSES)[number];
+export declare const VOLUNTEER_STATUS_LABEL: Record<VolunteerStatus, string>;
+/** Alta por el personal: como candidato (REQUESTED) o ya aprobado. */
+export declare const VOLUNTEER_INITIAL_STATUSES: readonly ["REQUESTED", "APPROVED"];
+export declare const VOLUNTEER_TRANSITIONS: Readonly<Record<VolunteerStatus, readonly VolunteerStatus[]>>;
+export declare const canTransitionVolunteer: (from: VolunteerStatus, to: VolunteerStatus) => boolean;
+/** Rechazar o dar de baja exige motivo. */
+export declare const VOLUNTEER_REASON_REQUIRED: readonly VolunteerStatus[];
+/** Alta de voluntario: una Person existente (visible para la organización) o una nueva (con confirmación de duplicados). */
+export declare const createVolunteerSchema: z.ZodEffects<z.ZodObject<{
+    personId: z.ZodOptional<z.ZodString>;
+    firstName: z.ZodOptional<z.ZodString>;
+    lastName: z.ZodOptional<z.ZodString>;
+    documentNumber: z.ZodOptional<z.ZodString>;
+    phone: z.ZodOptional<z.ZodString>;
+    email: z.ZodOptional<z.ZodString>;
+    confirmNewPerson: z.ZodOptional<z.ZodLiteral<true>>;
+    status: z.ZodDefault<z.ZodEnum<["REQUESTED", "APPROVED"]>>;
+    notes: z.ZodOptional<z.ZodString>;
+}, "strict", z.ZodTypeAny, {
+    status: "APPROVED" | "REQUESTED";
+    email?: string | undefined;
+    firstName?: string | undefined;
+    lastName?: string | undefined;
+    documentNumber?: string | undefined;
+    phone?: string | undefined;
+    confirmNewPerson?: true | undefined;
+    personId?: string | undefined;
+    notes?: string | undefined;
+}, {
+    email?: string | undefined;
+    status?: "APPROVED" | "REQUESTED" | undefined;
+    firstName?: string | undefined;
+    lastName?: string | undefined;
+    documentNumber?: string | undefined;
+    phone?: string | undefined;
+    confirmNewPerson?: true | undefined;
+    personId?: string | undefined;
+    notes?: string | undefined;
+}>, {
+    status: "APPROVED" | "REQUESTED";
+    email?: string | undefined;
+    firstName?: string | undefined;
+    lastName?: string | undefined;
+    documentNumber?: string | undefined;
+    phone?: string | undefined;
+    confirmNewPerson?: true | undefined;
+    personId?: string | undefined;
+    notes?: string | undefined;
+}, {
+    email?: string | undefined;
+    status?: "APPROVED" | "REQUESTED" | undefined;
+    firstName?: string | undefined;
+    lastName?: string | undefined;
+    documentNumber?: string | undefined;
+    phone?: string | undefined;
+    confirmNewPerson?: true | undefined;
+    personId?: string | undefined;
+    notes?: string | undefined;
+}>;
+/**
+ * A5.1: canje por la organización del código que la persona generó en su cuenta (para el evento de la ruta). Solo el
+ * código: crea una solicitud que la persona acepta o rechaza; nunca identifica a la persona por otros datos.
+ */
+export declare const volunteerConsentRequestSchema: z.ZodObject<{
+    code: z.ZodString;
+}, "strict", z.ZodTypeAny, {
+    code: string;
+}, {
+    code: string;
+}>;
+/** A5.1: vigencia del código de consentimiento y, una vez canjeado, de la solicitud. */
+export declare const VOLUNTEER_CONSENT_CODE_HOURS = 72;
+/** A5.1: estado derivado de una solicitud de consentimiento (no se persiste). */
+export declare const VOLUNTEER_REQUEST_STATUSES: readonly ["PENDING", "ACCEPTED", "DECLINED", "EXPIRED"];
+export type VolunteerRequestStatus = (typeof VOLUNTEER_REQUEST_STATUSES)[number];
+export declare const VOLUNTEER_REQUEST_STATUS_LABEL: Record<VolunteerRequestStatus, string>;
+export declare const volunteerTransitionSchema: z.ZodObject<{
+    to: z.ZodEnum<["REQUESTED", "UNDER_REVIEW", "APPROVED", "REJECTED", "WITHDRAWN", "REVOKED", "COMPLETED"]>;
+    reason: z.ZodOptional<z.ZodString>;
+}, "strict", z.ZodTypeAny, {
+    to: "APPROVED" | "REJECTED" | "REQUESTED" | "UNDER_REVIEW" | "WITHDRAWN" | "REVOKED" | "COMPLETED";
+    reason?: string | undefined;
+}, {
+    to: "APPROVED" | "REJECTED" | "REQUESTED" | "UNDER_REVIEW" | "WITHDRAWN" | "REVOKED" | "COMPLETED";
+    reason?: string | undefined;
+}>;
+/** Equipos, zonas y funciones: nombres libres que define la organización (sin enums). */
+export declare const catalogItemSchema: z.ZodObject<{
+    name: z.ZodString;
+    description: z.ZodOptional<z.ZodString>;
+}, "strict", z.ZodTypeAny, {
+    name: string;
+    description?: string | undefined;
+}, {
+    name: string;
+    description?: string | undefined;
+}>;
+export declare const catalogUpdateSchema: z.ZodObject<{
+    name: z.ZodOptional<z.ZodString>;
+    description: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    isActive: z.ZodOptional<z.ZodBoolean>;
+}, "strict", z.ZodTypeAny, {
+    name?: string | undefined;
+    description?: string | null | undefined;
+    isActive?: boolean | undefined;
+}, {
+    name?: string | undefined;
+    description?: string | null | undefined;
+    isActive?: boolean | undefined;
+}>;
+export declare const createShiftSchema: z.ZodEffects<z.ZodObject<{
+    name: z.ZodOptional<z.ZodString>;
+    startsAt: z.ZodDate;
+    endsAt: z.ZodDate;
+    zoneId: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    teamId: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+}, "strict", z.ZodTypeAny, {
+    startsAt: Date;
+    endsAt: Date;
+    name?: string | undefined;
+    zoneId?: string | null | undefined;
+    teamId?: string | null | undefined;
+}, {
+    startsAt: Date;
+    endsAt: Date;
+    name?: string | undefined;
+    zoneId?: string | null | undefined;
+    teamId?: string | null | undefined;
+}>, {
+    startsAt: Date;
+    endsAt: Date;
+    name?: string | undefined;
+    zoneId?: string | null | undefined;
+    teamId?: string | null | undefined;
+}, {
+    startsAt: Date;
+    endsAt: Date;
+    name?: string | undefined;
+    zoneId?: string | null | undefined;
+    teamId?: string | null | undefined;
+}>;
+export declare const updateShiftSchema: z.ZodObject<{
+    startsAt: z.ZodOptional<z.ZodDate>;
+    endsAt: z.ZodOptional<z.ZodDate>;
+    cancel: z.ZodOptional<z.ZodLiteral<true>>;
+    name: z.ZodOptional<z.ZodString>;
+    zoneId: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    teamId: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+}, "strict", z.ZodTypeAny, {
+    name?: string | undefined;
+    startsAt?: Date | undefined;
+    endsAt?: Date | undefined;
+    zoneId?: string | null | undefined;
+    teamId?: string | null | undefined;
+    cancel?: true | undefined;
+}, {
+    name?: string | undefined;
+    startsAt?: Date | undefined;
+    endsAt?: Date | undefined;
+    zoneId?: string | null | undefined;
+    teamId?: string | null | undefined;
+    cancel?: true | undefined;
+}>;
+export declare const createAssignmentSchema: z.ZodObject<{
+    volunteerId: z.ZodString;
+    functionId: z.ZodString;
+    teamId: z.ZodOptional<z.ZodString>;
+    zoneId: z.ZodOptional<z.ZodString>;
+    shiftId: z.ZodOptional<z.ZodString>;
+}, "strict", z.ZodTypeAny, {
+    volunteerId: string;
+    functionId: string;
+    zoneId?: string | undefined;
+    teamId?: string | undefined;
+    shiftId?: string | undefined;
+}, {
+    volunteerId: string;
+    functionId: string;
+    zoneId?: string | undefined;
+    teamId?: string | undefined;
+    shiftId?: string | undefined;
+}>;
+export declare const revokeAssignmentSchema: z.ZodObject<{
+    reason: z.ZodString;
+}, "strict", z.ZodTypeAny, {
+    reason: string;
+}, {
+    reason: string;
+}>;
+export * from "./locale";

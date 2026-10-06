@@ -5,7 +5,7 @@ import { useEffect } from "react";
 import { ChevronRight, ScanLine, Wallet } from "lucide-react";
 import { api, qs } from "@/lib/api";
 import { useLoad } from "@/lib/hooks";
-import { fmtTime, pad, startOfDayISO } from "@/lib/format";
+import { fmtNumber, fmtTime, pad, startOfDayISO } from "@/lib/format";
 import type { Checkin, Paged } from "@/lib/types";
 import { useApp, useLive } from "@/components/AppContext";
 import { Avatar, Loading, Page, StatusPill } from "@/components/ui";
@@ -36,7 +36,7 @@ export default function Inicio() {
         <>
           <div className="row"><div><h2>{event.name}</h2><span className="muted">{event.parishName ?? ""}</span></div><StatusPill s={event.status} /></div>
           <div className="grid2">
-            <div className="card stat"><span className="l">Personas registradas</span><span className="n">{event._count.participants.toLocaleString("es-AR")}</span></div>
+            <div className="card stat"><span className="l">Personas registradas</span><span className="n">{fmtNumber(event._count.participants)}</span></div>
             <div className="card stat"><span className="l">Puntos de control</span><span className="n">{event._count.checkpoints}</span></div>
             <div className="card stat"><span className="l">Llegadas de hoy</span><span className="n">{stats.data?.today ?? "—"}</span></div>
             <div className="card stat"><span className="l">Último registro</span><span className="n">{stats.data?.last ? fmtTime(stats.data.last, event.timezone) : "—"}</span></div>

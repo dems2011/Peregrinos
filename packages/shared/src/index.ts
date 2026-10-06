@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { DEFAULT_TIMEZONE, isValidTimeZone } from "./locale";
 
 /* ---------- Roles y permisos (única fuente de verdad: API y Web) ---------- */
 export const ROLES = ["SUPERADMIN", "ADMIN", "OPERATOR"] as const;
@@ -13,12 +14,71 @@ export const ORGANIZATION_STATUS_LABEL: Record<OrganizationStatus, string> = {
   DRAFT: "Borrador", PENDING_REVIEW: "En revisión", APPROVED: "Aprobada", REJECTED: "Rechazada", SUSPENDED: "Suspendida", ARCHIVED: "Archivada",
 };
 
-/** DRAFT: en preparación, no operativo · SCHEDULED: programado · IN_PROGRESS: activo · FINISHED: cerrado · CANCELLED: cancelado. */
+/**
+ * Ciclo de vida del evento (independiente del de la inscripción).
+ * DRAFT: en preparación · SCHEDULED: publicado · IN_PROGRESS: en curso · FINISHED: finalizado · CANCELLED: cancelado.
+ */
 export const EVENT_STATUSES = ["DRAFT", "SCHEDULED", "IN_PROGRESS", "FINISHED", "CANCELLED"] as const;
 export type EventStatus = (typeof EVENT_STATUSES)[number];
 export const EVENT_STATUS_LABEL: Record<EventStatus, string> = {
-  DRAFT: "Borrador", SCHEDULED: "Programado", IN_PROGRESS: "En curso", FINISHED: "Finalizado", CANCELLED: "Cancelado",
+  DRAFT: "Borrador", SCHEDULED: "Publicado", IN_PROGRESS: "En curso", FINISHED: "Finalizado", CANCELLED: "Cancelado",
 };
+/** A4: estados con los que se puede crear un evento (crear publicado = DRAFT → SCHEDULED en un paso). */
+export const EVENT_INITIAL_STATUSES = ["DRAFT", "SCHEDULED"] as const satisfies readonly EventStatus[];
+/** A4: únicas transiciones permitidas. FINISHED y CANCELLED son terminales. */
+export const EVENT_TRANSITIONS: Readonly<Record<EventStatus, readonly EventStatus[]>> = {
+  DRAFT: ["SCHEDULED", "CANCELLED"],
+  SCHEDULED: ["DRAFT", "IN_PROGRESS", "CANCELLED"],
+  IN_PROGRESS: ["FINISHED", "CANCELLED"],
+  FINISHED: [],
+  CANCELLED: [],
+};
+export const canTransitionEvent = (from: EventStatus, to: EventStatus) => EVENT_TRANSITIONS[from].includes(to);
+
+/* ---------- A4: capacidades del evento (lo que el evento usa; el tipo no las decide) ---------- */
+export const EVENT_CAPABILITIES = [
+  "INFO", "LOCATION", "REGISTRATION", "PARTICIPANTS", "CHECKIN", "ROUTE", "POINTS", "CONTACTS", "CERTIFICATES",
+  "VOLUNTEERS", "COMMUNICATIONS", "DOCUMENTS",
+] as const;
+export type EventCapability = (typeof EVENT_CAPABILITIES)[number];
+/** Reservadas: el servidor las rechaza hasta que exista su módulo (también hay CHECK en la BD). A5.1 habilitó VOLUNTEERS. */
+export const RESERVED_EVENT_CAPABILITIES = ["COMMUNICATIONS", "DOCUMENTS"] as const satisfies readonly EventCapability[];
+export type ImplementedEventCapability = Exclude<EventCapability, (typeof RESERVED_EVENT_CAPABILITIES)[number]>;
+export const IMPLEMENTED_EVENT_CAPABILITIES = EVENT_CAPABILITIES.filter(
+  (c): c is ImplementedEventCapability => !(RESERVED_EVENT_CAPABILITIES as readonly string[]).includes(c),
+);
+/**
+ * Valor inicial si el alta no indica capacidades: lo mismo que antes de A4 (todo lo implementado hasta A4).
+ * VOLUNTEERS (A5.1) se activa por evento cuando se necesita; no forma parte del valor inicial.
+ */
+export const DEFAULT_EVENT_CAPABILITIES: readonly EventCapability[] = IMPLEMENTED_EVENT_CAPABILITIES.filter((c) => c !== "VOLUNTEERS");
+export const EVENT_CAPABILITY_LABEL: Record<EventCapability, string> = {
+  INFO: "Información", LOCATION: "Lugar", REGISTRATION: "Inscripción", PARTICIPANTS: "Participantes", CHECKIN: "Asistencia",
+  ROUTE: "Trayecto", POINTS: "Puntos", CONTACTS: "Contactos", CERTIFICATES: "Certificado",
+  VOLUNTEERS: "Voluntarios", COMMUNICATIONS: "Comunicaciones", DOCUMENTS: "Documentos",
+};
+/** Dependencias que impone el modelo de datos (también hay CHECK en la BD). */
+export const EVENT_CAPABILITY_REQUIRES: Partial<Record<EventCapability, readonly EventCapability[]>> = {
+  REGISTRATION: ["PARTICIPANTS"], // aprobar una inscripción crea un Participant
+  CHECKIN: ["PARTICIPANTS", "POINTS"], // Checkin referencia Participant y Checkpoint
+  CERTIFICATES: ["PARTICIPANTS"],
+};
+/** INFO siempre está: nombre y fecha son obligatorios en todo evento. */
+export function validateEventCapabilities(caps: readonly EventCapability[]): { field: string; message: string }[] {
+  const issues: { field: string; message: string }[] = [];
+  if (new Set(caps).size !== caps.length) issues.push({ field: "capabilities", message: "Hay capacidades repetidas." });
+  if (!caps.includes("INFO")) issues.push({ field: "capabilities", message: "La información básica del evento no se puede desactivar." });
+  for (const c of caps) {
+    if ((RESERVED_EVENT_CAPABILITIES as readonly string[]).includes(c)) {
+      issues.push({ field: "capabilities", message: `«${EVENT_CAPABILITY_LABEL[c]}» todavía no está disponible.` });
+    }
+    for (const r of EVENT_CAPABILITY_REQUIRES[c] ?? []) {
+      if (!caps.includes(r)) issues.push({ field: "capabilities", message: `«${EVENT_CAPABILITY_LABEL[c]}» requiere «${EVENT_CAPABILITY_LABEL[r]}».` });
+    }
+  }
+  return issues;
+}
+export const hasEventCapability = (e: { capabilities: readonly string[] }, c: EventCapability) => e.capabilities.includes(c);
 /** Estados en los que el evento no admite operación (llegadas, altas desde inscripciones). */
 export const isEventOperable = (s: EventStatus) => s === "SCHEDULED" || s === "IN_PROGRESS";
 
@@ -29,18 +89,18 @@ export const EVENT_TYPES = [
 ] as const;
 export type EventType = (typeof EVENT_TYPES)[number];
 
-/** Qué habilita cada tipo. hasRoute: admite trayecto (EventRoute) y la gestión de recorrido. */
-export const EVENT_TYPE_INFO: Record<EventType, { label: string; hasRoute: boolean }> = {
-  PILGRIMAGE: { label: "Peregrinación", hasRoute: true },
-  PROCESSION: { label: "Procesión", hasRoute: true },
-  PATRONAL_FEAST: { label: "Fiesta patronal", hasRoute: false },
-  LITURGICAL_CELEBRATION: { label: "Celebración litúrgica", hasRoute: false },
-  ROSARY: { label: "Rosario", hasRoute: false },
-  RETREAT: { label: "Retiro", hasRoute: false },
-  GATHERING: { label: "Encuentro", hasRoute: false },
-  COMMUNITY_ACTIVITY: { label: "Actividad comunitaria", hasRoute: false },
-  CULTURAL_ACTIVITY: { label: "Actividad cultural", hasRoute: false },
-  OTHER: { label: "Otro", hasRoute: false },
+/** Etiqueta de cada tipo. A4: el tipo ya no habilita módulos; eso lo deciden las capacidades del evento. */
+export const EVENT_TYPE_INFO: Record<EventType, { label: string }> = {
+  PILGRIMAGE: { label: "Peregrinación" },
+  PROCESSION: { label: "Procesión" },
+  PATRONAL_FEAST: { label: "Fiesta patronal" },
+  LITURGICAL_CELEBRATION: { label: "Celebración litúrgica" },
+  ROSARY: { label: "Rosario" },
+  RETREAT: { label: "Retiro" },
+  GATHERING: { label: "Encuentro" },
+  COMMUNITY_ACTIVITY: { label: "Actividad comunitaria" },
+  CULTURAL_ACTIVITY: { label: "Actividad cultural" },
+  OTHER: { label: "Otro" },
 };
 
 export const EVENT_VISIBILITIES = ["PRIVATE", "UNLISTED", "PUBLIC"] as const;
@@ -56,12 +116,15 @@ export type Permission =
   | "checkpoint:read" | "checkpoint:manage"
   | "checkin:create" | "checkin:read" | "checkin:correct"
   | "report:read" | "export:run" | "backup:run" | "audit:read"
-  | "contact:manage" | "invitation:manage" | "payment:review" | "credential:export";
+  | "contact:manage" | "invitation:manage" | "payment:review" | "credential:export"
+  /** A5.1: gestionar voluntarios, equipos, zonas, funciones, turnos y asignaciones de los eventos de la organización. */
+  | "volunteer:manage";
 
 const OPERATOR: Permission[] = ["event:read", "participant:read", "checkpoint:read", "checkin:create"];
 const ADMIN: Permission[] = [
   ...OPERATOR, "participant:manage", "checkpoint:manage", "checkin:read", "checkin:correct",
   "report:read", "export:run", "assignment:manage", "participant:create", "contact:manage", "invitation:manage", "payment:review", "credential:export",
+  "volunteer:manage",
 ];
 const SUPERADMIN: Permission[] = [...ADMIN, "event:create", "event:update", "user:manage", "backup:run", "audit:read"];
 
@@ -84,17 +147,61 @@ const password = z.string().min(10, "La contraseña debe tener al menos 10 carac
  * Cualquier campo no declarado (role, accountType, organizationId, isSuperadmin…) produce 400.
  */
 export const loginSchema = z.object({ email, password: z.string().min(1).max(128) }).strict();
+
+/* =====================  A5.0: CUENTA DEL PEREGRINO  ===================== */
+/** Reenvío de verificación y pedido de recuperación: solo el correo (la respuesta nunca revela si existe). */
+export const accountEmailSchema = z.object({ email }).strict();
+/** Restablecer con el token del correo (llega en el cuerpo, nunca en la URL de la API). */
+export const passwordResetConfirmSchema = z.object({ token: z.string().min(20).max(200), password }).strict();
+/** Cambio de contraseña con la sesión iniciada: exige la contraseña actual. */
+export const changePasswordSchema = z.object({ currentPassword: z.string().min(1).max(128), newPassword: password }).strict()
+  .refine((v) => v.currentPassword !== v.newPassword, { message: "La contraseña nueva debe ser distinta de la actual", path: ["newPassword"] });
 export const registerPilgrimSchema = z.object({
   firstName: z.string().trim().min(2, "El nombre es obligatorio").max(80),
   lastName: z.string().trim().min(2, "El apellido es obligatorio").max(80),
   email,
-  documentNumber: z.string().trim().min(5, "El DNI es obligatorio").max(30),
+  documentNumber: z.string().trim().min(5, "El documento es obligatorio").max(30),
   phone: z.string().trim().min(6, "El teléfono es obligatorio").max(30),
   password,
   acceptTerms: z.literal(true, {
     errorMap: () => ({ message: "Debes aceptar los términos y condiciones" }),
   }),
+  // A4a: sin código de vinculación. El canje solo se hace después, desde la cuenta con el email verificado.
 }).strict();
+
+/* =====================  A4a: PERSON (identidad humana, independiente de la cuenta)  ===================== */
+const personDocument = z.string().trim().max(25)
+  .refine((v) => /^[0-9A-Za-z]{5,20}$/.test(normalizeDocument(v)), "Documento no válido");
+const personPhone = z.string().trim().max(30)
+  .refine((v) => digitsOnly(v).length >= 7 && digitsOnly(v).length <= 15, "Teléfono no válido");
+/** Ningún dato de contacto es obligatorio: una persona sin tecnología puede no tener correo ni teléfono. */
+const personFields = {
+  firstName: z.string().trim().min(1, "Falta el nombre").max(80),
+  lastName: z.string().trim().max(80).optional(),
+  documentType: z.string().trim().max(10).optional(),
+  documentNumber: personDocument.optional(),
+  phone: personPhone.optional(),
+  email: z.string().trim().toLowerCase().email().max(200).optional(),
+  birthDate: z.coerce.date().refine((d) => d <= new Date(), "La fecha de nacimiento no puede ser futura").optional(),
+};
+/** Alta manual por el personal. Si hay coincidencias, se pide confirmar (confirmNewPerson) o elegir la existente. */
+export const createPersonSchema = z.object({ ...personFields, confirmNewPerson: z.literal(true).optional() }).strict();
+export const updatePersonSchema = z.object(personFields).partial().strict();
+export const personListSchema = z.object({
+  q: z.string().trim().max(80).optional(),
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(25),
+});
+/** Fusión explícita de duplicados: nunca automática. */
+export const mergePersonSchema = z.object({ intoPersonId: z.string().uuid(), confirm: z.literal(true) }).strict();
+/** El titular canjea desde su cuenta (email verificado) el código que le entregó la organización (prueba de posesión). */
+export const claimPersonSchema = z.object({
+  code: z.string().trim().min(10).max(20),
+  /** A5.0: confirmación explícita del titular para unir el registro de la organización a su cuenta. */
+  confirm: z.literal(true, { errorMap: () => ({ message: "Confirma que quieres unir este registro a tu cuenta" }) }),
+}).strict();
+/** Desvinculación de una cuenta por la organización dueña de la Person: siempre con motivo (queda auditado). */
+export const unlinkAccountSchema = z.object({ reason: z.string().trim().min(5, "Indica el motivo").max(500) }).strict();
 
 export const bootstrapSchema = z.object({
   organizationName: z.string().trim().min(2).max(120),
@@ -107,7 +214,7 @@ const lat = z.coerce.number().min(-90).max(90);
 const lng = z.coerce.number().min(-180).max(180);
 const optText = (max: number) => z.string().trim().max(max).nullable().optional();
 
-/** Trayecto (origen → destino). Solo para tipos con EVENT_TYPE_INFO[type].hasRoute. */
+/** Trayecto (origen → destino). Requiere la capacidad ROUTE. */
 export const eventRouteSchema = z.object({
   originName: optText(160),
   originAddress: optText(240),
@@ -139,8 +246,11 @@ const eventFields = {
   type: z.enum(EVENT_TYPES),
   startsAt: z.coerce.date(),
   endsAt: z.coerce.date().nullable().optional(),
-  timezone: z.string().default("America/Argentina/Buenos_Aires"),
+  /** Zona horaria IANA del evento: todas sus fechas se muestran en ella. */
+  timezone: z.string().trim().refine(isValidTimeZone, "Zona horaria inválida (usa un nombre IANA, p. ej. America/Argentina/Buenos_Aires).").default(DEFAULT_TIMEZONE),
   status: z.enum(EVENT_STATUSES).default("DRAFT"),
+  /** A4: capacidades del evento. Sin indicar, el alta usa DEFAULT_EVENT_CAPABILITIES. */
+  capabilities: z.array(z.enum(EVENT_CAPABILITIES)).max(EVENT_CAPABILITIES.length).optional(),
   /** Nombre de la parroquia que se imprime en la credencial. */
   parishName: optText(160),
   locationName: optText(160),
@@ -161,7 +271,7 @@ const eventFields = {
   route: eventRouteSchema.nullable().optional(),
 };
 /** Sin `type` se asume OTHER (compatibilidad con clientes que aún no lo envían). */
-export const createEventSchema = z.object({ ...eventFields, type: eventFields.type.default("OTHER") });
+export const createEventSchema = z.object({ ...eventFields, type: eventFields.type.default("OTHER"), status: z.enum(EVENT_INITIAL_STATUSES).default("DRAFT") });
 export const updateEventSchema = z.object(eventFields).partial();
 export type CreateEventInput = z.infer<typeof createEventSchema>;
 
@@ -178,6 +288,9 @@ export function validateEventCoherence(e: {
   type: EventType; startsAt: Date; endsAt?: Date | null;
   registrationOpensAt?: Date | null; registrationClosesAt?: Date | null;
   settings?: unknown; hasRoute: boolean; latitude?: number | null; longitude?: number | null;
+  /** A4: capacidades finales y datos del propio evento que dependen de ellas. */
+  capabilities: readonly EventCapability[];
+  hasLocation: boolean; registrationOpen: boolean; certificateEnabled: boolean;
 }): { field: string; message: string }[] {
   const issues: { field: string; message: string }[] = [];
   if (e.endsAt && e.endsAt < e.startsAt) issues.push({ field: "endsAt", message: "La finalización no puede ser anterior al inicio." });
@@ -185,23 +298,56 @@ export function validateEventCoherence(e: {
     issues.push({ field: "registrationClosesAt", message: "El cierre de inscripción no puede ser anterior a la apertura." });
   }
   if ((e.latitude == null) !== (e.longitude == null)) issues.push({ field: "latitude", message: "Indica latitud y longitud juntas." });
-  if (e.hasRoute && !EVENT_TYPE_INFO[e.type].hasRoute) {
-    issues.push({ field: "route", message: `Un evento de tipo «${EVENT_TYPE_INFO[e.type].label}» no tiene trayecto. Quita el trayecto antes de cambiar el tipo.` });
-  }
+  issues.push(...validateEventCapabilities(e.capabilities));
+  const off = (c: EventCapability) => !e.capabilities.includes(c);
+  if (e.hasRoute && off("ROUTE")) issues.push({ field: "route", message: "El evento no tiene activado el trayecto. Quita el trayecto o activa «Trayecto»." });
+  if (e.hasLocation && off("LOCATION")) issues.push({ field: "locationName", message: "El evento no tiene activado el lugar. Quita los datos del lugar o activa «Lugar»." });
+  if (e.registrationOpen && off("REGISTRATION")) issues.push({ field: "registrationOpen", message: "El evento no tiene activada la inscripción." });
+  if (e.certificateEnabled && off("CERTIFICATES")) issues.push({ field: "certificateEnabled", message: "El evento no tiene activado el certificado." });
   const s = eventSettingsSchemas[e.type].safeParse(e.settings ?? {});
   if (!s.success) issues.push({ field: "settings", message: "Configuración no válida para este tipo de evento." });
   return issues;
 }
 
-/** Inscripción abierta ahora: interruptor + estado operable + ventana opcional. */
-export function isRegistrationOpenNow(
-  e: { registrationOpen: boolean; status: EventStatus; registrationOpensAt?: Date | null; registrationClosesAt?: Date | null },
+/**
+ * A4: estado de la inscripción, DERIVADO (no se guarda y nunca cambia el estado del evento).
+ * DISABLED: sin capacidad REGISTRATION · CLOSED: interruptor apagado, evento no publicado/en curso o ventana vencida
+ * · NOT_YET_OPEN: antes de registrationOpensAt · FULL: participantes ACTIVE >= capacity · OPEN: admite inscripciones.
+ * El cupo cuenta solo Participant ACTIVE: las inscripciones pendientes no lo consumen.
+ */
+export const REGISTRATION_STATES = ["DISABLED", "NOT_YET_OPEN", "OPEN", "FULL", "CLOSED"] as const;
+export type RegistrationState = (typeof REGISTRATION_STATES)[number];
+/** Cupo agotado: solo con capacity definido; cuenta únicamente participantes ACTIVE. */
+export const isCapacityFull = (capacity: number | null | undefined, activeParticipants: number) =>
+  capacity != null && activeParticipants >= capacity;
+export function deriveRegistrationState(
+  e: {
+    capabilities: readonly string[]; registrationOpen: boolean; status: EventStatus;
+    registrationOpensAt?: Date | null; registrationClosesAt?: Date | null;
+    capacity?: number | null; activeParticipants: number;
+  },
   now = new Date(),
-): boolean {
-  if (!e.registrationOpen || !isEventOperable(e.status)) return false;
-  if (e.registrationOpensAt && now < e.registrationOpensAt) return false;
-  if (e.registrationClosesAt && now > e.registrationClosesAt) return false;
-  return true;
+): RegistrationState {
+  if (!e.capabilities.includes("REGISTRATION")) return "DISABLED";
+  if (!e.registrationOpen || !isEventOperable(e.status)) return "CLOSED";
+  if (e.registrationClosesAt && now > e.registrationClosesAt) return "CLOSED";
+  if (e.registrationOpensAt && now < e.registrationOpensAt) return "NOT_YET_OPEN";
+  if (isCapacityFull(e.capacity, e.activeParticipants)) return "FULL";
+  return "OPEN";
+}
+/** Inscripción abierta ahora (capacidad + interruptor + estado operable + ventana opcional). */
+export const isRegistrationOpenNow = (e: Parameters<typeof deriveRegistrationState>[0], now = new Date()) =>
+  deriveRegistrationState(e, now) === "OPEN";
+
+/**
+ * A4: asistencia DERIVADA (sin columna). ATTENDED: tiene al menos una llegada ACTIVE.
+ * NO_SHOW: evento finalizado, participante ACTIVE y sin llegadas. null: todavía no se puede determinar.
+ */
+export type Attendance = "ATTENDED" | "NO_SHOW";
+export function deriveAttendance(p: { eventStatus: EventStatus; participantStatus: string; activeCheckins: number }): Attendance | null {
+  if (p.activeCheckins > 0) return "ATTENDED";
+  if (p.eventStatus === "FINISHED" && p.participantStatus === "ACTIVE") return "NO_SHOW";
+  return null;
 }
 
 export const createUserSchema = z.object({
@@ -253,14 +399,45 @@ export interface MeResponse {
   assignments: AssignmentView[];
   /** Punto de control actual (solo operadores): se abre directo en "Registrar llegada". */
   currentCheckpoint: AssignmentView | null;
+  /** A6: estado del segundo factor de la cuenta y de esta sesión. */
+  mfa: MfaStatus;
 }
+
+/* =====================  A6: MFA DEL PERSONAL  ===================== */
+export interface MfaStatus {
+  enabled: boolean;
+  /** SUPERADMIN sin MFA: la sesión solo permite enrolarse (la API responde 403 MFA_ENROLLMENT_REQUIRED). */
+  enrollmentRequired: boolean;
+  /** Hasta cuándo vale el último segundo factor de esta sesión para acciones sensibles (ISO) o null. */
+  stepUpValidUntil: string | null;
+  recoveryCodesRemaining: number;
+}
+/** Login en dos pasos: la contraseña fue correcta y falta el segundo factor (no hay sesión todavía). */
+export interface MfaChallengeResponse {
+  mfaRequired: true;
+}
+export const isMfaChallenge = (v: unknown): v is MfaChallengeResponse =>
+  typeof v === "object" && v !== null && (v as { mfaRequired?: unknown }).mfaRequired === true;
+
+const totpCode = z.string().trim().regex(/^\d{3}\s?\d{3}$/, "Código de 6 dígitos").transform((v) => v.replace(/\s/g, ""));
+const recoveryCode = z.string().trim().min(10).max(14).regex(/^[A-Za-z0-9-\s]+$/, "Código de recuperación no válido");
+/** Segundo paso del login y step-up: un código TOTP o un código de recuperación (exactamente uno). */
+export const mfaVerifySchema = z
+  .object({ code: totpCode.optional(), recoveryCode: recoveryCode.optional() })
+  .strict()
+  .refine((v) => (v.code ? 1 : 0) + (v.recoveryCode ? 1 : 0) === 1, { message: "Ingresa un código", path: ["code"] });
+/** Confirmar el enrolamiento: el primer código generado por la app. */
+export const mfaConfirmSchema = z.object({ code: totpCode }).strict();
+/** Desactivar MFA o regenerar códigos: exige la contraseña además del step-up. */
+export const mfaPasswordSchema = z.object({ password: z.string().min(1).max(128) }).strict();
 
 /** Número visible con ceros: 1 -> "001" */
 export const formatParticipantNumber = (n: number) => String(n).padStart(3, "0");
 
 
 /* =====================  FASE 2  ===================== */
-export const PARTICIPANT_STATUSES = ["ACTIVE", "INACTIVE", "CANCELLED"] as const;
+/** A4: participación oficial confirmada (ACTIVE) o cancelada. La asistencia se deriva (deriveAttendance). */
+export const PARTICIPANT_STATUSES = ["ACTIVE", "CANCELLED"] as const;
 export const CHECKIN_METHODS = ["NUMBER", "QR", "SEARCH"] as const;
 export type CheckinMethod = (typeof CHECKIN_METHODS)[number];
 
@@ -286,7 +463,15 @@ const participantBase = {
   notes: z.string().trim().max(500).optional(),
   number: z.coerce.number().int().min(1).max(999999).optional(),
 };
-export const createParticipantSchema = z.object(participantBase);
+/**
+ * A4a: la participación pertenece a una Person. personId elige una existente de la organización; sin personId se crea
+ * una nueva, salvo que haya coincidencias por documento o teléfono: entonces se exige elegir o confirmNewPerson.
+ */
+export const createParticipantSchema = z.object({
+  ...participantBase,
+  personId: z.string().uuid().optional(),
+  confirmNewPerson: z.literal(true).optional(),
+});
 export const updateParticipantSchema = z.object(participantBase).partial()
   .extend({ status: z.enum(PARTICIPANT_STATUSES).optional() });
 
@@ -499,6 +684,8 @@ export const approveRegistrationSchema = z.object({
   withoutProof: z.boolean().default(false),
 });
 export const rejectRegistrationSchema = z.object({ reason: z.string().trim().min(3, "Indica el motivo").max(300) });
+/** A4: el personal reabre una inscripción rechazada (REJECTED → IN_REVIEW). Siempre con motivo; aprobar sigue pasando por IN_REVIEW. */
+export const reopenRegistrationSchema = z.object({ reason: z.string().trim().min(3, "Indica el motivo").max(300) }).strict();
 
 export const credentialQuerySchema = z.object({
   /** new: aún no impresas · all: todas las activas · ids: las indicadas en `ids`. */
@@ -522,3 +709,84 @@ export interface PilgrimRegistrationMe {
   };
   contacts: PilgrimMe["contacts"];
 }
+
+/* =====================  A5.1: VOLUNTARIOS  ===================== */
+/**
+ * Estado de la participación como voluntario (no es un rol de cuenta). ASSIGNED/ACTIVE no son estados:
+ * se derivan de las asignaciones vigentes y de los turnos.
+ */
+export const VOLUNTEER_STATUSES = ["REQUESTED", "UNDER_REVIEW", "APPROVED", "REJECTED", "WITHDRAWN", "REVOKED", "COMPLETED"] as const;
+export type VolunteerStatus = (typeof VOLUNTEER_STATUSES)[number];
+export const VOLUNTEER_STATUS_LABEL: Record<VolunteerStatus, string> = {
+  REQUESTED: "Solicitado", UNDER_REVIEW: "En revisión", APPROVED: "Aprobado", REJECTED: "Rechazado",
+  WITHDRAWN: "Se retiró", REVOKED: "Dado de baja", COMPLETED: "Finalizado",
+};
+/** Alta por el personal: como candidato (REQUESTED) o ya aprobado. */
+export const VOLUNTEER_INITIAL_STATUSES = ["REQUESTED", "APPROVED"] as const satisfies readonly VolunteerStatus[];
+export const VOLUNTEER_TRANSITIONS: Readonly<Record<VolunteerStatus, readonly VolunteerStatus[]>> = {
+  REQUESTED: ["UNDER_REVIEW", "APPROVED", "REJECTED", "WITHDRAWN"],
+  UNDER_REVIEW: ["APPROVED", "REJECTED", "WITHDRAWN"],
+  APPROVED: ["COMPLETED", "REVOKED", "WITHDRAWN"],
+  REJECTED: [], WITHDRAWN: [], REVOKED: [], COMPLETED: [],
+};
+export const canTransitionVolunteer = (from: VolunteerStatus, to: VolunteerStatus) => VOLUNTEER_TRANSITIONS[from].includes(to);
+/** Rechazar o dar de baja exige motivo. */
+export const VOLUNTEER_REASON_REQUIRED: readonly VolunteerStatus[] = ["REJECTED", "REVOKED"];
+
+/** Alta de voluntario: una Person existente (visible para la organización) o una nueva (con confirmación de duplicados). */
+export const createVolunteerSchema = z.object({
+  personId: z.string().uuid().optional(),
+  firstName: z.string().trim().min(1).max(80).optional(),
+  lastName: z.string().trim().max(80).optional(),
+  documentNumber: z.string().trim().max(25).optional(),
+  phone: z.string().trim().max(30).optional(),
+  email: z.string().trim().toLowerCase().email().max(200).optional(),
+  confirmNewPerson: z.literal(true).optional(),
+  status: z.enum(VOLUNTEER_INITIAL_STATUSES).default("APPROVED"),
+  notes: z.string().trim().max(500).optional(),
+}).strict().refine((v) => !!v.personId || !!v.firstName, { message: "Elige una persona o indica al menos el nombre", path: ["firstName"] });
+/**
+ * A5.1: canje por la organización del código que la persona generó en su cuenta (para el evento de la ruta). Solo el
+ * código: crea una solicitud que la persona acepta o rechaza; nunca identifica a la persona por otros datos.
+ */
+export const volunteerConsentRequestSchema = z.object({ code: z.string().trim().min(10).max(20) }).strict();
+/** A5.1: vigencia del código de consentimiento y, una vez canjeado, de la solicitud. */
+export const VOLUNTEER_CONSENT_CODE_HOURS = 72;
+/** A5.1: estado derivado de una solicitud de consentimiento (no se persiste). */
+export const VOLUNTEER_REQUEST_STATUSES = ["PENDING", "ACCEPTED", "DECLINED", "EXPIRED"] as const;
+export type VolunteerRequestStatus = (typeof VOLUNTEER_REQUEST_STATUSES)[number];
+export const VOLUNTEER_REQUEST_STATUS_LABEL: Record<VolunteerRequestStatus, string> = {
+  PENDING: "Pendiente", ACCEPTED: "Aceptada", DECLINED: "Rechazada", EXPIRED: "Vencida",
+};
+export const volunteerTransitionSchema = z.object({
+  to: z.enum(VOLUNTEER_STATUSES),
+  reason: z.string().trim().min(3).max(500).optional(),
+}).strict();
+/** Equipos, zonas y funciones: nombres libres que define la organización (sin enums). */
+export const catalogItemSchema = z.object({ name: z.string().trim().min(2).max(80), description: z.string().trim().max(300).optional() }).strict();
+export const catalogUpdateSchema = z.object({
+  name: z.string().trim().min(2).max(80).optional(),
+  description: z.string().trim().max(300).nullable().optional(),
+  isActive: z.boolean().optional(),
+}).strict();
+const shiftBase = {
+  name: z.string().trim().max(80).optional(),
+  startsAt: z.coerce.date(),
+  endsAt: z.coerce.date(),
+  zoneId: z.string().uuid().nullable().optional(),
+  teamId: z.string().uuid().nullable().optional(),
+};
+export const createShiftSchema = z.object(shiftBase).strict()
+  .refine((v) => v.endsAt > v.startsAt, { message: "El turno debe terminar después de empezar", path: ["endsAt"] });
+export const updateShiftSchema = z.object({ ...shiftBase, startsAt: shiftBase.startsAt.optional(), endsAt: shiftBase.endsAt.optional(), cancel: z.literal(true).optional() }).strict();
+export const createAssignmentSchema = z.object({
+  volunteerId: z.string().uuid(),
+  functionId: z.string().uuid(),
+  teamId: z.string().uuid().optional(),
+  zoneId: z.string().uuid().optional(),
+  shiftId: z.string().uuid().optional(),
+}).strict();
+export const revokeAssignmentSchema = z.object({ reason: z.string().trim().min(3).max(300) }).strict();
+
+/* =====================  Idiomas y formato  ===================== */
+export * from "./locale";

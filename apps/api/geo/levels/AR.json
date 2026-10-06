@@ -1,0 +1,85 @@
+{
+  "$comment": "PROPUESTA de CountryAreaLevel para Argentina, contrastada con Georef en D2 (archivos verificados por SHA-256). Se carga con reviewStatus=PENDING hasta confirmación del usuario.",
+  "status": "PROVISIONAL",
+  "countryCode": "AR",
+  "source": "GEOREF",
+  "levels": [
+    {
+      "rank": 1,
+      "kind": "ADMIN",
+      "isRequired": true,
+      "labels": {
+        "es": "Provincia",
+        "en": "Province",
+        "pt": "Província",
+        "it": "Provincia"
+      },
+      "sourceEntity": "provincias",
+      "note": "24 entidades (23 provincias + CABA). Georef: id de 2 dígitos e iso_id ISO 3166-2 (24/24 coinciden con iso-codes).",
+      "contrast": {
+        "source": "GEOREF",
+        "expectedCount": 24,
+        "expectedCategories": [
+          "Provincia",
+          "Ciudad Autónoma"
+        ]
+      }
+    },
+    {
+      "rank": 2,
+      "kind": "ADMIN",
+      "isRequired": false,
+      "labels": {
+        "es": "Departamento / Partido / Comuna",
+        "en": "Department / Partido / Comuna",
+        "pt": "Departamento / Partido / Comuna",
+        "it": "Dipartimento / Partido / Comuna"
+      },
+      "sourceEntity": "departamentos",
+      "parentField": "provincia.id",
+      "note": "529 registros: Departamento 379, Partido 135, Comuna 15 (CABA, INDEC Res. 55/2019). Padre explícito provincia.id (529/529 válidos). La categoría individual se conserva en sourceExtra, sin columna en G1.",
+      "contrast": {
+        "source": "GEOREF",
+        "expectedCount": 529,
+        "expectedCategories": [
+          "Departamento",
+          "Partido",
+          "Comuna"
+        ]
+      }
+    },
+    {
+      "rank": 3,
+      "kind": "LOCALITY",
+      "isRequired": false,
+      "labels": {
+        "es": "Localidad",
+        "en": "Locality",
+        "pt": "Localidade",
+        "it": "Località"
+      },
+      "sourceEntity": "localidades",
+      "parentField": "departamento.id (verificado: 0 registros sin departamento; no hay salto de nivel)",
+      "note": "Solo localidades censales de 8 dígitos (3 350 en el archivo; 1 excluida por decisión: localidades:02014010 «Ciudad de Buenos Aires»). Entidades de 10 dígitos (678) excluidas, sin cuarto nivel. CABA no tiene rank 3: los 48 barrios no son LOCALITY (decisión D1.1).",
+      "contrast": {
+        "source": "GEOREF",
+        "expectedCount": 3349,
+        "expectedCategories": [
+          "Localidad simple",
+          "Componente de localidad compuesta"
+        ]
+      }
+    }
+  ],
+  "excluded": [
+    {
+      "entity": "municipios",
+      "reason": "Georef solo documenta provincia como contenedor del municipio (sin departamento): no forman una jerarquía limpia con los departamentos. Además, la descarga completa municipios.json redirige (302) a infra.datos.gob.ar y devuelve 404 al 2026-10-05."
+    }
+  ],
+  "resolvedInD1": {
+    "verifiedFields": "provincia.id y departamento.id presentes y coherentes en los archivos descargados",
+    "caba": "AR-C → 15 comunas; sin localidades en rank 3",
+    "municipios": "siguen excluidos (gobierno_local no forma jerarquía con departamentos)"
+  }
+}

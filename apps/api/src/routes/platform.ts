@@ -151,10 +151,12 @@ export default async function platformRoutes(app: FastifyInstance) {
     if (!inv) throw new AppError(409, "NO_PENDING_FOUNDER_INVITATION", "No hay una invitación de fundador pendiente.");
     if (request.organization.status !== "APPROVED") throw new AppError(409, "ORGANIZATION_NOT_APPROVED", "La parroquia no está aprobada.");
     const token = newOpaqueToken();
-    await prisma.invitation.update({
-      where: { id: inv.id },
+    // Condicional: si el fundador aceptó (o se revocó) entre la lectura y el reenvío, no se emite un enlace nuevo.
+    const renewed = await prisma.invitation.updateMany({
+      where: { id: inv.id, acceptedAt: null, revokedAt: null },
       data: { tokenHash: token.hash, expiresAt: new Date(Date.now() + cfg.INVITE_TTL_DAYS * 86_400_000), lastSentAt: new Date(), sendCount: { increment: 1 } },
     });
+    if (renewed.count !== 1) throw new AppError(409, "NO_PENDING_FOUNDER_INVITATION", "No hay una invitación de fundador pendiente.");
     const emailSent = await sendInvitationEmail({
       to: inv.email, orgName: request.organization.name, inviterName: "El equipo de Peregrinos", role: "SUPERADMIN", url: inviteUrl(token.raw), days: cfg.INVITE_TTL_DAYS,
     });

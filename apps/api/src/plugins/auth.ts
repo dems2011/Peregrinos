@@ -10,9 +10,10 @@ import {
 } from "@peregrinos/shared";
 import { cfg } from "../config";
 import { prisma } from "../lib/prisma";
-import { forbidden, unauthorized } from "../lib/errors";
+import { AppError, forbidden, unauthorized } from "../lib/errors";
 import { sha256 } from "../lib/tokens";
 import { assertOrgCan } from "../lib/orgLifecycle";
+import { isRecentMfa, mfaEnrollmentRequired } from "../lib/mfa";
 
 export const ACCESS_COOKIE = "pg_at";
 export const REFRESH_COOKIE = "pg_rt";
@@ -31,6 +32,10 @@ export interface AuthUser {
   /** A3: estado del ciclo de vida de la organización, leído de la BD en cada petición. */
   organizationStatus: OrganizationStatus;
   extraPermissions: string[];
+  /** A6: la cuenta tiene MFA activo. */
+  mfaEnabled: boolean;
+  /** A6: último segundo factor verificado en esta sesión (claim `mfa` del access token) o null. */
+  mfaAt: Date | null;
 }
 
 /** A3: operador de plataforma autenticado. */
@@ -59,7 +64,18 @@ declare module "fastify" {
     platform: PlatformAuth;
   }
 
+  interface FastifyContextConfig {
+    /** A6: la ruta queda disponible para un SUPERADMIN que todavía debe enrolar MFA (me, logout, enrolamiento). */
+    mfaEnrollment?: boolean;
+  }
+
   interface FastifyInstance {
+    /** A6: exige un segundo factor de los últimos STEP_UP_MINUTES (usar después de authenticate/requirePermission). */
+    requireRecentMfa: (
+      req: FastifyRequest,
+      reply: FastifyReply
+    ) => Promise<void>;
+
     authenticate: (
       req: FastifyRequest,
       reply: FastifyReply
@@ -123,10 +139,18 @@ export default fp(async (app) => {
     "authenticate",
     async (req: FastifyRequest) => {
       let sub: string;
+      let sv: number;
+      let mfaSec: number | null;
 
       try {
         await req.jwtVerify({ onlyCookie: true });
-        sub = (req.user as { sub: string }).sub;
+        const claims = req.user as { sub: string; sv?: number; mfa?: number; purpose?: string };
+        // Un token con propósito (p. ej. el desafío MFA) nunca es una sesión.
+        if (!claims.sub || claims.purpose) throw unauthorized();
+        sub = claims.sub;
+        // Tokens emitidos antes de A6 no traen sv: equivalen a la versión 0.
+        sv = claims.sv ?? 0;
+        mfaSec = typeof claims.mfa === "number" ? claims.mfa : null;
       } catch {
         throw unauthorized();
       }
@@ -143,7 +167,11 @@ export default fp(async (app) => {
         user.accountType !== "STAFF" ||
         !user.organizationId ||
         !user.role ||
-        !user.organization
+        !user.organization ||
+        // A6: activar/desactivar MFA o regenerar códigos invalida las sesiones emitidas antes.
+        user.sessionVersion !== sv ||
+        // A6: con MFA activo, toda sesión válida nació de un segundo factor.
+        (user.mfaEnabledAt && mfaSec === null)
       ) {
         throw unauthorized();
       }
@@ -157,7 +185,28 @@ export default fp(async (app) => {
         organizationId: user.organizationId,
         organizationStatus: user.organization.status,
         extraPermissions: user.extraPermissions,
+        mfaEnabled: !!user.mfaEnabledAt,
+        mfaAt: mfaSec !== null ? new Date(mfaSec * 1000) : null,
       };
+
+      // A6 (§8.1): sin MFA activo, el rol SUPERADMIN no se ejerce; solo quedan las rutas de enrolamiento.
+      if (mfaEnrollmentRequired(user) && !req.routeOptions.config?.mfaEnrollment) {
+        throw new AppError(403, "MFA_ENROLLMENT_REQUIRED", "Activa la verificación en dos pasos para continuar.");
+      }
+    }
+  );
+
+  app.decorate(
+    "requireRecentMfa",
+    async (req: FastifyRequest) => {
+      if (!req.auth) throw unauthorized();
+      // Política A6: el step-up se exige a las cuentas con MFA activo (obligatorio para SUPERADMIN, recomendado para
+      // ADMIN). Una cuenta sin MFA no tiene factor con qué reautenticarse.
+      if (!req.auth.mfaEnabled) return;
+      const sec = req.auth.mfaAt ? Math.floor(req.auth.mfaAt.getTime() / 1000) : null;
+      if (!isRecentMfa(sec)) {
+        throw new AppError(403, "STEP_UP_REQUIRED", "Confirma tu identidad con el código de verificación para continuar.");
+      }
     }
   );
 
@@ -218,6 +267,7 @@ export default fp(async (app) => {
     "authenticatePilgrimAccount",
     async (req: FastifyRequest) => {
       let sub: string;
+      let sv: number;
 
       try {
         const token =
@@ -231,6 +281,7 @@ export default fp(async (app) => {
           app.jwt.verify<{
             sub: string;
             accountType: string;
+            sv?: number;
           }>(token);
 
         if (
@@ -241,6 +292,8 @@ export default fp(async (app) => {
         }
 
         sub = decoded.sub;
+        // Sesiones emitidas antes de A5.0 no traen sv: equivalen a la versión 0.
+        sv = decoded.sv ?? 0;
       } catch {
         throw unauthorized();
       }
@@ -253,7 +306,9 @@ export default fp(async (app) => {
         !user ||
         !user.isActive ||
         user.accountType !== "PILGRIM" ||
-        !user.emailVerifiedAt
+        !user.emailVerifiedAt ||
+        // A5.0: tras cambiar o restablecer la contraseña, las sesiones anteriores dejan de valer.
+        user.sessionVersion !== sv
       ) {
         throw unauthorized();
       }

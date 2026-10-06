@@ -41,6 +41,78 @@ model Organization {
   users         User[]
   request       OrganizationRequest?
   statusChanges OrganizationStatusChange[]
+  /// A4a: personas registradas por esta organización que aún no reclamó su titular.
+  persons       Person[]
+  /// A5.0: registros de esta organización unidos a cuentas globales (reversibles por esta organización).
+  personClaims  PersonClaim[]
+}
+
+/// A4a: identidad humana. Independiente de la cuenta (User), de la participación (Participant) y de la inscripción
+/// (Registration). Puede existir sin cuenta; como máximo UNA cuenta (User.personId es único: lo garantiza la BD).
+/// ownerOrganizationId != null → registro de esa organización (editable por su personal mientras nadie la reclame).
+/// ownerOrganizationId == null → controlada por su titular (vinculada a una cuenta con prueba de posesión).
+/// Nunca se borra: una duplicada se marca con mergedIntoId al fusionarla de forma explícita.
+model Person {
+  id                      String                   @id @default(uuid())
+  firstName               String
+  /// Opcional: culturas con un solo nombre y cuentas heredadas cuyo nombre completo no se parte (backfill A4a).
+  lastName                String?
+  documentType            String?
+  /// Normalizado (solo dígitos/letras). No es único: la coincidencia nunca fusiona automáticamente.
+  documentNumber          String?
+  phone                   String?
+  phoneDigits             String                   @default("")
+  email                   String?
+  /// Preparado para determinar mayoría/minoría según país (A4); todavía sin consentimiento parental.
+  birthDate               DateTime?                @db.Date
+  ownerOrganizationId     String?
+  mergedIntoId            String?
+  /// Código de vinculación de un solo uso que emite el personal y canjea el titular desde su cuenta (solo el hash).
+  claimCodeHash           String?                  @unique
+  claimCodeExpiresAt      DateTime?
+  createdAt               DateTime                 @default(now())
+  updatedAt               DateTime                 @updatedAt
+  ownerOrganization       Organization?            @relation(fields: [ownerOrganizationId], references: [id], onDelete: Restrict)
+  mergedInto              Person?                  @relation("PersonMerge", fields: [mergedIntoId], references: [id], onDelete: Restrict)
+  mergedFrom              Person[]                 @relation("PersonMerge")
+  user                    User?
+  participants            Participant[]
+  registrations           Registration[]
+  /// A5.0: uniones donde esta Person es la identidad global (cuenta) o el registro de organización unido.
+  claimsAsGlobal          PersonClaim[]            @relation("PersonClaimGlobal")
+  claimsAsSource          PersonClaim[]            @relation("PersonClaimSource")
+  /// A5.1: participaciones como voluntario (la misma Person, sin duplicar identidad).
+  volunteerParticipations VolunteerParticipation[]
+
+  @@index([ownerOrganizationId, lastName, firstName])
+  @@index([documentNumber])
+  @@index([phoneDigits])
+  @@index([mergedIntoId])
+}
+
+/// A5.0: unión explícita de un registro de organización (sourcePerson, de ownerOrganizationId) a la identidad global
+/// de una cuenta (person = User.personId). La crea el titular con el código que emitió la organización y su confirmación.
+/// Guarda exactamente qué se movió para que SOLO esa organización pueda revertirlo (desvincular), sin tocar nada más.
+model PersonClaim {
+  id                   String       @id @default(uuid())
+  personId             String
+  sourcePersonId       String
+  organizationId       String
+  userId               String
+  movedParticipantIds  String[]     @default([])
+  movedRegistrationIds String[]     @default([])
+  /// A5.1: participaciones como voluntario movidas por la unión.
+  movedVolunteerIds    String[]     @default([])
+  claimedAt            DateTime     @default(now())
+  reversedAt           DateTime?
+  reversedById         String?
+  person               Person       @relation("PersonClaimGlobal", fields: [personId], references: [id], onDelete: Restrict)
+  sourcePerson         Person       @relation("PersonClaimSource", fields: [sourcePersonId], references: [id], onDelete: Restrict)
+  organization         Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  user                 User         @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([personId, organizationId])
+  @@index([sourcePersonId])
 }
 
 /// A2: identidad separada de la autorización del personal.
@@ -48,37 +120,64 @@ model Organization {
 /// Ambas reglas las impone la BD con CHECK (migración 20261006000000_pilgrim_identity_separation).
 /// La relación del peregrino con parroquias y eventos se deriva de Participant/Registration → Event → Organization.
 model User {
-  id                      String                     @id @default(uuid())
-  organizationId          String?
-  email                   String                     @unique
-  name                    String
-  passwordHash            String
-  role                    Role?
-  isActive                Boolean                    @default(true)
+  id                       String                     @id @default(uuid())
+  organizationId           String?
+  email                    String                     @unique
+  name                     String
+  passwordHash             String
+  role                     Role?
+  isActive                 Boolean                    @default(true)
   /// Permisos activados individualmente (además de los del rol).
-  extraPermissions        String[]                   @default([])
-  createdAt               DateTime                   @default(now())
-  updatedAt               DateTime                   @updatedAt
-  documentNumber          String?                    @unique
-  emailVerifiedAt         DateTime?
-  phone                   String?
-  photoUrl                String?
-  accountType             AccountType                @default(STAFF)
-  termsAcceptedAt         DateTime?
-  auditLogs               AuditLog[]
-  checkins                Checkin[]                  @relation("CheckinOperator")
-  emailVerificationTokens EmailVerificationToken[]
-  incidents               Incident[]
-  invitationsSent         Invitation[]               @relation("InvitationInviter")
+  extraPermissions         String[]                   @default([])
+  createdAt                DateTime                   @default(now())
+  updatedAt                DateTime                   @updatedAt
+  documentNumber           String?                    @unique
+  emailVerifiedAt          DateTime?
+  phone                    String?
+  photoUrl                 String?
+  accountType              AccountType                @default(STAFF)
+  termsAcceptedAt          DateTime?
+  /// A4a: persona titular de la cuenta. Único → una Person tiene como máximo una cuenta. PILGRIM la exige (CHECK).
+  /// STAFF puede tenerla; PLATFORM puede no tenerla. documentNumber/phone de User quedan como dato heredado:
+  /// la identidad vive en Person (documentNumber se conserva solo como clave de unicidad de cuenta de A2).
+  personId                 String?                    @unique
+  person                   Person?                    @relation(fields: [personId], references: [id], onDelete: Restrict)
+  auditLogs                AuditLog[]
+  checkins                 Checkin[]                  @relation("CheckinOperator")
+  emailVerificationTokens  EmailVerificationToken[]
+  /// A5.0: tokens de recuperación de contraseña (solo hash).
+  passwordResetTokens      PasswordResetToken[]
+  /// A5.1: códigos de consentimiento de voluntariado (propios) y solicitudes enviadas como personal.
+  volunteerConsentCodes    VolunteerConsentCode[]     @relation("VolunteerConsentOwner")
+  volunteerConsentRequests VolunteerConsentCode[]     @relation("VolunteerConsentRequester")
+  /// A5.0: uniones de registros de organizaciones a la Person de esta cuenta.
+  personClaims             PersonClaim[]
+  /// A5.0: versión de las sesiones de la cuenta del peregrino (va en el JWT). Cambiar o restablecer la contraseña la
+  /// incrementa e invalida las sesiones emitidas antes.
+  sessionVersion           Int                        @default(0)
+  /// A6: MFA (TOTP). Secreto cifrado con AES-256-GCM (lib/mfa.ts); nunca en claro. mfaEnabledAt != null ⇔ MFA activo.
+  mfaTotpSecret            String?
+  /// A6: secreto del enrolamiento en curso (cifrado); pasa a mfaTotpSecret al confirmar con un código válido.
+  mfaPendingSecret         String?
+  mfaPendingAt             DateTime?
+  mfaEnabledAt             DateTime?
+  /// A6: último paso TOTP aceptado (anti-replay: un código sirve una sola vez).
+  mfaLastStep              Int?
+  /// A6: intentos fallidos consecutivos de segundo factor y bloqueo temporal por cuenta.
+  mfaFailedCount           Int                        @default(0)
+  mfaLockedUntil           DateTime?
+  mfaRecoveryCodes         MfaRecoveryCode[]
+  incidents                Incident[]
+  invitationsSent          Invitation[]               @relation("InvitationInviter")
   /// A3: solicitudes de parroquia revisadas (solo PLATFORM) y transiciones registradas por esta cuenta.
-  requestsReviewed        OrganizationRequest[]      @relation("OrganizationRequestReviewer")
-  statusChanges           OrganizationStatusChange[]
-  assignments             OperatorAssignment[]
-  refreshTokens           RefreshToken[]
+  requestsReviewed         OrganizationRequest[]      @relation("OrganizationRequestReviewer")
+  statusChanges            OrganizationStatusChange[]
+  assignments              OperatorAssignment[]
+  refreshTokens            RefreshToken[]
   /// Solo cuentas PILGRIM: sus participaciones e inscripciones por evento (se valida en código).
-  participations          Participant[]              @relation("PilgrimParticipations")
-  registrations           Registration[]             @relation("PilgrimRegistrations")
-  organization            Organization?              @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  participations           Participant[]              @relation("PilgrimParticipations")
+  registrations            Registration[]             @relation("PilgrimRegistrations")
+  organization             Organization?              @relation(fields: [organizationId], references: [id], onDelete: Restrict)
 
   @@index([organizationId, role])
 }
@@ -92,57 +191,83 @@ model RefreshToken {
   createdAt DateTime  @default(now())
   userAgent String?
   ip        String?
+  /// A6: momento del último segundo factor verificado en esta sesión; viaja al access token (step-up).
+  mfaAt     DateTime?
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+/// A6: códigos de recuperación MFA de un solo uso. Solo el HMAC del código (clave derivada del servidor).
+model MfaRecoveryCode {
+  id        String    @id @default(uuid())
+  userId    String
+  codeHash  String    @unique
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
 }
 
 model Event {
-  id                   String               @id @default(uuid())
-  organizationId       String
-  name                 String
-  description          String?
-  startsAt             DateTime
-  timezone             String               @default("America/Argentina/Buenos_Aires")
-  status               EventStatus          @default(DRAFT)
+  id                       String                   @id @default(uuid())
+  organizationId           String
+  name                     String
+  description              String?
+  startsAt                 DateTime
+  timezone                 String                   @default("America/Argentina/Buenos_Aires")
+  status                   EventStatus              @default(DRAFT)
   /// Nombre de la parroquia que aparece en la credencial (si falta, se usa el de la organización).
-  parishName           String?
+  parishName               String?
   /// Inscripción abierta: el peregrino se registra con un enlace público y envía su comprobante.
-  registrationOpen     Boolean              @default(false)
-  registrationToken    String?              @unique
-  registrationFee      Decimal?             @db.Decimal(12, 2)
-  paymentInstructions  String?
+  registrationOpen         Boolean                  @default(false)
+  registrationToken        String?                  @unique
+  registrationFee          Decimal?                 @db.Decimal(12, 2)
+  paymentInstructions      String?
   /// Tipo de evento. La peregrinación es un tipo más; lo que habilita cada tipo se define en packages/shared (EVENT_TYPE_INFO).
-  type                 EventType            @default(OTHER)
-  endsAt               DateTime?
+  type                     EventType                @default(OTHER)
+  endsAt                   DateTime?
   /// Lugar general del evento (templo, plaza, salón). El trayecto, si lo hay, vive en EventRoute.
-  locationName         String?
-  address              String?
-  latitude             Float?
-  longitude            Float?
+  locationName             String?
+  address                  String?
+  latitude                 Float?
+  longitude                Float?
   /// Cupo informativo del evento (todavía no limita inscripciones).
-  capacity             Int?
-  visibility           EventVisibility      @default(PRIVATE)
+  capacity                 Int?
+  visibility               EventVisibility          @default(PRIVATE)
   /// Ventana opcional de inscripción. registrationOpen sigue siendo el interruptor principal.
-  registrationOpensAt  DateTime?
-  registrationClosesAt DateTime?
-  certificateEnabled   Boolean              @default(false)
-  certificatePhrase    String?
+  registrationOpensAt      DateTime?
+  registrationClosesAt     DateTime?
+  certificateEnabled       Boolean                  @default(false)
+  certificatePhrase        String?
   /// Opciones menores propias del tipo, validadas con Zod (eventSettingsSchemas en packages/shared).
-  settings             Json                 @default("{}")
-  route                EventRoute?
-  createdAt            DateTime             @default(now())
-  updatedAt            DateTime             @updatedAt
-  checkins             Checkin[]
-  checkpoints          Checkpoint[]
-  organization         Organization         @relation(fields: [organizationId], references: [id])
-  contacts             EventContact[]
-  incidents            Incident[]
-  assignments          OperatorAssignment[]
-  participants         Participant[]
-  groups               ParticipantGroup[]
-  registrations        Registration[]
-  syncQueue            SyncQueue[]
+  settings                 Json                     @default("{}")
+  /// A4: módulos que usa el evento. El tipo solo propone valores iniciales; las dependencias, reservadas y
+  /// coherencia con los datos del evento las impone la BD con CHECK (migración 20261008000000_event_capabilities).
+  capabilities             EventCapability[]        @default([INFO, LOCATION, REGISTRATION, PARTICIPANTS, CHECKIN, ROUTE, POINTS, CONTACTS, CERTIFICATES])
+  route                    EventRoute?
+  createdAt                DateTime                 @default(now())
+  updatedAt                DateTime                 @updatedAt
+  checkins                 Checkin[]
+  checkpoints              Checkpoint[]
+  organization             Organization             @relation(fields: [organizationId], references: [id])
+  contacts                 EventContact[]
+  incidents                Incident[]
+  assignments              OperatorAssignment[]
+  participants             Participant[]
+  groups                   ParticipantGroup[]
+  registrations            Registration[]
+  syncQueue                SyncQueue[]
+  /// A5.1: voluntariado del evento (capacidad VOLUNTEERS).
+  volunteers               VolunteerParticipation[]
+  teams                    Team[]
+  zones                    Zone[]
+  dutyFunctions            DutyFunction[]
+  shifts                   Shift[]
+  volunteerAssignments     VolunteerAssignment[]
+  /// A5.1: solicitudes de consentimiento de voluntariado para este evento.
+  volunteerConsentRequests VolunteerConsentCode[]
 
   @@index([organizationId, status])
   @@index([organizationId, type])
@@ -177,6 +302,22 @@ enum EventType {
   COMMUNITY_ACTIVITY
   CULTURAL_ACTIVITY
   OTHER
+}
+
+/// A4: capacidades de un evento. VOLUNTEERS, COMMUNICATIONS y DOCUMENTS están reservadas (A5/A6): un CHECK las rechaza.
+enum EventCapability {
+  INFO
+  LOCATION
+  REGISTRATION
+  PARTICIPANTS
+  CHECKIN
+  ROUTE
+  POINTS
+  CONTACTS
+  CERTIFICATES
+  VOLUNTEERS
+  COMMUNICATIONS
+  DOCUMENTS
 }
 
 /// PRIVATE: solo personal · UNLISTED: accesible con enlace · PUBLIC: listable públicamente (directorio futuro).
@@ -227,9 +368,12 @@ model Participant {
   isMinor               Boolean           @default(false)
   emergencyContactName  String?
   emergencyContactPhone String?
-  /// Cuenta permanente del peregrino (User PILGRIM). Opcional: participantes sin cuenta o aún no vinculados.
+  /// Heredado (A2, nunca se escribió). La participación pertenece a la Person (personId), no a la cuenta.
   /// El acceso operativo por enlace/código (PilgrimSession) es independiente de esta cuenta.
   userId                String?
+  /// A4a: quién participa. Obligatorio; la Person puede no tener cuenta. Nombre/documento de Participant
+  /// quedan como instantánea de lo inscrito (credencial e histórico).
+  personId              String
   createdAt             DateTime          @default(now())
   updatedAt             DateTime          @updatedAt
   checkins              Checkin[]
@@ -237,6 +381,7 @@ model Participant {
   event                 Event             @relation(fields: [eventId], references: [id])
   group                 ParticipantGroup? @relation(fields: [groupId], references: [id])
   user                  User?             @relation("PilgrimParticipations", fields: [userId], references: [id], onDelete: SetNull)
+  person                Person            @relation(fields: [personId], references: [id], onDelete: Restrict)
   pilgrimSessions       PilgrimSession[]
   registration          Registration?
 
@@ -245,6 +390,9 @@ model Participant {
   @@unique([id, eventId])
   /// Una cuenta participa como máximo una vez por evento.
   @@unique([eventId, userId])
+  /// A4a: una persona participa como máximo una vez por evento.
+  @@unique([eventId, personId])
+  @@index([personId])
   @@index([eventId, lastName, firstName])
   @@index([eventId, phoneDigits])
   @@index([userId])
@@ -460,8 +608,10 @@ model Registration {
   reviewedById    String?
   reviewedAt      DateTime?
   participantId   String?            @unique
-  /// Cuenta permanente del peregrino (User PILGRIM). Al aprobar, se copia al Participant creado.
+  /// Heredado (A2, nunca se escribió). La inscripción pertenece a la Person (personId), no a la cuenta.
   userId          String?
+  /// A4a: quién se inscribe. Obligatorio; la Person puede no tener cuenta. Al aprobar, el Participant hereda la misma Person.
+  personId        String
   createdAt       DateTime           @default(now())
   updatedAt       DateTime           @updatedAt
   proofs          PaymentProof[]
@@ -469,12 +619,16 @@ model Registration {
   event           Event              @relation(fields: [eventId], references: [id])
   participant     Participant?       @relation(fields: [participantId], references: [id])
   user            User?              @relation("PilgrimRegistrations", fields: [userId], references: [id], onDelete: SetNull)
+  person          Person             @relation(fields: [personId], references: [id], onDelete: Restrict)
 
   @@unique([eventId, documentNumber])
   /// Una cuenta se inscribe como máximo una vez por evento.
   @@unique([eventId, userId])
+  /// A4a: una persona se inscribe como máximo una vez por evento.
+  @@unique([eventId, personId])
   @@index([eventId, status])
   @@index([userId])
+  @@index([personId])
 }
 
 /// Comprobante de pago. El archivo vive fuera de la base (ver lib/storage.ts); aquí solo su referencia y huella.
@@ -509,6 +663,20 @@ model EmailVerificationToken {
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+  @@index([expiresAt])
+}
+
+/// A5.0: recuperación de contraseña de cuentas PILGRIM. Token aleatorio de un solo uso; en la BD solo su hash.
+model PasswordResetToken {
+  id        String    @id @default(uuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
   @@index([expiresAt])
 }
 
@@ -595,9 +763,9 @@ enum EventStatus {
   CANCELLED
 }
 
+/// A4: participación oficial ACTIVE (confirmada) o CANCELLED. ATTENDED/NO_SHOW se derivan de Checkin (sin columna).
 enum ParticipantStatus {
   ACTIVE
-  INACTIVE
   CANCELLED
 }
 
@@ -826,4 +994,170 @@ model GeoImportRun {
 
   @@index([countryCode, dataset, startedAt])
   @@index([source, sourceVersion])
+}
+
+/// A5.1 — Participación de una Person como voluntaria en un evento. No es un rol de cuenta (User.role sigue siendo
+/// autorización del personal). Una por persona y evento. ASSIGNED/ACTIVE se derivan de las asignaciones vigentes.
+enum VolunteerStatus {
+  REQUESTED
+  UNDER_REVIEW
+  APPROVED
+  REJECTED
+  WITHDRAWN
+  REVOKED
+  COMPLETED
+}
+
+/// A5.1 — Consentimiento de voluntariado entre organizaciones (sin directorio global de Personas).
+/// 1) La cuenta genera un código (solo el hash; vence; un solo uso).
+/// 2) Una organización lo canjea para UN evento: queda una solicitud pendiente, sin datos de la persona.
+/// 3) La persona ve qué organización y qué evento la piden y acepta (se crea la VolunteerParticipation) o rechaza.
+/// Distinto del código de vinculación (Person.claimCodeHash), que emite una organización para unir sus datos a una cuenta.
+model VolunteerConsentCode {
+  id            String                  @id @default(uuid())
+  userId        String
+  codeHash      String                  @unique
+  /// Vigencia del paso actual: del código mientras no se canjea; de la solicitud una vez canjeado.
+  expiresAt     DateTime
+  createdAt     DateTime                @default(now())
+  /// Canje por la organización (código consumido) para un evento concreto.
+  usedAt        DateTime?
+  eventId       String?
+  requestedById String?
+  /// Respuesta de la persona.
+  acceptedAt    DateTime?
+  declinedAt    DateTime?
+  volunteerId   String?                 @unique
+  user          User                    @relation("VolunteerConsentOwner", fields: [userId], references: [id], onDelete: Cascade)
+  requestedBy   User?                   @relation("VolunteerConsentRequester", fields: [requestedById], references: [id], onDelete: Restrict)
+  event         Event?                  @relation(fields: [eventId], references: [id], onDelete: Restrict)
+  volunteer     VolunteerParticipation? @relation(fields: [volunteerId], references: [id], onDelete: Restrict)
+
+  @@index([userId, createdAt])
+  @@index([eventId])
+}
+
+model VolunteerParticipation {
+  id                String                @id @default(uuid())
+  eventId           String
+  personId          String
+  status            VolunteerStatus       @default(REQUESTED)
+  notes             String?
+  /// Motivo del último rechazo o baja.
+  decisionReason    String?
+  createdById       String
+  statusChangedById String?
+  statusChangedAt   DateTime?
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+  event             Event                 @relation(fields: [eventId], references: [id], onDelete: Restrict)
+  person            Person                @relation(fields: [personId], references: [id], onDelete: Restrict)
+  assignments       VolunteerAssignment[]
+
+  /// A5.1: código de consentimiento con el que se creó (si fue por código).
+  consentCode VolunteerConsentCode?
+
+  @@unique([eventId, personId])
+  @@unique([id, eventId])
+  @@index([personId])
+  @@index([eventId, status])
+}
+
+/// A5.1 — Equipo operativo del evento. Nombre libre que define la organización; se desactiva, no se borra.
+model Team {
+  id          String                @id @default(uuid())
+  eventId     String
+  name        String
+  description String?
+  isActive    Boolean               @default(true)
+  createdAt   DateTime              @default(now())
+  updatedAt   DateTime              @updatedAt
+  event       Event                 @relation(fields: [eventId], references: [id], onDelete: Restrict)
+  shifts      Shift[]
+  assignments VolunteerAssignment[]
+
+  @@unique([eventId, name])
+  @@unique([id, eventId])
+}
+
+/// A5.1 — Zona operativa del evento (no necesariamente geográfica ni permanente).
+model Zone {
+  id          String                @id @default(uuid())
+  eventId     String
+  name        String
+  description String?
+  isActive    Boolean               @default(true)
+  createdAt   DateTime              @default(now())
+  updatedAt   DateTime              @updatedAt
+  event       Event                 @relation(fields: [eventId], references: [id], onDelete: Restrict)
+  shifts      Shift[]
+  assignments VolunteerAssignment[]
+
+  @@unique([eventId, name])
+  @@unique([id, eventId])
+}
+
+/// A5.1 — Función que realiza un voluntario (no se llama "Function": chocaría con el tipo global de JS).
+model DutyFunction {
+  id          String                @id @default(uuid())
+  eventId     String
+  name        String
+  description String?
+  isActive    Boolean               @default(true)
+  createdAt   DateTime              @default(now())
+  updatedAt   DateTime              @updatedAt
+  event       Event                 @relation(fields: [eventId], references: [id], onDelete: Restrict)
+  assignments VolunteerAssignment[]
+
+  @@unique([eventId, name])
+  @@unique([id, eventId])
+}
+
+/// A5.1 — Turno. endsAt > startsAt (CHECK). Zona y equipo opcionales, del mismo evento (FK compuestas). Se cancela, no se borra.
+model Shift {
+  id          String                @id @default(uuid())
+  eventId     String
+  name        String?
+  startsAt    DateTime
+  endsAt      DateTime
+  zoneId      String?
+  teamId      String?
+  cancelledAt DateTime?
+  createdAt   DateTime              @default(now())
+  updatedAt   DateTime              @updatedAt
+  event       Event                 @relation(fields: [eventId], references: [id], onDelete: Restrict)
+  zone        Zone?                 @relation(fields: [zoneId, eventId], references: [id, eventId], onDelete: Restrict)
+  team        Team?                 @relation(fields: [teamId, eventId], references: [id, eventId], onDelete: Restrict)
+  assignments VolunteerAssignment[]
+
+  @@unique([id, eventId])
+  @@index([eventId, startsAt])
+}
+
+/// A5.1 — Asignación: quién (voluntario), haciendo qué (función), dónde (zona), cuándo (turno), con quién (equipo),
+/// para qué evento. Todo del mismo evento (FK compuestas). Una asignación vigente no se duplica (índice parcial).
+/// Se revoca (revokedAt), nunca se borra.
+model VolunteerAssignment {
+  id           String                 @id @default(uuid())
+  eventId      String
+  volunteerId  String
+  functionId   String
+  teamId       String?
+  zoneId       String?
+  shiftId      String?
+  createdById  String
+  createdAt    DateTime               @default(now())
+  revokedAt    DateTime?
+  revokedById  String?
+  revokeReason String?
+  event        Event                  @relation(fields: [eventId], references: [id], onDelete: Restrict)
+  volunteer    VolunteerParticipation @relation(fields: [volunteerId, eventId], references: [id, eventId], onDelete: Restrict)
+  dutyFunction DutyFunction           @relation(fields: [functionId, eventId], references: [id, eventId], onDelete: Restrict)
+  team         Team?                  @relation(fields: [teamId, eventId], references: [id, eventId], onDelete: Restrict)
+  zone         Zone?                  @relation(fields: [zoneId, eventId], references: [id, eventId], onDelete: Restrict)
+  shift        Shift?                 @relation(fields: [shiftId, eventId], references: [id, eventId], onDelete: Restrict)
+
+  @@index([eventId])
+  @@index([volunteerId])
+  @@index([shiftId])
 }

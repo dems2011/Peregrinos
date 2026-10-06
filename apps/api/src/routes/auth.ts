@@ -1,12 +1,16 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
+import { Prisma } from "@prisma/client";
+import { cfg } from "../config";
 import {
   bootstrapSchema,
+  claimPersonSchema,
   loginSchema,
   registerPilgrimSchema,
 } from "@peregrinos/shared";
+import { claimPersonForUser, personData } from "../lib/persons";
 import { prisma } from "../lib/prisma";
-import { audit } from "../lib/audit";
+import { audit, auditTx } from "../lib/audit";
 import { AppError, unauthorized } from "../lib/errors";
 import {
   dummyHash,
@@ -14,16 +18,20 @@ import {
   verifyPassword,
 } from "../lib/password";
 import { newOpaqueToken, sha256 } from "../lib/tokens";
-import { REFRESH_COOKIE } from "../plugins/auth";
+import { PILGRIM_ACCOUNT_COOKIE, REFRESH_COOKIE } from "../plugins/auth";
 import {
   buildMe,
   buildPilgrimAccountMe,
   clearPilgrimAccountSession,
   clearSession,
+  issueMfaChallenge,
   issuePilgrimAccountSession,
   issueSession,
 } from "../lib/session";
-import { sendEmailVerification } from "../lib/mailer";
+import { sendAccountExistsNotice, sendEmailVerification, sendRegistrationNotCompleted } from "../lib/mailer";
+
+/** A5.0: respuesta única del registro (no revela si el correo o el documento ya tienen cuenta). */
+const REGISTER_ACCEPTED = "Si los datos son correctos, te enviamos un correo para continuar. Revisa tu bandeja de entrada (y la carpeta de spam).";
 
 export default async function authRoutes(app: FastifyInstance) {
   const strict = {
@@ -42,47 +50,53 @@ export default async function authRoutes(app: FastifyInstance) {
       const email = body.email.toLowerCase().trim();
       const documentNumber = body.documentNumber.trim();
 
+      // A5.0: anti-enumeración. La respuesta es SIEMPRE la misma (202 + mensaje genérico), exista o no una cuenta con
+      // ese correo o documento. La orientación (ingresar o recuperar) va por correo al buzón correspondiente.
+      // Las unicidades de la BD se mantienen: nunca se crea un duplicado.
+      const accepted = () => reply.status(202).send({ message: REGISTER_ACCEPTED });
+      const passwordHash = await hashPassword(body.password); // mismo costo en todos los caminos
       const existing = await prisma.user.findFirst({
-        where: {
-          OR: [{ email }, { documentNumber }],
-        },
-        select: {
-          email: true,
-          documentNumber: true,
-        },
+        where: { OR: [{ email }, { documentNumber }] },
+        select: { id: true, email: true, name: true },
       });
+      const notifyDuplicate = async (dup: { id: string; email: string; name: string } | null) => {
+        if (dup?.email === email) {
+          // El correo ya tiene cuenta: se avisa a ESE buzón (su dueño), con el camino para ingresar o recuperar.
+          void sendAccountExistsNotice({ to: dup.email, name: dup.name, loginUrl: `${cfg.WEB_ORIGIN}/cuenta/ingresar`, recoverUrl: `${cfg.WEB_ORIGIN}/cuenta/recuperar` })
+            .catch(() => req.log.warn("No se pudo enviar el aviso de cuenta existente."));
+        } else {
+          // El documento ya está en otra cuenta: al buzón indicado solo se le dice que no se pudo completar.
+          void sendRegistrationNotCompleted({ to: email, name: body.firstName, loginUrl: `${cfg.WEB_ORIGIN}/cuenta/ingresar`, recoverUrl: `${cfg.WEB_ORIGIN}/cuenta/recuperar` })
+            .catch(() => req.log.warn("No se pudo enviar el aviso de registro no completado."));
+        }
+        await audit(req, { action: "PILGRIM_REGISTER_DUPLICATE", entityType: "User", entityId: dup?.id ?? null, userId: null, organizationId: null, metadata: { by: dup?.email === email ? "EMAIL" : "DOCUMENT" } });
+        return accepted();
+      };
+      if (existing) return notifyDuplicate(existing);
 
-      if (existing?.email === email) {
-        throw new AppError(
-          409,
-          "EMAIL_EXISTS",
-          "Ya existe una cuenta con ese correo."
-        );
-      }
-
-      if (existing?.documentNumber === documentNumber) {
-        throw new AppError(
-          409,
-          "DOCUMENT_EXISTS",
-          "Ya existe una cuenta con ese DNI."
-        );
-      }
-
-      const passwordHash = await hashPassword(body.password);
       const verification = newOpaqueToken();
 
-      const user = await prisma.$transaction(async (tx) => {
+      let user;
+      try {
+      user = await prisma.$transaction(async (tx) => {
+        // A4a: la identidad vive en Person; toda cuenta PILGRIM nace con la suya (sin historial). La coincidencia de
+        // documento o correo nunca vincula: la Person que registró una organización se reclama después, con el código
+        // y desde la cuenta con el email ya verificado (POST /account/claim-person).
+        const personId = (await tx.person.create({
+          data: personData({ firstName: body.firstName, lastName: body.lastName, documentType: "DNI", documentNumber, phone: body.phone.trim(), email }),
+        })).id;
         const created = await tx.user.create({
           data: {
             // A2: el peregrino es una identidad sin organización ni rol de personal.
             name: `${body.firstName} ${body.lastName}`,
             email,
+            // Clave de unicidad de cuenta de A2 (una cuenta por documento). La identidad está en Person.
             documentNumber,
-            phone: body.phone.trim(),
             passwordHash,
             // Fijado por el servidor (deny-by-default): el body no puede influir en el tipo de cuenta.
             accountType: "PILGRIM",
             termsAcceptedAt: new Date(),
+            personId,
           },
         });
 
@@ -98,19 +112,23 @@ export default async function authRoutes(app: FastifyInstance) {
 
         return created;
       });
+      } catch (e) {
+        // Dos registros simultáneos con el mismo correo o documento: la BD impide el duplicado; misma respuesta.
+        if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
+          return notifyDuplicate(await prisma.user.findFirst({ where: { OR: [{ email }, { documentNumber }] }, select: { id: true, email: true, name: true } }));
+        }
+        throw e;
+      }
 
-      const verificationUrl =
-        `${process.env.WEB_ORIGIN ?? "http://localhost:3000"}` +
-        `/verificar-email?token=${encodeURIComponent(
-          verification.raw
-        )}`;
+      const verificationUrl = `${cfg.WEB_ORIGIN}/verificar-email?token=${encodeURIComponent(verification.raw)}`;
 
-      await sendEmailVerification({
+      // En segundo plano: la respuesta tarda lo mismo exista o no la cuenta.
+      void sendEmailVerification({
         to: user.email,
         name: user.name,
         url: verificationUrl,
         hours: 24,
-      });
+      }).catch(() => req.log.warn("No se pudo enviar el correo de verificación."));
 
       await audit(req, {
         action: "PILGRIM_REGISTERED",
@@ -120,23 +138,40 @@ export default async function authRoutes(app: FastifyInstance) {
         metadata: {
           email: user.email,
           accountType: user.accountType,
+          personId: user.personId,
         },
       });
 
-      return reply.status(201).send({
-        message:
-          "Cuenta creada. Revisa tu correo para verificarla.",
-        email: user.email,
+      return accepted();
+    }
+  );
+
+  /**
+   * A5.0: una cuenta PILGRIM con email verificado une a su identidad global (User.personId, que no cambia) el registro
+   * que una organización le asoció, con el código de un solo uso que esta le entregó y su confirmación explícita.
+   * Solo se mueven los datos de esa organización; la unión queda registrada y solo esa organización puede revertirla.
+   */
+  app.post(
+    "/account/claim-person",
+    { preHandler: app.authenticatePilgrimAccount, config: { rateLimit: { max: 5, timeWindow: "15 minutes" } } },
+    async (req) => {
+      const { code } = claimPersonSchema.parse(req.body);
+      await prisma.$transaction(async (tx) => {
+        const result = await claimPersonForUser(tx, req.pilgrimAccount.id, code);
+        // Unión auditada en la misma transacción (qué organización, qué registro y cuánto se movió).
+        await auditTx(tx, req, { action: "PERSON_CLAIMED", entityType: "Person", entityId: result.personId, userId: req.pilgrimAccount.id, organizationId: result.ownerOrganizationId, metadata: { claimId: result.claimId, sourcePersonId: result.sourcePersonId, movedParticipants: result.movedParticipants, movedRegistrations: result.movedRegistrations, movedVolunteers: result.movedVolunteers } });
       });
+      return buildPilgrimAccountMe(req.pilgrimAccount.id);
     }
   );
 
   app.get(
     "/verify-email",
+    { config: strict },
     async (req, reply) => {
       const query = z
         .object({
-          token: z.string().min(20),
+          token: z.string().min(20).max(200),
         })
         .parse(req.query);
 
@@ -165,24 +200,19 @@ export default async function authRoutes(app: FastifyInstance) {
         );
       }
 
-      await prisma.$transaction([
-        prisma.user.update({
-          where: {
-            id: verification.userId,
-          },
-          data: {
-            emailVerifiedAt: new Date(),
-          },
-        }),
-        prisma.emailVerificationToken.update({
-          where: {
-            id: verification.id,
-          },
-          data: {
-            usedAt: new Date(),
-          },
-        }),
-      ]);
+      // A5.0: consumo condicional (un solo uso incluso con dos clics simultáneos) y verificación en la misma transacción.
+      await prisma.$transaction(async (tx) => {
+        const now = new Date();
+        const used = await tx.emailVerificationToken.updateMany({
+          where: { id: verification.id, usedAt: null, expiresAt: { gt: now } },
+          data: { usedAt: now },
+        });
+        if (used.count !== 1) {
+          throw new AppError(400, "INVALID_VERIFICATION", "El enlace de verificación no es válido o ya venció.");
+        }
+        await tx.user.updateMany({ where: { id: verification.userId, emailVerifiedAt: null }, data: { emailVerifiedAt: now } });
+        await auditTx(tx, req, { action: "EMAIL_VERIFIED", entityType: "User", entityId: verification.userId, userId: verification.userId, organizationId: null });
+      });
 
       return reply.send({
         message: "Correo verificado correctamente.",
@@ -292,8 +322,11 @@ export default async function authRoutes(app: FastifyInstance) {
           },
         });
 
+        // A5.0: el aviso de "verifica tu correo" solo con la contraseña correcta; si no, revelaría que la cuenta existe.
         throw unauthorized(
-          user?.accountType === "PILGRIM" &&
+          ok &&
+          user?.isActive &&
+          user.accountType === "PILGRIM" &&
           !user.emailVerifiedAt
             ? "Debes verificar tu correo antes de ingresar."
             : "Correo o contraseña incorrectos."
@@ -319,6 +352,19 @@ export default async function authRoutes(app: FastifyInstance) {
         });
 
         return buildPilgrimAccountMe(user.id);
+      }
+
+      // A6: con MFA activo, la contraseña sola no abre sesión: se emite el desafío del segundo paso (/api/auth/mfa/verify).
+      if (user.mfaEnabledAt) {
+        issueMfaChallenge(app, reply, user);
+        await audit(req, {
+          action: "LOGIN_PASSWORD_OK_MFA_PENDING",
+          entityType: "User",
+          entityId: user.id,
+          userId: user.id,
+          organizationId: user.organizationId,
+        });
+        return { mfaRequired: true as const };
       }
 
       await issueSession(
@@ -395,29 +441,39 @@ export default async function authRoutes(app: FastifyInstance) {
       if (
         token.expiresAt < new Date() ||
         !token.user.isActive ||
-        token.user.accountType !== "STAFF"
+        token.user.accountType !== "STAFF" ||
+        // A6: con MFA activo, solo se refresca una sesión que nació de un segundo factor.
+        (token.user.mfaEnabledAt && !token.mfaAt)
       ) {
         clearSession(reply);
         throw unauthorized();
       }
 
-      await prisma.refreshToken.update({
+      // Rotación condicional: dos refrescos simultáneos con el mismo token no generan dos sesiones. El que pierde
+      // no borra cookies (las del ganador ya están en el navegador).
+      const rotated = await prisma.refreshToken.updateMany({
         where: {
           id: token.id,
+          revokedAt: null,
         },
         data: {
           revokedAt: new Date(),
         },
       });
+      if (rotated.count !== 1) {
+        throw unauthorized();
+      }
 
+      // A6: la sesión nueva conserva el momento del último segundo factor (la ventana de step-up no se extiende).
       await issueSession(
         app,
         req,
         reply,
-        token.user
+        token.user,
+        { mfaAt: token.mfaAt }
       );
 
-      return buildMe(token.userId);
+      return buildMe(token.userId, token.mfaAt);
     }
   );
 
@@ -447,7 +503,23 @@ export default async function authRoutes(app: FastifyInstance) {
 
   app.post(
     "/account/logout",
-    async (_req, reply) => {
+    async (req, reply) => {
+      // A5.0: logout efectivo. Si la sesión es válida, se incrementa sessionVersion (condicional sobre la versión del
+      // token): cualquier copia del JWT deja de servir. Afecta solo a cuentas PILGRIM; STAFF y PLATFORM no cambian.
+      // La versión es por cuenta: cerrar sesión cierra todas las sesiones de esa cuenta.
+      const token = req.cookies[PILGRIM_ACCOUNT_COOKIE];
+      if (token) {
+        try {
+          const d = app.jwt.verify<{ sub: string; accountType: string; sv?: number }>(token);
+          if (d.accountType === "PILGRIM" && d.sub) {
+            const r = await prisma.user.updateMany({
+              where: { id: d.sub, accountType: "PILGRIM", sessionVersion: d.sv ?? 0 },
+              data: { sessionVersion: { increment: 1 } },
+            });
+            if (r.count === 1) await audit(req, { action: "LOGOUT", entityType: "User", entityId: d.sub, userId: d.sub, organizationId: null, metadata: { accountType: "PILGRIM" } });
+          }
+        } catch { /* token inválido o vencido: solo se borra la cookie */ }
+      }
       clearPilgrimAccountSession(reply);
 
       return reply.status(204).send();
@@ -458,9 +530,11 @@ export default async function authRoutes(app: FastifyInstance) {
     "/me",
     {
       preHandler: app.authenticate,
+      // A6: un SUPERADMIN sin MFA necesita /me para saber que debe enrolarse.
+      config: { mfaEnrollment: true },
     },
     async (req) => {
-      return buildMe(req.auth.id);
+      return buildMe(req.auth.id, req.auth.mfaAt);
     }
   );
 

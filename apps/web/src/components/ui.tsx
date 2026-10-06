@@ -46,7 +46,7 @@ export const ErrorBox = ({ msg }: { msg: string | null }) => (msg ? <div classNa
 export const STATUS_PILL: Record<string, [string, string]> = {
   ACTIVE: ["Activo", "ok"], INACTIVE: ["Inactivo", "warn"], CANCELLED: ["Cancelado", "err"],
   PENDING_PROOF: ["Sin comprobante", "gray"], IN_REVIEW: ["En revisión", "warn"], APPROVED: ["Confirmado", "ok"], REJECTED: ["Rechazado", "err"],
-  DRAFT: ["Borrador", "gray"], SCHEDULED: ["Programado", ""], IN_PROGRESS: ["En curso", "ok"], FINISHED: ["Finalizado", "gray"], CONFLICT: ["Conflicto", "warn"],
+  DRAFT: ["Borrador", "gray"], SCHEDULED: ["Publicado", ""], IN_PROGRESS: ["En curso", "ok"], FINISHED: ["Finalizado", "gray"], CONFLICT: ["Conflicto", "warn"],
 };
 export const StatusPill = ({ s }: { s: string }) => <span className={`pill ${STATUS_PILL[s]?.[1] ?? ""}`}>{STATUS_PILL[s]?.[0] ?? s}</span>;
 

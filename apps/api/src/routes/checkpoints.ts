@@ -5,7 +5,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "../lib/prisma";
 import { audit } from "../lib/audit";
 import { AppError, notFound } from "../lib/errors";
-import { eventParam, loadEvent, lockEvent } from "../lib/access";
+import { eventParam, loadEvent, loadEventWith, lockEvent } from "../lib/access";
 
 const idParam = eventParam.extend({ id: z.string().uuid() });
 
@@ -35,7 +35,7 @@ export default async function checkpointRoutes(app: FastifyInstance) {
 
   app.post("/", { preHandler: app.requirePermission("checkpoint:manage") }, async (req, reply) => {
     const { eventId } = eventParam.parse(req.params);
-    await loadEvent(req, eventId);
+    await loadEventWith(req, eventId, "POINTS");
     const body = createCheckpointSchema.parse(req.body);
     const cp = await prisma.$transaction(async (tx) => {
       await lockEvent(tx, eventId);
@@ -48,7 +48,7 @@ export default async function checkpointRoutes(app: FastifyInstance) {
 
   app.patch("/:id", { preHandler: app.requirePermission("checkpoint:manage") }, async (req) => {
     const { eventId, id } = idParam.parse(req.params);
-    await loadEvent(req, eventId);
+    await loadEventWith(req, eventId, "POINTS");
     const body = updateCheckpointSchema.parse(req.body);
     const before = await prisma.checkpoint.findFirst({ where: { id, eventId } });
     if (!before) throw notFound("Punto de control no encontrado.");
@@ -63,7 +63,7 @@ export default async function checkpointRoutes(app: FastifyInstance) {
   /** Cambia el orden del recorrido. Debe enviarse la lista completa de puntos del evento. */
   app.put("/order", { preHandler: app.requirePermission("checkpoint:manage") }, async (req) => {
     const { eventId } = eventParam.parse(req.params);
-    await loadEvent(req, eventId);
+    await loadEventWith(req, eventId, "POINTS");
     const { checkpointIds } = reorderCheckpointsSchema.parse(req.body);
     const current = await prisma.checkpoint.findMany({ where: { eventId }, select: { id: true } });
     const same = current.length === checkpointIds.length && new Set(checkpointIds).size === current.length &&
@@ -77,7 +77,7 @@ export default async function checkpointRoutes(app: FastifyInstance) {
   /** Solo se pueden eliminar puntos sin llegadas; si tienen historial, hay que desactivarlos. */
   app.delete("/:id", { preHandler: app.requirePermission("checkpoint:manage") }, async (req, reply) => {
     const { eventId, id } = idParam.parse(req.params);
-    await loadEvent(req, eventId);
+    await loadEventWith(req, eventId, "POINTS");
     const cp = await prisma.checkpoint.findFirst({ where: { id, eventId } });
     if (!cp) throw notFound("Punto de control no encontrado.");
     if ((await prisma.checkin.count({ where: { checkpointId: id } })) > 0) {

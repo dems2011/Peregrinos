@@ -12,6 +12,7 @@ import { prisma } from "./lib/prisma";
 import { redactUrl, reqSerializer } from "./lib/logRedact";
 import authPlugin from "./plugins/auth";
 import authRoutes from "./routes/auth";
+import mfaRoutes from "./routes/mfa";
 import eventRoutes from "./routes/events";
 import userRoutes from "./routes/users";
 import auditRoutes from "./routes/audit";
@@ -30,6 +31,10 @@ import streamRoutes from "./routes/stream";
 import organizationRequestRoutes from "./routes/organizationRequests";
 import platformRoutes from "./routes/platform";
 import organizationRoutes from "./routes/organization";
+import personRoutes from "./routes/persons";
+import pilgrimAccountRoutes from "./routes/pilgrimAccount";
+import volunteerRoutes from "./routes/volunteers";
+import geoRoutes from "./routes/geo";
 
 export async function buildApp() {
   const app = Fastify({
@@ -46,6 +51,15 @@ export async function buildApp() {
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   });
   await app.register(cookie);
+  // POST sin cuerpo con Content-Type JSON (logout, reenvíos): el parser por defecto responde 400. Se mantiene la
+  // protección de Fastify contra __proto__/constructor y solo se acepta el cuerpo vacío.
+  const defaultJson = app.getDefaultJsonParser("error", "error");
+  app.removeContentTypeParser("application/json");
+  app.addContentTypeParser("application/json", { parseAs: "string" }, (req, body, done) => {
+    const text = typeof body === "string" ? body : body.toString("utf8");
+    if (text.trim() === "") return done(null, undefined);
+    return defaultJson(req, text, done);
+  });
   await app.register(multipart, { limits: { fileSize: 10 * 1024 * 1024, files: 1, fields: 12 } });
   await app.register(rateLimit, { global: true, max: 300, timeWindow: "1 minute" });
   await app.register(authPlugin);
@@ -90,6 +104,8 @@ export async function buildApp() {
   });
 
   await app.register(authRoutes, { prefix: "/api/auth" });
+  // A6: MFA del personal (login en dos pasos, enrolamiento, step-up, códigos de recuperación).
+  await app.register(mfaRoutes, { prefix: "/api/auth/mfa" });
   await app.register(eventRoutes, { prefix: "/api/events" });
   await app.register(userRoutes, { prefix: "/api/users" });
   await app.register(auditRoutes, { prefix: "/api/audit-logs" });
@@ -109,6 +125,14 @@ export async function buildApp() {
   await app.register(organizationRequestRoutes, { prefix: "/api/organization-requests" });
   await app.register(platformRoutes, { prefix: "/api/platform" });
   await app.register(organizationRoutes, { prefix: "/api/organization" });
+  // A4a: identidad humana (Person), separada de la cuenta y de la participación.
+  await app.register(personRoutes, { prefix: "/api/persons" });
+  // A5.0: área de cuenta del peregrino (login, verificación, recuperación, historial).
+  await app.register(pilgrimAccountRoutes, { prefix: "/api/auth/account" });
+  // A5.1: voluntariado del evento (voluntarios, equipos, zonas, funciones, turnos, asignaciones).
+  await app.register(volunteerRoutes, { prefix: "/api/events/:eventId/volunteering" });
+  // G1: catálogo geográfico de solo lectura (países, niveles, áreas) para el selector encadenado.
+  await app.register(geoRoutes, { prefix: "/api/geo" });
 
   return app;
 }

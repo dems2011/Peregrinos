@@ -1,0 +1,21 @@
+{
+    "common.yes": "Sí",
+    "common.no": "No",
+    "common.save": "Guardar",
+    "common.cancel": "Cancelar",
+    "common.close": "Cerrar",
+    "common.back": "Volver",
+    "common.edit": "Editar",
+    "common.delete": "Eliminar",
+    "common.search": "Buscar",
+    "common.loading": "Cargando…",
+    "common.error": "Ocurrió un error.",
+    "common.empty": "—",
+    "date.today": "Hoy",
+    "date.yesterday": "Ayer",
+    "date.tomorrow": "Mañana",
+    "date.expiresOn": "Vence el {date}.",
+    "format.dateTime": "{date} · {time}",
+    "format.dateRange": "{start} – {end}",
+    "format.timeRange": "{start}–{end}"
+}

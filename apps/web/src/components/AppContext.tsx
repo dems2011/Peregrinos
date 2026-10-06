@@ -2,7 +2,8 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import type { MeResponse, Permission } from "@peregrinos/shared";
-import { api, getMe, qs } from "@/lib/api";
+import { ApiError, MFA_ENROLLMENT_EVENT, SESSION_EXPIRED_EVENT, api, getMe, qs } from "@/lib/api";
+import { StepUpDialog } from "@/components/StepUpDialog";
 import { useEventStream } from "@/lib/hooks";
 import type { EventItem } from "@/lib/types";
 
@@ -17,6 +18,9 @@ interface Ctx {
   live: boolean;
   pendingPayments: number;
   subscribe: (h: Handler) => () => void;
+  /** A6: vuelve a leer /auth/me (tras enrolar, desactivar MFA o un step-up). */
+  setMe: (m: MeResponse) => void;
+  reloadMe: () => Promise<void>;
 }
 const C = createContext<Ctx | null>(null);
 export const useApp = () => { const v = useContext(C); if (!v) throw new Error("useApp fuera de AppProvider"); return v; };
@@ -53,12 +57,37 @@ export function AppProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  useEffect(() => {
-    (async () => {
-      try { const m = await getMe(); setMe(m); await loadEvents(m); }
-      catch { router.replace("/login"); }
-    })();
+  const [bootError, setBootError] = useState<string | null>(null);
+  const boot = useCallback(async () => {
+    setBootError(null);
+    try {
+      const m = await getMe(); setMe(m);
+      // A6: SUPERADMIN sin MFA → la API solo permite enrolarse (el resto responde 403 MFA_ENROLLMENT_REQUIRED).
+      if (m.mfa?.enrollmentRequired) {
+        if (!window.location.pathname.startsWith("/configuracion/seguridad")) router.replace("/configuracion/seguridad");
+        return;
+      }
+      await loadEvents(m);
+    }
+    catch (e) {
+      // Solo la falta de sesión lleva al login; un error de red o del servidor se muestra con opción de reintentar.
+      if (e instanceof ApiError && e.status === 401) router.replace("/login");
+      else setBootError(e instanceof ApiError ? e.message : "No se pudo cargar. Intenta nuevamente.");
+    }
   }, [router, loadEvents]);
+  useEffect(() => { void boot(); }, [boot]);
+
+  // La sesión venció y no se pudo renovar en cualquier pantalla → login del personal.
+  useEffect(() => {
+    const onExpired = () => router.replace("/login");
+    const onEnroll = () => router.replace("/configuracion/seguridad");
+    window.addEventListener(SESSION_EXPIRED_EVENT, onExpired);
+    window.addEventListener(MFA_ENROLLMENT_EVENT, onEnroll);
+    return () => {
+      window.removeEventListener(SESSION_EXPIRED_EVENT, onExpired);
+      window.removeEventListener(MFA_ENROLLMENT_EVENT, onEnroll);
+    };
+  }, [router]);
 
   const setEventId = useCallback((id: string) => {
     setEventIdState(id);
@@ -74,7 +103,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const live = useEventStream(eventId, (type, data) => {
     if (type.startsWith("registration.")) loadPending();
-    if (type === "participants.changed" || type === "checkin.created") loadEvents(me!);
+    if (me && (type === "participants.changed" || type === "checkin.created")) loadEvents(me).catch(() => { /* se reintenta con el próximo aviso */ });
     handlers.current.forEach((h) => h(type, data));
   });
 
@@ -83,8 +112,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const value = useMemo<Ctx | null>(() => me && {
     me, can, events, event, setEventId, live, pendingPayments: pending, subscribe,
     reloadEvents: async () => { await loadEvents(me); },
-  }, [me, can, events, event, setEventId, live, pending, subscribe, loadEvents]);
+    setMe, reloadMe: boot,
+  }, [me, can, events, event, setEventId, live, pending, subscribe, loadEvents, boot]);
 
+  if (!value && bootError) {
+    return (
+      <div className="empty" role="alert">
+        <p>{bootError}</p>
+        <button className="btn btn-sm" style={{ margin: "0 auto" }} onClick={() => void boot()}>Reintentar</button>
+      </div>
+    );
+  }
   if (!value) return <div className="spinner" aria-label="Cargando" />;
-  return <C.Provider value={value}>{children}</C.Provider>;
+  return <C.Provider value={value}>{children}<StepUpDialog /></C.Provider>;
 }

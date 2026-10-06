@@ -3,6 +3,7 @@ import { useState } from "react";
 import { EVENT_TYPES, EVENT_TYPE_INFO, type EventType } from "@peregrinos/shared";
 import { ApiError, post } from "@/lib/api";
 import { ErrorBox, Modal } from "@/components/ui";
+import { fromZonedInput } from "@/lib/format";
 
 /** Alta mínima de un evento: el resto se completa después en Configuración → Evento. */
 export function NewEventModal({ onClose, onCreated }: { onClose: () => void; onCreated: (id: string) => void }) {
@@ -14,7 +15,8 @@ export function NewEventModal({ onClose, onCreated }: { onClose: () => void; onC
       // Se crea en borrador: no queda operativo hasta que el superadministrador lo programe.
       const e = await post<{ id: string }>("/events", {
         type, name, parishName: parish || null, status: "DRAFT",
-        startsAt: new Date(startsAt).toISOString(), endsAt: endsAt ? new Date(endsAt).toISOString() : null,
+        // El evento nace con la zona por defecto (DEFAULT_TIMEZONE): la hora ingresada se interpreta en esa zona.
+        startsAt: fromZonedInput(startsAt), endsAt: endsAt ? fromZonedInput(endsAt) : null,
       });
       onCreated(e.id);
     } catch (e) { setErr(e instanceof ApiError ? (e.details?.map((d) => d.message).join(". ") || e.message) : "No se pudo crear."); } finally { setBusy(false); }

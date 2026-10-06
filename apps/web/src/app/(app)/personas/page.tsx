@@ -38,7 +38,7 @@ export default function Personas() {
               <Avatar n={p.number} />
               <div className="grow">
                 <div className="t">{p.firstName} {p.lastName} {p.status !== "ACTIVE" && <StatusPill s={p.status} />}</div>
-                <div className="s">{p.phone ? `${p.phone} · ` : ""}DNI {fmtDoc(p.documentNumber)}</div>
+                <div className="s">{p.phone ? `${p.phone} · ` : ""}Doc. {fmtDoc(p.documentNumber)}</div>
               </div>
               <ChevronRight className="chev" />
             </Link>
