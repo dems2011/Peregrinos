@@ -37,10 +37,15 @@ let listeners: Promise<void> | null = null;
 /** Último toque recibido antes de que alguien lo atienda (la app pudo abrirse desde la notificación). */
 let pendingOpen: PushTarget | null = null;
 
+/**
+ * El plugin se devuelve ENVUELTO ({ push }): un plugin de Capacitor es un proxy que responde a cualquier método, y si
+ * una promesa se resuelve con él, JavaScript busca su `.then` → «PushNotifications.then() is not implemented».
+ */
 async function plugin() {
   const { Capacitor } = await import("@capacitor/core");
   if (!Capacitor.isNativePlatform() || Capacitor.getPlatform() !== "android" || !Capacitor.isPluginAvailable("PushNotifications")) return null;
-  return (await import("@capacitor/push-notifications")).PushNotifications;
+  const { PushNotifications } = await import("@capacitor/push-notifications");
+  return { push: PushNotifications };
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -89,7 +94,7 @@ async function sendToken(t: string) {
   }
 }
 
-function ensureListeners(push: NonNullable<Awaited<ReturnType<typeof plugin>>>) {
+function ensureListeners(push: NonNullable<Awaited<ReturnType<typeof plugin>>>["push"]) {
   listeners ??= (async () => {
     await push.addListener("registration", ({ value }) => {
       token = value;
@@ -116,8 +121,8 @@ function ensureListeners(push: NonNullable<Awaited<ReturnType<typeof plugin>>>) 
  */
 export async function initPushListeners() {
   try {
-    const push = await plugin();
-    if (push) await ensureListeners(push);
+    const p = await plugin();
+    if (p) await ensureListeners(p.push);
   } catch (e) {
     console.warn("[push] No se pudieron preparar las notificaciones:", e instanceof Error ? e.message : e);
   }
@@ -129,8 +134,9 @@ export async function initPushListeners() {
  */
 export async function enablePushForAccount() {
   try {
-    const push = await plugin();
-    if (!push) return;
+    const p = await plugin();
+    if (!p) return;
+    const { push } = p;
     active = true;
     await ensureListeners(push);
     let perm = await push.checkPermissions();
