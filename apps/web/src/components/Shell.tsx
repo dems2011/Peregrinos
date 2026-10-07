@@ -1,9 +1,10 @@
 "use client";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { CalendarDays, Clock, HandHeart, Home, IdCard, LogOut, MapPin, Menu as MenuIcon, ScanLine, Settings, Users, Wallet } from "lucide-react";
+import { CalendarDays, Clock, HandHeart, Home, IdCard, LogOut, Menu as MenuIcon, ScanLine, Settings, Users, Wallet } from "lucide-react";
 import { hasEventCapability, type EventCapability, type Permission } from "@peregrinos/shared";
 import { logout } from "@/lib/api";
+import { BrandMark } from "./BrandMark";
 import { useApp } from "./AppContext";
 
 export interface NavItem { href: string; label: string; icon: typeof Home; perm: Permission | "config" }
@@ -65,7 +66,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
     <div className="shell">
       <aside className="side" aria-label="Menú principal">
         <div className="logo">
-          <MapPin size={34} color="#fff" fill="#1677FF" />
+          <BrandMark size={34} />
           <div><b>Peregrinos</b><small>Panel de administración</small></div>
         </div>
         {events.length > 1 && me.user.role !== "OPERATOR" && (

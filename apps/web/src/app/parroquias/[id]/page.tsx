@@ -17,6 +17,13 @@ export default function PerfilPublico() {
   const [following, setFollowing] = useState<boolean | null | undefined>(undefined);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // Al tocar una notificación push de un evento se llega con ?evento=<id>: se resalta y se muestra ese evento.
+  const [highlight, setHighlight] = useState<string | null>(null);
+  useEffect(() => { setHighlight(new URLSearchParams(window.location.search).get("evento")); }, []);
+  useEffect(() => {
+    if (!highlight || !data.data) return;
+    requestAnimationFrame(() => document.getElementById(`evento-${highlight}`)?.scrollIntoView({ block: "center", behavior: "smooth" }));
+  }, [highlight, data.data]);
 
   useEffect(() => {
     api<{ items: { id: string }[] }>("/auth/account/follows")
@@ -42,7 +49,7 @@ export default function PerfilPublico() {
       {err && <div className="alert err" role="alert">{err}</div>}
       {data.error && <section className="card stack-sm"><div className="alert err" role="alert">{data.error}</div><Link className="btn" href="/parroquias">Buscar parroquias</Link></section>}
       {!data.data && !data.error && <div className="acct-loading" role="status">Cargando…</div>}
-      {data.data && <ParishProfileView parish={data.data.parish} events={data.data.events} action={action} />}
+      {data.data && <ParishProfileView parish={data.data.parish} events={data.data.events} action={action} highlightEventId={highlight} />}
       <p className="muted small" style={{ textAlign: "center" }}><Link href="/parroquias">← Todas las parroquias</Link></p>
     </PublicShell>
   );

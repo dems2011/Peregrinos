@@ -9,7 +9,7 @@ import type { ParishProfile, PublicEvent } from "@/lib/types";
  * B1 — Perfil público de una parroquia. Lo usan la página pública (/parroquias/[id]) y la vista previa del
  * superadministrador: así ve exactamente lo que verá un peregrino. `action` = botón «Seguir» (o nada en la vista previa).
  */
-export function ParishProfileView({ parish, events, action, preview = false }: { parish: ParishProfile; events: PublicEvent[]; action?: React.ReactNode; preview?: boolean }) {
+export function ParishProfileView({ parish, events, action, preview = false, highlightEventId }: { parish: ParishProfile; events: PublicEvent[]; action?: React.ReactNode; preview?: boolean; highlightEventId?: string | null }) {
   const links = [
     parish.website && { href: parish.website, label: "Sitio web" },
     parish.instagram && { href: social("instagram", parish.instagram), label: "Instagram" },
@@ -44,7 +44,7 @@ export function ParishProfileView({ parish, events, action, preview = false }: {
         <h2><CalendarDays size={20} style={{ verticalAlign: "-3px" }} /> Eventos</h2>
         {!events.length && <p className="muted">No hay eventos publicados por ahora. {preview ? "Solo aparecen los eventos públicos y publicados (o en curso)." : "Sigue a la parroquia para enterarte cuando publique uno."}</p>}
         {events.map((e) => (
-          <article key={e.id} className="acct-item">
+          <article key={e.id} id={`evento-${e.id}`} className={`acct-item${e.id === highlightEventId ? " highlight" : ""}`}>
             <div className="row" style={{ alignItems: "flex-start" }}>
               <div style={{ minWidth: 0 }}>
                 <span className="pill">{EVENT_TYPE_INFO[e.type]?.label ?? e.type}</span>

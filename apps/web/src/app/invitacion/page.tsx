@@ -1,7 +1,7 @@
 "use client";
 import { Suspense, useEffect, useState, type FormEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { MapPin } from "lucide-react";
+import { BrandMark } from "@/components/BrandMark";
 import { api, ApiError, post } from "@/lib/api";
 import { ACCESS_LEVELS } from "@peregrinos/shared";
 
@@ -28,7 +28,7 @@ function Inner() {
   const role = p && (ACCESS_LEVELS.find((l) => l.role === p.role)?.label ?? p.role);
   return (
     <main className="splash">
-      <div className="brand"><MapPin size={64} color="#fff" fill="#1677FF" /><h1>Peregrinos</h1><p>Invitación</p></div>
+      <div className="brand"><BrandMark size={64} /><h1>Peregrinos</h1><p>Invitación</p></div>
       <form onSubmit={submit} noValidate>
         {err && <div className="error" role="alert">{err}</div>}
         {!p && !err && <div className="spinner" role="status" aria-label="Cargando" />}

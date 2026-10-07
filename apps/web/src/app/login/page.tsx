@@ -1,10 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { isMfaChallenge } from "@peregrinos/shared";
-import { ApiError, cancelMfaLogin, login, verifyMfaLogin } from "@/lib/api";
+import { ApiError, cancelMfaLogin, login, verifyMfaLogin, warmUpApi } from "@/lib/api";
+import { ArrowRight } from "lucide-react";
 import { BrandMark } from "@/components/BrandMark";
 
 /**
@@ -23,6 +24,8 @@ export default function LoginPage() {
   const [useRecovery, setUseRecovery] = useState(false);
   const [code, setCode] = useState("");
   const codeValid = useRecovery ? code.replace(/[^A-Za-z0-9]/g, "").length === 10 : /^\d{6}$/.test(code.replace(/\s/g, ""));
+  // Despierta el API (Render en reposo) mientras se escriben los datos: "Ingresar" ya no espera el arranque en frío.
+  useEffect(() => { void warmUpApi(); }, []);
 
   async function onSubmitCode(e: FormEvent) {
     e.preventDefault();
@@ -73,17 +76,18 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="splash">
+    <main className="splash login">
       <div className="brand">
-        <BrandMark size={76} />
+        <span className="login-mark"><BrandMark size={52} /></span>
         <h1>Peregrinos</h1>
         <p>La Iglesia más cerca de ti</p>
       </div>
 
       {mfaStep ? (
-        <form onSubmit={onSubmitCode} noValidate>
+        <form className="login-card" onSubmit={onSubmitCode} noValidate>
+          <h2 className="login-card-title">Verificación en dos pasos</h2>
           {error && <div className="error" role="alert">{error}</div>}
-          <p className="muted-on-blue" style={{ margin: "0 0 12px" }}>
+          <p className="login-help">
             {useRecovery
               ? "Ingresa uno de tus códigos de recuperación. Cada código sirve una sola vez."
               : "Ingresa el código de 6 dígitos de tu app de verificación."}
@@ -95,48 +99,53 @@ export default function LoginPage() {
               maxLength={useRecovery ? 14 : 7} value={code} onChange={(e) => setCode(e.target.value)} required
             />
           </div>
-          <button className="btn btn-primary" disabled={busy || !codeValid}>{busy ? "Verificando…" : "Verificar"}</button>
-          <button type="button" className="btn" style={{ marginTop: 10 }} onClick={() => { setUseRecovery(!useRecovery); setCode(""); setError(null); }}>
+          <button className="btn btn-primary btn-pill" disabled={busy || !codeValid}>{busy ? "Verificando…" : "Verificar"}</button>
+          <button type="button" className="btn btn-pill-outline" onClick={() => { setUseRecovery(!useRecovery); setCode(""); setError(null); }}>
             {useRecovery ? "Usar la app de verificación" : "Usar un código de recuperación"}
           </button>
-          <button type="button" className="btn" style={{ marginTop: 10 }} onClick={() => void backToPassword()}>Volver</button>
+          <button type="button" className="btn btn-pill-outline" onClick={() => void backToPassword()}>Volver</button>
         </form>
       ) : (
-        <form onSubmit={onSubmit} noValidate>
-          {error && (
-            <div className="error" role="alert">
-              {error}
-              {unverified && <> <Link href="/cuenta/ingresar?reenviar=1">Reenviar el enlace de verificación</Link></>}
+        <>
+          <form className="login-card" onSubmit={onSubmit} noValidate>
+            <h2 className="login-card-title">Ingresa a tu cuenta</h2>
+            {error && (
+              <div className="error" role="alert">
+                {error}
+                {unverified && <> <Link href="/cuenta/ingresar?reenviar=1">Reenviar el enlace de verificación</Link></>}
+              </div>
+            )}
+
+            <div className="field">
+              <label htmlFor="email">Correo</label>
+              <input id="email" type="email" autoComplete="username" inputMode="email" placeholder="tu@correo.com"
+                value={email} onChange={(e) => setEmail(e.target.value)} required />
             </div>
-          )}
 
-          <div className="field">
-            <label htmlFor="email">Correo</label>
-            <input id="email" type="email" autoComplete="username" inputMode="email" placeholder="tu@correo.com"
-              value={email} onChange={(e) => setEmail(e.target.value)} required />
-          </div>
-
-          <div className="field">
-            <label htmlFor="password">Contraseña</label>
-            <input id="password" type="password" autoComplete="current-password"
-              value={password} onChange={(e) => setPassword(e.target.value)} required />
-          </div>
-
-          <button className="btn btn-primary" disabled={busy || !email || !password}>{busy ? "Ingresando…" : "Ingresar"}</button>
-
-          <div className="links">
-            <Link className="link-on-blue" href="/cuenta/recuperar">¿Olvidaste tu contraseña?</Link>
-            <div>
-              <p className="muted-on-blue" style={{ margin: "0 0 6px" }}>¿Eres peregrino y aún no tienes cuenta?</p>
-              <Link className="link-on-blue" href="/cuenta/registro">Crear cuenta</Link>
+            <div className="field">
+              <label htmlFor="password">Contraseña</label>
+              <input id="password" type="password" autoComplete="current-password"
+                value={password} onChange={(e) => setPassword(e.target.value)} required />
             </div>
-            <div>
-              <p className="muted-on-blue" style={{ margin: "0 0 6px" }}>¿Tu parroquia todavía no está en Peregrinos?</p>
-              <Link className="link-on-blue" href="/solicitud-parroquia">Registrar mi parroquia</Link>
+
+            <button className="btn btn-primary btn-pill" disabled={busy || !email || !password}>
+              {busy ? "Ingresando…" : <>Ingresar <ArrowRight size={20} aria-hidden="true" /></>}
+            </button>
+
+            <Link className="login-forgot" href="/cuenta/recuperar">¿Olvidaste tu contraseña?</Link>
+          </form>
+
+          <div className="login-links">
+            <div className="login-link-card">
+              <p>¿Eres peregrino y aún no tienes cuenta?</p>
+              <Link href="/cuenta/registro">Crear cuenta</Link>
             </div>
-            <Link className="link-on-blue" href="/parroquias">Buscar una parroquia</Link>
+            <div className="login-link-card">
+              <p>¿Tu parroquia todavía no está en Peregrinos?</p>
+              <Link href="/solicitud-parroquia">Registrar mi parroquia</Link>
+            </div>
           </div>
-        </form>
+        </>
       )}
     </main>
   );

@@ -9,7 +9,7 @@ export class ApiError extends Error {
 /** Se emite en `window` cuando la sesión del personal venció y no se pudo renovar (el panel redirige al login). */
 export const SESSION_EXPIRED_EVENT = "pg:session-expired";
 
-async function raw(path: string, init: RequestInit = {}) {
+function fetchOnce(path: string, init: RequestInit) {
   const isForm = typeof FormData !== "undefined" && init.body instanceof FormData;
   const hasBody = init.body !== undefined && init.body !== null;
   return fetch(`/api${path}`, {
@@ -17,6 +17,78 @@ async function raw(path: string, init: RequestInit = {}) {
     credentials: "include",
     headers: { ...(!isForm && hasBody ? { "Content-Type": "application/json" } : {}), "X-PG-Client": "web", ...(init.headers ?? {}) },
   });
+}
+
+/* ---------- Arranque en frío del API (Render) ---------- */
+
+/**
+ * Se emite en `window` (detail: { active: boolean }) mientras se reintenta una lectura porque el API está despertando:
+ * ConnectionStatus muestra "Conectando con Peregrinos…".
+ */
+export const CONNECTING_EVENT = "pg:connecting";
+/** Esperas entre reintentos (máximo 3 reintentos, ~50 s en total: lo que tarda en despertar el API). */
+const RETRY_DELAYS_MS = [5_000, 15_000, 30_000];
+const COLD_START_MESSAGE = "No pudimos conectar con Peregrinos. El servicio se está iniciando: intenta nuevamente en unos segundos.";
+
+/**
+ * Respuesta del proxy (no del API) mientras el API despierta: 502/503, o 500 sin JSON. Los errores del propio API
+ * siempre son JSON ({ error, message }) y nunca se reintentan. 504 no se reintenta: el API pudo haber procesado.
+ */
+function isColdStartResponse(res: Response) {
+  if (res.status === 502 || res.status === 503) return true;
+  return res.status === 500 && !(res.headers.get("content-type") ?? "").includes("application/json");
+}
+
+let connecting = 0;
+function setConnecting(delta: 1 | -1) {
+  const before = connecting;
+  connecting += delta;
+  if (typeof window !== "undefined" && (before === 0) !== (connecting === 0)) {
+    window.dispatchEvent(new CustomEvent(CONNECTING_EVENT, { detail: { active: connecting > 0 } }));
+  }
+}
+
+const sleep = (ms: number, signal?: AbortSignal | null) => new Promise<void>((resolve, reject) => {
+  if (signal?.aborted) return reject(new DOMException("Aborted", "AbortError"));
+  const t = setTimeout(resolve, ms);
+  signal?.addEventListener("abort", () => { clearTimeout(t); reject(new DOMException("Aborted", "AbortError")); }, { once: true });
+});
+
+/**
+ * Petición al API. Solo las lecturas (GET/HEAD) se reintentan si fallan por el arranque en frío o la red; una escritura
+ * (POST/PUT/PATCH/DELETE) nunca se repite automáticamente: podría duplicar datos. `retry: false` desactiva el reintento
+ * (descargas: algunas marcan datos, p. ej. credenciales impresas).
+ */
+async function raw(path: string, init: RequestInit = {}, retry = true) {
+  const method = (init.method ?? "GET").toUpperCase();
+  if (!retry || (method !== "GET" && method !== "HEAD")) return fetchOnce(path, init);
+  let waiting = false;
+  try {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        const res = await fetchOnce(path, init);
+        if (!isColdStartResponse(res) || attempt >= RETRY_DELAYS_MS.length) return res;
+      } catch (e) {
+        if (isAbortError(e) || attempt >= RETRY_DELAYS_MS.length) throw e;
+      }
+      if (!waiting) { waiting = true; setConnecting(1); }
+      await sleep(RETRY_DELAYS_MS[attempt], init.signal);
+    }
+  } finally {
+    if (waiting) setConnecting(-1);
+  }
+}
+
+let warming: Promise<void> | null = null;
+/**
+ * Despierta el API con lecturas de /api/health (con los mismos reintentos). Lo usa la primera página y, tras una
+ * escritura que falló por el arranque en frío, deja el API listo para que el usuario vuelva a intentarlo.
+ */
+export function warmUpApi(): Promise<void> {
+  warming ??= raw("/health")
+    .then(() => undefined, () => undefined)
+    .finally(() => { setTimeout(() => { warming = null; }, 0); });
+  return warming;
 }
 
 /**
@@ -67,27 +139,42 @@ async function errorCode(res: Response, status: number) {
 }
 
 /** Llama al API; si el token de acceso venció, renueva la sesión una vez y reintenta. */
-async function call(path: string, init: RequestInit = {}) {
-  let res = await raw(path, init);
+async function call(path: string, init: RequestInit = {}, retry = true) {
+  let res = await raw(path, init, retry);
   if (!NO_REFRESH.test(path) && (await isSessionExpired(res))) {
-    if (await refreshSession()) res = await raw(path, init);
+    if (await refreshSession()) res = await raw(path, init, retry);
     if ((await isSessionExpired(res)) && typeof window !== "undefined") window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT));
   }
   const forbiddenCode = await errorCode(res, 403);
   if (forbiddenCode === "STEP_UP_REQUIRED" && stepUpHandler && !path.startsWith("/auth/mfa/")) {
     // Varias peticiones a la vez comparten un solo diálogo.
     stepUpPending ??= stepUpHandler().finally(() => { setTimeout(() => { stepUpPending = null; }, 0); });
-    if (await stepUpPending) res = await raw(path, init);
+    if (await stepUpPending) res = await raw(path, init, retry);
   } else if (forbiddenCode === "MFA_ENROLLMENT_REQUIRED" && typeof window !== "undefined") {
     window.dispatchEvent(new Event(MFA_ENROLLMENT_EVENT));
   }
   return res;
 }
 
-async function fail(res: Response): Promise<never> {
+/** Si la petición se reintentó sola (lecturas con reintento): no hace falta volver a despertar el API. */
+const autoRetried = (init: RequestInit, retry: boolean) => retry && ["GET", "HEAD"].includes((init.method ?? "GET").toUpperCase());
+
+async function fail(res: Response, warm = false): Promise<never> {
+  if (isColdStartResponse(res)) {
+    // El API está despertando: mensaje claro y, si la operación no se reintentó sola (escrituras, descargas), se
+    // termina de despertar en segundo plano para que el usuario pueda volver a intentarlo. Nunca se repite la operación.
+    if (warm) void warmUpApi();
+    throw new ApiError(res.status, COLD_START_MESSAGE, "UNAVAILABLE");
+  }
   const body = await res.json().catch(() => ({}));
   const fallback = res.status === 429 ? "Demasiados intentos. Espera unos minutos e intenta nuevamente." : "Ocurrió un error. Intenta nuevamente.";
   throw new ApiError(res.status, body.message ?? fallback, body.error, body.data, body.details);
+}
+
+/** Sin respuesta (red o API despertando): si no se reintentó sola (escrituras, descargas), se despierta el API. */
+function networkError(init: RequestInit, retry: boolean): ApiError {
+  if (!autoRetried(init, retry)) void warmUpApi();
+  return new ApiError(0, "Sin conexión. Revisa tu red e intenta nuevamente.", "NETWORK");
 }
 
 /** Una petición cancelada (AbortController) no es un error de red: se propaga tal cual para que quien la canceló la ignore. */
@@ -98,9 +185,9 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   try { res = await call(path, init); }
   catch (e) {
     if (isAbortError(e)) throw e;
-    throw new ApiError(0, "Sin conexión. Revisa tu red e intenta nuevamente.", "NETWORK");
+    throw networkError(init, true);
   }
-  if (!res.ok) return fail(res);
+  if (!res.ok) return fail(res, !autoRetried(init, true));
   if (res.status === 204) return undefined as T;
   const text = await res.text();
   return (text ? JSON.parse(text) : undefined) as T;
@@ -116,9 +203,10 @@ export const upload = <T>(path: string, form: FormData, method: "POST" | "PUT" =
 /** Descarga un archivo (PDF, CSV…) con la sesión actual. `method: "POST"` para endpoints que emiten datos. */
 export async function download(path: string, filename: string, init: RequestInit = {}) {
   let res: Response;
-  try { res = await call(path, init); }
-  catch { throw new ApiError(0, "Sin conexión. Revisa tu red e intenta nuevamente.", "NETWORK"); }
-  if (!res.ok) return fail(res);
+  // Sin reintento automático: algunas descargas marcan datos (credenciales impresas); el usuario vuelve a pulsar.
+  try { res = await call(path, init, false); }
+  catch { throw networkError(init, false); }
+  if (!res.ok) return fail(res, true);
   const blob = await res.blob();
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");

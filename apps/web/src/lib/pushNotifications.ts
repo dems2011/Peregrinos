@@ -1,11 +1,13 @@
 "use client";
-import { api } from "@/lib/api";
+import { api, post } from "@/lib/api";
 
 /**
  * Notificaciones push en la app Android (Capacitor + @capacitor/push-notifications). En el navegador no hace nada.
  *
  * - Solo con sesión de la cuenta del peregrino: AccountProvider llama a enablePushForAccount() al confirmar la sesión
  *   y a disablePushForAccount() antes de cerrarla.
+ * - Los listeners se registran una sola vez para toda la app (PushHandler → initPushListeners); PushHandler abre la
+ *   pantalla del aviso al tocar una notificación y muestra un aviso en la app si llega con la app abierta.
  * - El token FCM vive solo en memoria (no en localStorage): register() lo vuelve a entregar en cada inicio de la app.
  * - El mismo token puede pasar a otra cuenta: el endpoint de registro lo reasigna.
  * - Nunca lanza: un fallo de permisos, de FCM o de la API no afecta al ingreso ni al cierre de sesión.
@@ -18,10 +20,15 @@ export interface PushTarget {
   eventId?: string;
 }
 
-/** Se emite en `window` (detail: PushTarget) cuando el usuario toca una notificación. La navegación es un paso aparte. */
+/** Se emite en `window` (detail: PushTarget) cuando el usuario toca una notificación; lo atiende PushHandler. */
 export const PUSH_OPEN_EVENT = "pg:push-open";
-/** Se emite en `window` (detail: PushTarget) cuando llega un push con la app abierta (p. ej. para refrescar avisos). */
+/** Se emite en `window` (detail: PushReceived) cuando llega un push con la app abierta (aviso en la app, refrescar). */
 export const PUSH_RECEIVED_EVENT = "pg:push-received";
+
+export interface PushReceived { target: PushTarget; title: string; body: string }
+
+/** Canal de Android para los avisos (también es el canal por defecto del manifest: default_notification_channel_id). */
+export const PUSH_CHANNEL_ID = "avisos";
 
 let token: string | null = null;
 /** true mientras haya sesión de cuenta: un token que llega tarde (tras cerrar sesión) no se registra. */
@@ -36,15 +43,38 @@ async function plugin() {
   return (await import("@capacitor/push-notifications")).PushNotifications;
 }
 
-/** Extrae los datos del push; null si faltan los obligatorios. FCM entrega los valores como texto. */
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Extrae los datos del push; null si faltan o no son identificadores válidos. FCM entrega los valores como texto. */
 export function toPushTarget(data: unknown): PushTarget | null {
   if (!data || typeof data !== "object") return null;
   const d = data as Record<string, unknown>;
-  if (typeof d.notificationId !== "string" || typeof d.organizationId !== "string") return null;
-  return { notificationId: d.notificationId, organizationId: d.organizationId, ...(typeof d.eventId === "string" && d.eventId ? { eventId: d.eventId } : {}) };
+  if (typeof d.notificationId !== "string" || !UUID.test(d.notificationId)) return null;
+  if (typeof d.organizationId !== "string" || !UUID.test(d.organizationId)) return null;
+  return { notificationId: d.notificationId, organizationId: d.organizationId, ...(typeof d.eventId === "string" && UUID.test(d.eventId) ? { eventId: d.eventId } : {}) };
 }
 
-/** Devuelve y consume el toque pendiente (para el paso de navegación). */
+/**
+ * Pantalla existente para un aviso: con evento, el perfil de la parroquia (lista sus eventos con «Inscribirme») con ese
+ * evento resaltado; sin evento, la bandeja de avisos con ese aviso abierto.
+ */
+export function pushTargetHref(t: PushTarget): string {
+  return t.eventId
+    ? `/parroquias/${t.organizationId}?evento=${t.eventId}`
+    : `/cuenta/avisos?aviso=${t.notificationId}`;
+}
+
+/** Marca el aviso como leído (idempotente). La bandeja lo hace sola al abrirlo; el perfil de la parroquia no. */
+export function markPushRead(t: PushTarget) {
+  if (t.eventId) void post(`/auth/account/notifications/${t.notificationId}/read`).catch(() => undefined);
+}
+
+/** Toque pendiente sin consumirlo (para comprobar la sesión antes de abrirlo). */
+export function peekPendingPushOpen(): PushTarget | null {
+  return pendingOpen;
+}
+
+/** Devuelve y consume el toque pendiente. */
 export function takePendingPushOpen(): PushTarget | null {
   const t = pendingOpen;
   pendingOpen = null;
@@ -68,7 +98,7 @@ function ensureListeners(push: NonNullable<Awaited<ReturnType<typeof plugin>>>) 
     await push.addListener("registrationError", (err) => console.warn("[push] Error de registro en FCM:", err.error));
     await push.addListener("pushNotificationReceived", (n) => {
       const target = toPushTarget(n.data);
-      if (target) window.dispatchEvent(new CustomEvent<PushTarget>(PUSH_RECEIVED_EVENT, { detail: target }));
+      if (target) window.dispatchEvent(new CustomEvent<PushReceived>(PUSH_RECEIVED_EVENT, { detail: { target, title: n.title ?? "Nuevo aviso", body: n.body ?? "" } }));
     });
     await push.addListener("pushNotificationActionPerformed", (a) => {
       const target = toPushTarget(a.notification.data);
@@ -78,6 +108,19 @@ function ensureListeners(push: NonNullable<Awaited<ReturnType<typeof plugin>>>) 
     });
   })();
   return listeners;
+}
+
+/**
+ * Listeners en toda la app (sin pedir permiso ni registrar): así se recibe el toque que abrió la app aunque llegue
+ * antes de iniciar sesión (el plugin lo retiene hasta que hay un listener). Lo llama PushHandler al montar.
+ */
+export async function initPushListeners() {
+  try {
+    const push = await plugin();
+    if (push) await ensureListeners(push);
+  } catch (e) {
+    console.warn("[push] No se pudieron preparar las notificaciones:", e instanceof Error ? e.message : e);
+  }
 }
 
 /**
@@ -93,6 +136,8 @@ export async function enablePushForAccount() {
     let perm = await push.checkPermissions();
     if (perm.receive === "prompt" || perm.receive === "prompt-with-rationale") perm = await push.requestPermissions();
     if (perm.receive !== "granted") return;
+    // Canal propio (Android 8+), con importancia alta para que el aviso se vea como notificación emergente.
+    await push.createChannel({ id: PUSH_CHANNEL_ID, name: "Avisos de tus parroquias", description: "Avisos y eventos nuevos de las parroquias que sigues", importance: 4, visibility: 1 }).catch(() => undefined);
     // Entrega el token (también uno ya conocido) en "registration", que lo envía al API: así el token se renueva o pasa
     // a la cuenta actual en cada inicio de sesión.
     await push.register();

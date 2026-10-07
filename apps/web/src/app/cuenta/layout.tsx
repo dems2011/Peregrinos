@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { MapPin } from "lucide-react";
+import { BrandMark } from "@/components/BrandMark";
 
 /**
  * A5.0 — Área de cuenta del peregrino. Layout propio, distinto del panel del personal:
@@ -9,7 +9,7 @@ export default function CuentaLayout({ children }: { children: React.ReactNode }
   return (
     <div className="acct">
       <header className="acct-head">
-        <Link href="/cuenta" className="acct-brand"><MapPin size={26} color="#fff" fill="#1677FF" /> <span>Peregrinos · Mi cuenta</span></Link>
+        <Link href="/cuenta" className="acct-brand"><BrandMark size={26} /> <span>Peregrinos · Mi cuenta</span></Link>
       </header>
       <main className="acct-main">{children}</main>
     </div>

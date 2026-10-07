@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { Bell, CalendarDays, Church, LogOut, UserRound } from "lucide-react";
 import { api } from "@/lib/api";
 import { AccountProvider, useAccount } from "@/components/account/AccountContext";
+import { PUSH_RECEIVED_EVENT } from "@/lib/pushNotifications";
 
 const NAV = [
   { href: "/cuenta", label: "Inicio", icon: UserRound },
@@ -18,7 +19,14 @@ function Nav() {
   const { logout } = useAccount();
   // B1: avisos sin leer (se actualiza al navegar).
   const [unread, setUnread] = useState(0);
-  useEffect(() => { api<{ unread: number }>("/auth/account/notifications").then((r) => setUnread(r.unread), () => undefined); }, [path]);
+  // Se actualiza al navegar y cuando llega un push con la app abierta.
+  const [pushes, setPushes] = useState(0);
+  useEffect(() => {
+    const on = () => setPushes((n) => n + 1);
+    window.addEventListener(PUSH_RECEIVED_EVENT, on);
+    return () => window.removeEventListener(PUSH_RECEIVED_EVENT, on);
+  }, []);
+  useEffect(() => { api<{ unread: number }>("/auth/account/notifications").then((r) => setUnread(r.unread), () => undefined); }, [path, pushes]);
   const on = (href: string) => (href === "/cuenta" ? path === href : path.startsWith(href));
   return (
     <nav className="acct-nav" aria-label="Mi cuenta">
