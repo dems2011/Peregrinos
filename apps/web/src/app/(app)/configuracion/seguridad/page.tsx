@@ -10,13 +10,15 @@ interface EnrollStart { secret: string; otpauthUrl: string; qrSvg: string; expir
 const msg = (e: unknown, fallback: string) => (e instanceof ApiError ? e.details?.map((d) => d.message).join(". ") || e.message : fallback);
 
 /**
- * A6 — Verificación en dos pasos (TOTP) de la cuenta del personal: enrolar, códigos de recuperación y baja.
- * Obligatoria para SUPERADMIN: mientras no la active, el panel solo muestra esta pantalla.
+ * Seguridad de la cuenta del personal. BETA: solo contraseña (cambio aquí; recuperación desde el login).
+ * A6 — La verificación en dos pasos (TOTP) sigue implementada: se muestra solo si el servidor la exige
+ * (MFA_ENFORCE_SUPERADMIN=true) o si la cuenta ya la tiene activa (para poder gestionarla o desactivarla).
  */
 export default function Seguridad() {
   const { me, reloadMe, setMe } = useApp();
   const mfa = me.mfa;
   const [codes, setCodes] = useState<string[] | null>(null);
+  const showMfa = mfa.enabled || mfa.enrollmentRequired;
 
   if (codes) return <RecoveryCodes codes={codes} onDone={() => { setCodes(null); void reloadMe(); }} />;
 
@@ -27,10 +29,41 @@ export default function Seguridad() {
           Tu rol de superadministrador exige la verificación en dos pasos. Actívala para continuar usando el panel.
         </div>
       )}
-      {mfa.enabled
+      {!mfa.enrollmentRequired && <ChangePassword />}
+      {showMfa && (mfa.enabled
         ? <Enabled me={me} onCodes={setCodes} onDisabled={(m) => setMe(m)} />
-        : <Enroll onEnabled={(c) => setCodes(c)} />}
+        : <Enroll onEnabled={(c) => setCodes(c)} />)}
     </Page>
+  );
+}
+
+/** Cambio de la propia contraseña (cierra las demás sesiones). Si la olvidaste: «¿Olvidaste tu contraseña?» en el ingreso. */
+function ChangePassword() {
+  const [f, setF] = useState({ currentPassword: "", newPassword: "", repeat: "" });
+  const [err, setErr] = useState<string | null>(null);
+  const [ok, setOk] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement>) => setF({ ...f, [k]: e.target.value });
+  async function submit(e: FormEvent) {
+    e.preventDefault(); setErr(null); setOk(null);
+    if (f.newPassword !== f.repeat) { setErr("Las contraseñas nuevas no coinciden."); return; }
+    setBusy(true);
+    try {
+      const r = await post<{ message: string }>("/auth/password", { currentPassword: f.currentPassword, newPassword: f.newPassword });
+      setOk(r.message); setF({ currentPassword: "", newPassword: "", repeat: "" });
+    } catch (e2) { setErr(msg(e2, "No se pudo cambiar la contraseña.")); } finally { setBusy(false); }
+  }
+  return (
+    <form className="card" onSubmit={submit} noValidate>
+      <div className="sec-title">Cambiar contraseña</div>
+      <p className="muted small">Al cambiarla se cierran tus sesiones en otros dispositivos. Si la olvidaste, usa «¿Olvidaste tu contraseña?» en la pantalla de ingreso.</p>
+      {ok && <div className="alert ok" role="status">{ok}</div>}
+      <ErrorBox msg={err} />
+      <div className="field"><label htmlFor="cp">Contraseña actual</label><input id="cp" type="password" autoComplete="current-password" value={f.currentPassword} onChange={set("currentPassword")} /></div>
+      <div className="field"><label htmlFor="np">Contraseña nueva</label><input id="np" type="password" autoComplete="new-password" value={f.newPassword} onChange={set("newPassword")} /><span className="hint">Al menos 10 caracteres.</span></div>
+      <div className="field"><label htmlFor="rp">Repite la contraseña nueva</label><input id="rp" type="password" autoComplete="new-password" value={f.repeat} onChange={set("repeat")} /></div>
+      <button className="btn btn-primary" disabled={busy || !f.currentPassword || f.newPassword.length < 10}>{busy ? "Guardando…" : "Cambiar contraseña"}</button>
+    </form>
   );
 }
 

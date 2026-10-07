@@ -1,4 +1,5 @@
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyRequest } from "fastify";
+import { assertPilgrimInEvent, listMessages, postMessage } from "../lib/chat";
 import { publish } from "../lib/bus";
 import QRCode from "qrcode";
 import {
@@ -165,6 +166,24 @@ export default async function pilgrimRoutes(app: FastifyInstance) {
     publish(reg.eventId, { type: "registration.updated", data: { registrationId: regId, status: "IN_REVIEW" } });
     reply.header("Cache-Control", "no-store");
     return reply.status(201).send(await buildRegistrationMe(regId));
+  });
+
+  /** B1 — Chat del evento para quien entra con su enlace personal (participante o inscripción no cancelada). */
+  async function pilgrimPerson(req: FastifyRequest) {
+    const p = req.pilgrim;
+    const row = p.participantId
+      ? await prisma.participant.findUnique({ where: { id: p.participantId }, select: { personId: true } })
+      : await prisma.registration.findUnique({ where: { id: p.registrationId! }, select: { personId: true } });
+    await assertPilgrimInEvent(row?.personId, p.eventId);
+    return { eventId: p.eventId, personId: row!.personId };
+  }
+  app.get("/chat", { preHandler: app.authenticatePilgrim }, async (req) => {
+    const { eventId, personId } = await pilgrimPerson(req);
+    return listMessages(eventId, { kind: "PILGRIM", personId }, req.query);
+  });
+  app.post("/chat", { preHandler: app.authenticatePilgrim, config: { rateLimit: { max: 20, timeWindow: "1 minute" } } }, async (req, reply) => {
+    const { eventId, personId } = await pilgrimPerson(req);
+    return reply.status(201).send(await postMessage(eventId, { kind: "PILGRIM", personId }, req.body));
   });
 
   app.post("/logout", async (req, reply) => {

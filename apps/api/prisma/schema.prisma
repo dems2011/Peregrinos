@@ -45,6 +45,12 @@ model Organization {
   persons       Person[]
   /// A5.0: registros de esta organización unidos a cuentas globales (reversibles por esta organización).
   personClaims  PersonClaim[]
+  /// B1: imágenes propias (logo, imagen de la parroquia, fondos de credencial) guardadas en la base (no en disco).
+  media         MediaAsset[]
+  /// B1: cuentas de peregrino que siguen a esta parroquia.
+  followers     ParishFollower[]
+  /// B1: avisos enviados por esta parroquia (manuales o automáticos).
+  notifications Notification[]
 }
 
 /// A4a: identidad humana. Independiente de la cuenta (User), de la participación (Participant) y de la inscripción
@@ -83,6 +89,8 @@ model Person {
   claimsAsSource          PersonClaim[]            @relation("PersonClaimSource")
   /// A5.1: participaciones como voluntario (la misma Person, sin duplicar identidad).
   volunteerParticipations VolunteerParticipation[]
+  /// B1: mensajes del chat de eventos escritos como peregrino (cuenta o enlace personal).
+  chatMessages            EventChatMessage[]
 
   @@index([ownerOrganizationId, lastName, firstName])
   @@index([documentNumber])
@@ -178,6 +186,14 @@ model User {
   participations           Participant[]              @relation("PilgrimParticipations")
   registrations            Registration[]             @relation("PilgrimRegistrations")
   organization             Organization?              @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  /// B1: parroquias que sigue esta cuenta (PILGRIM) y avisos recibidos.
+  following                ParishFollower[]
+  notificationsReceived    NotificationRecipient[]
+  /// B1: avisos enviados (personal), mensajes del chat como personal e imágenes subidas.
+  notificationsSent        Notification[]
+  chatMessages             EventChatMessage[]         @relation("ChatAuthorStaff")
+  chatMessagesDeleted      EventChatMessage[]         @relation("ChatDeletedBy")
+  mediaUploaded            MediaAsset[]
 
   @@index([organizationId, role])
 }
@@ -268,6 +284,16 @@ model Event {
   volunteerAssignments     VolunteerAssignment[]
   /// A5.1: solicitudes de consentimiento de voluntariado para este evento.
   volunteerConsentRequests VolunteerConsentCode[]
+  /// B1: campos extra del formulario público de inscripción, definidos por el SUPERADMIN (lista validada con Zod:
+  /// registrationFieldsSchema en packages/shared). Los datos básicos (nombre, documento, teléfono) son siempre fijos.
+  registrationFields       Json                     @default("[]")
+  /// B1: diseño de la credencial vertical: STANDARD (de Peregrinos) o CUSTOM (fondo propio en MediaAsset).
+  credentialMode           CredentialMode           @default(STANDARD)
+  /// B1: momento en que se avisó a los seguidores de la parroquia que el evento se publicó (una sola vez).
+  publishedNotifiedAt      DateTime?
+  chatMessages             EventChatMessage[]
+  notifications            Notification[]
+  media                    MediaAsset[]
 
   @@index([organizationId, status])
   @@index([organizationId, type])
@@ -612,6 +638,8 @@ model Registration {
   userId          String?
   /// A4a: quién se inscribe. Obligatorio; la Person puede no tener cuenta. Al aprobar, el Participant hereda la misma Person.
   personId        String
+  /// B1: respuestas a los campos extra del formulario del evento ({ [fieldId]: valor }), validadas al inscribirse.
+  formAnswers     Json               @default("{}")
   createdAt       DateTime           @default(now())
   updatedAt       DateTime           @updatedAt
   proofs          PaymentProof[]
@@ -1160,4 +1188,116 @@ model VolunteerAssignment {
   @@index([eventId])
   @@index([volunteerId])
   @@index([shiftId])
+}
+
+/**
+ * =====================  B1: PARROQUIA PÚBLICA, SEGUIDORES, AVISOS, CHAT, IMÁGENES  =====================
+ */
+
+enum CredentialMode {
+  STANDARD
+  CUSTOM
+}
+
+enum MediaKind {
+  PARISH_LOGO
+  PARISH_COVER
+  CREDENTIAL_BACKGROUND
+}
+
+enum NotificationKind {
+  /// Aviso escrito por el personal para todos los seguidores.
+  MANUAL
+  /// Automático: la parroquia publicó un evento público.
+  EVENT_PUBLISHED
+}
+
+/// B1 — Imagen subida por la parroquia, guardada en la base (el disco del servidor no es persistente). El tipo, las
+/// dimensiones y el peso se validan en la API (lib/image.ts) y hay CHECK de peso en la BD. Una vigente por destino
+/// (índices parciales): logo/imagen por organización; fondo de credencial por evento.
+model MediaAsset {
+  id             String       @id @default(uuid())
+  organizationId String
+  /// Solo CREDENTIAL_BACKGROUND (fondo de la credencial de ese evento).
+  eventId        String?
+  kind           MediaKind
+  mime           String
+  width          Int
+  height         Int
+  sizeBytes      Int
+  sha256         String
+  data           Bytes
+  createdById    String?
+  createdAt      DateTime     @default(now())
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  event          Event?       @relation(fields: [eventId], references: [id], onDelete: Restrict)
+  createdBy      User?        @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, kind])
+  @@index([eventId])
+}
+
+/// B1 — Una cuenta de peregrino sigue a una parroquia (recibe sus avisos y los eventos que publica).
+model ParishFollower {
+  id             String       @id @default(uuid())
+  organizationId String
+  userId         String
+  createdAt      DateTime     @default(now())
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, userId])
+  @@index([userId])
+}
+
+/// B1 — Aviso de una parroquia. Se reparte a sus seguidores en NotificationRecipient al enviarlo (los seguidores
+/// nuevos no reciben avisos viejos; los de otras parroquias nunca).
+model Notification {
+  id             String                  @id @default(uuid())
+  organizationId String
+  eventId        String?
+  kind           NotificationKind
+  title          String
+  body           String
+  createdById    String?
+  recipientCount Int                     @default(0)
+  createdAt      DateTime                @default(now())
+  organization   Organization            @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  event          Event?                  @relation(fields: [eventId], references: [id], onDelete: Restrict)
+  createdBy      User?                   @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  recipients     NotificationRecipient[]
+
+  @@index([organizationId, createdAt])
+}
+
+model NotificationRecipient {
+  notificationId String
+  userId         String
+  readAt         DateTime?
+  createdAt      DateTime     @default(now())
+  notification   Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([notificationId, userId])
+  @@index([userId, createdAt])
+}
+
+/// B1 — Chat de un evento: personal de la parroquia con acceso al evento y peregrinos del evento. Aislado por evento.
+/// Autor: personal (authorUserId) o peregrino (authorPersonId, con cuenta o enlace personal); exactamente uno (CHECK).
+/// La moderación oculta (deletedAt), nunca borra.
+model EventChatMessage {
+  id             String    @id @default(uuid())
+  eventId        String
+  authorUserId   String?
+  authorPersonId String?
+  body           String
+  createdAt      DateTime  @default(now())
+  deletedAt      DateTime?
+  deletedById    String?
+  event          Event     @relation(fields: [eventId], references: [id], onDelete: Restrict)
+  authorUser     User?     @relation("ChatAuthorStaff", fields: [authorUserId], references: [id], onDelete: Restrict)
+  authorPerson   Person?   @relation(fields: [authorPersonId], references: [id], onDelete: Restrict)
+  deletedBy      User?     @relation("ChatDeletedBy", fields: [deletedById], references: [id], onDelete: SetNull)
+
+  @@index([eventId, createdAt])
 }

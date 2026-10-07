@@ -275,6 +275,230 @@ export declare const eventRouteSchema: z.ZodObject<{
 }>;
 export type EventRouteInput = z.infer<typeof eventRouteSchema>;
 export declare const eventSettingsSchemas: Record<EventType, z.ZodTypeAny>;
+/**
+ * Campos extra que el SUPERADMIN agrega al formulario público de inscripción de un evento. Los datos básicos
+ * (nombre, apellido, documento y teléfono) son siempre fijos: identifican a la persona y evitan duplicados.
+ */
+export declare const REGISTRATION_FIELD_TYPES: readonly ["text", "textarea", "number", "date", "select", "checkbox"];
+export type RegistrationFieldType = (typeof REGISTRATION_FIELD_TYPES)[number];
+export declare const REGISTRATION_FIELD_TYPE_LABEL: Record<RegistrationFieldType, string>;
+export declare const MAX_REGISTRATION_FIELDS = 15;
+export declare const registrationFieldSchema: z.ZodEffects<z.ZodObject<{
+    /** Identificador estable (lo genera el editor); las respuestas se guardan con esta clave. */
+    id: z.ZodString;
+    label: z.ZodString;
+    type: z.ZodEnum<["text", "textarea", "number", "date", "select", "checkbox"]>;
+    required: z.ZodDefault<z.ZodBoolean>;
+    help: z.ZodOptional<z.ZodString>;
+    options: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
+}, "strict", z.ZodTypeAny, {
+    type: "number" | "date" | "text" | "textarea" | "select" | "checkbox";
+    id: string;
+    label: string;
+    required: boolean;
+    options?: string[] | undefined;
+    help?: string | undefined;
+}, {
+    type: "number" | "date" | "text" | "textarea" | "select" | "checkbox";
+    id: string;
+    label: string;
+    options?: string[] | undefined;
+    required?: boolean | undefined;
+    help?: string | undefined;
+}>, {
+    type: "number" | "date" | "text" | "textarea" | "select" | "checkbox";
+    id: string;
+    label: string;
+    required: boolean;
+    options?: string[] | undefined;
+    help?: string | undefined;
+}, {
+    type: "number" | "date" | "text" | "textarea" | "select" | "checkbox";
+    id: string;
+    label: string;
+    options?: string[] | undefined;
+    required?: boolean | undefined;
+    help?: string | undefined;
+}>;
+export type RegistrationField = z.infer<typeof registrationFieldSchema>;
+export declare const registrationFieldsSchema: z.ZodEffects<z.ZodArray<z.ZodEffects<z.ZodObject<{
+    /** Identificador estable (lo genera el editor); las respuestas se guardan con esta clave. */
+    id: z.ZodString;
+    label: z.ZodString;
+    type: z.ZodEnum<["text", "textarea", "number", "date", "select", "checkbox"]>;
+    required: z.ZodDefault<z.ZodBoolean>;
+    help: z.ZodOptional<z.ZodString>;
+    options: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
+}, "strict", z.ZodTypeAny, {
+    type: "number" | "date" | "text" | "textarea" | "select" | "checkbox";
+    id: string;
+    label: string;
+    required: boolean;
+    options?: string[] | undefined;
+    help?: string | undefined;
+}, {
+    type: "number" | "date" | "text" | "textarea" | "select" | "checkbox";
+    id: string;
+    label: string;
+    options?: string[] | undefined;
+    required?: boolean | undefined;
+    help?: string | undefined;
+}>, {
+    type: "number" | "date" | "text" | "textarea" | "select" | "checkbox";
+    id: string;
+    label: string;
+    required: boolean;
+    options?: string[] | undefined;
+    help?: string | undefined;
+}, {
+    type: "number" | "date" | "text" | "textarea" | "select" | "checkbox";
+    id: string;
+    label: string;
+    options?: string[] | undefined;
+    required?: boolean | undefined;
+    help?: string | undefined;
+}>, "many">, {
+    type: "number" | "date" | "text" | "textarea" | "select" | "checkbox";
+    id: string;
+    label: string;
+    required: boolean;
+    options?: string[] | undefined;
+    help?: string | undefined;
+}[], {
+    type: "number" | "date" | "text" | "textarea" | "select" | "checkbox";
+    id: string;
+    label: string;
+    options?: string[] | undefined;
+    required?: boolean | undefined;
+    help?: string | undefined;
+}[]>;
+/**
+ * Valida las respuestas contra los campos del evento. Devuelve las respuestas normalizadas (solo campos conocidos) o
+ * la lista de problemas por campo. Lo usan la API (fuente de verdad) y el formulario web (aviso inmediato).
+ */
+export declare function validateRegistrationAnswers(fields: readonly RegistrationField[], raw: unknown): {
+    ok: true;
+    answers: Record<string, string | number | boolean>;
+} | {
+    ok: false;
+    issues: {
+        field: string;
+        message: string;
+    }[];
+};
+export declare const CREDENTIAL_MODES: readonly ["STANDARD", "CUSTOM"];
+export type CredentialMode = (typeof CREDENTIAL_MODES)[number];
+/**
+ * Credencial SIEMPRE vertical, tamaño CR80 (tarjeta estándar): 54 × 85,6 mm (proporción 0,6308).
+ * Diseño propio: imagen de fondo PNG o JPEG que cubre toda la tarjeta. Peregrinos dibuja encima, en la ZONA SEGURA
+ * (mitad inferior), un panel blanco con el número, el QR y, si se pide, el nombre. El arte importante va arriba.
+ */
+export declare const CREDENTIAL_SPEC: {
+    readonly widthMm: 54;
+    readonly heightMm: 85.6;
+    readonly ratio: number;
+    readonly ratioTolerance: 0.02;
+    readonly minPx: {
+        readonly width: 638;
+        readonly height: 1011;
+    };
+    readonly recommendedPx: {
+        readonly width: 1276;
+        readonly height: 2022;
+    };
+    readonly maxBytes: number;
+    readonly mimes: readonly ["image/png", "image/jpeg"];
+    /** Zona segura donde Peregrinos coloca los datos (milímetros desde la esquina superior izquierda). */
+    readonly dataZoneMm: {
+        readonly x: 4;
+        readonly y: 40;
+        readonly width: 46;
+        readonly height: 41.6;
+    };
+};
+export declare const PARISH_IMAGE_SPEC: {
+    /** Logo: cuadrado (proporción 0,8–1,25), se muestra en un círculo. */
+    readonly logo: {
+        readonly mimes: readonly ["image/png", "image/jpeg", "image/webp"];
+        readonly maxBytes: number;
+        readonly minPx: 256;
+        readonly maxPx: 4096;
+        readonly minRatio: 0.8;
+        readonly maxRatio: 1.25;
+    };
+    /** Imagen de la parroquia (portada): horizontal, proporción 1,5–2,2 (recomendado 1600 × 900). */
+    readonly cover: {
+        readonly mimes: readonly ["image/png", "image/jpeg", "image/webp"];
+        readonly maxBytes: number;
+        readonly minWidth: 1200;
+        readonly minHeight: 600;
+        readonly maxPx: 6000;
+        readonly minRatio: 1.5;
+        readonly maxRatio: 2.2;
+    };
+};
+export declare const organizationProfileSchema: z.ZodObject<{
+    name: z.ZodOptional<z.ZodString>;
+    description: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    address: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    phone: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    email: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    website: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    instagram: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    facebook: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    youtube: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    tiktok: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+}, "strict", z.ZodTypeAny, {
+    email?: string | null | undefined;
+    phone?: string | null | undefined;
+    name?: string | undefined;
+    description?: string | null | undefined;
+    address?: string | null | undefined;
+    website?: string | null | undefined;
+    instagram?: string | null | undefined;
+    facebook?: string | null | undefined;
+    youtube?: string | null | undefined;
+    tiktok?: string | null | undefined;
+}, {
+    email?: string | null | undefined;
+    phone?: string | null | undefined;
+    name?: string | undefined;
+    description?: string | null | undefined;
+    address?: string | null | undefined;
+    website?: string | null | undefined;
+    instagram?: string | null | undefined;
+    facebook?: string | null | undefined;
+    youtube?: string | null | undefined;
+    tiktok?: string | null | undefined;
+}>;
+export declare const sendNotificationSchema: z.ZodObject<{
+    title: z.ZodString;
+    body: z.ZodString;
+}, "strict", z.ZodTypeAny, {
+    title: string;
+    body: string;
+}, {
+    title: string;
+    body: string;
+}>;
+export declare const chatMessageSchema: z.ZodObject<{
+    body: z.ZodString;
+}, "strict", z.ZodTypeAny, {
+    body: string;
+}, {
+    body: string;
+}>;
+export declare const chatListQuerySchema: z.ZodObject<{
+    /** Solo mensajes posteriores a este instante (para el sondeo periódico). */
+    after: z.ZodOptional<z.ZodDate>;
+    limit: z.ZodDefault<z.ZodNumber>;
+}, "strip", z.ZodTypeAny, {
+    limit: number;
+    after?: Date | undefined;
+}, {
+    after?: Date | undefined;
+    limit?: number | undefined;
+}>;
 /** Sin `type` se asume OTHER (compatibilidad con clientes que aún no lo envían). */
 export declare const createEventSchema: z.ZodObject<{
     type: z.ZodDefault<z.ZodEnum<["PILGRIMAGE", "PROCESSION", "PATRONAL_FEAST", "LITURGICAL_CELEBRATION", "ROSARY", "RETREAT", "GATHERING", "COMMUNITY_ACTIVITY", "CULTURAL_ACTIVITY", "OTHER"]>>;
@@ -335,6 +559,60 @@ export declare const createEventSchema: z.ZodObject<{
         destinationLng?: number | null | undefined;
         distanceKm?: number | null | undefined;
     }>>>;
+    /** B1: preguntas extra del formulario público de inscripción. */
+    registrationFields: z.ZodOptional<z.ZodEffects<z.ZodArray<z.ZodEffects<z.ZodObject<{
+        /** Identificador estable (lo genera el editor); las respuestas se guardan con esta clave. */
+        id: z.ZodString;
+        label: z.ZodString;
+        type: z.ZodEnum<["text", "textarea", "number", "date", "select", "checkbox"]>;
+        required: z.ZodDefault<z.ZodBoolean>;
+        help: z.ZodOptional<z.ZodString>;
+        options: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
+    }, "strict", z.ZodTypeAny, {
+        type: "number" | "date" | "text" | "textarea" | "select" | "checkbox";
+        id: string;
+        label: string;
+        required: boolean;
+        options?: string[] | undefined;
+        help?: string | undefined;
+    }, {
+        type: "number" | "date" | "text" | "textarea" | "select" | "checkbox";
+        id: string;
+        label: string;
+        options?: string[] | undefined;
+        required?: boolean | undefined;
+        help?: string | undefined;
+    }>, {
+        type: "number" | "date" | "text" | "textarea" | "select" | "checkbox";
+        id: string;
+        label: string;
+        required: boolean;
+        options?: string[] | undefined;
+        help?: string | undefined;
+    }, {
+        type: "number" | "date" | "text" | "textarea" | "select" | "checkbox";
+        id: string;
+        label: string;
+        options?: string[] | undefined;
+        required?: boolean | undefined;
+        help?: string | undefined;
+    }>, "many">, {
+        type: "number" | "date" | "text" | "textarea" | "select" | "checkbox";
+        id: string;
+        label: string;
+        required: boolean;
+        options?: string[] | undefined;
+        help?: string | undefined;
+    }[], {
+        type: "number" | "date" | "text" | "textarea" | "select" | "checkbox";
+        id: string;
+        label: string;
+        options?: string[] | undefined;
+        required?: boolean | undefined;
+        help?: string | undefined;
+    }[]>>;
+    /** B1: diseño de la credencial (estándar o fondo propio subido). */
+    credentialMode: z.ZodOptional<z.ZodEnum<["STANDARD", "CUSTOM"]>>;
 }, "strip", z.ZodTypeAny, {
     type: "PILGRIMAGE" | "PROCESSION" | "PATRONAL_FEAST" | "LITURGICAL_CELEBRATION" | "ROSARY" | "RETREAT" | "GATHERING" | "COMMUNITY_ACTIVITY" | "CULTURAL_ACTIVITY" | "OTHER";
     status: "DRAFT" | "SCHEDULED";
@@ -343,10 +621,10 @@ export declare const createEventSchema: z.ZodObject<{
     timezone: string;
     capabilities?: ("INFO" | "LOCATION" | "REGISTRATION" | "PARTICIPANTS" | "CHECKIN" | "ROUTE" | "POINTS" | "CONTACTS" | "CERTIFICATES" | "VOLUNTEERS" | "COMMUNICATIONS" | "DOCUMENTS")[] | undefined;
     description?: string | undefined;
+    address?: string | null | undefined;
     endsAt?: Date | null | undefined;
     parishName?: string | null | undefined;
     locationName?: string | null | undefined;
-    address?: string | null | undefined;
     latitude?: number | null | undefined;
     longitude?: number | null | undefined;
     capacity?: number | null | undefined;
@@ -370,6 +648,15 @@ export declare const createEventSchema: z.ZodObject<{
         destinationLng?: number | null | undefined;
         distanceKm?: number | null | undefined;
     } | null | undefined;
+    registrationFields?: {
+        type: "number" | "date" | "text" | "textarea" | "select" | "checkbox";
+        id: string;
+        label: string;
+        required: boolean;
+        options?: string[] | undefined;
+        help?: string | undefined;
+    }[] | undefined;
+    credentialMode?: "STANDARD" | "CUSTOM" | undefined;
 }, {
     name: string;
     startsAt: Date;
@@ -377,11 +664,11 @@ export declare const createEventSchema: z.ZodObject<{
     type?: "PILGRIMAGE" | "PROCESSION" | "PATRONAL_FEAST" | "LITURGICAL_CELEBRATION" | "ROSARY" | "RETREAT" | "GATHERING" | "COMMUNITY_ACTIVITY" | "CULTURAL_ACTIVITY" | "OTHER" | undefined;
     status?: "DRAFT" | "SCHEDULED" | undefined;
     description?: string | undefined;
+    address?: string | null | undefined;
     endsAt?: Date | null | undefined;
     timezone?: string | undefined;
     parishName?: string | null | undefined;
     locationName?: string | null | undefined;
-    address?: string | null | undefined;
     latitude?: number | null | undefined;
     longitude?: number | null | undefined;
     capacity?: number | null | undefined;
@@ -405,6 +692,15 @@ export declare const createEventSchema: z.ZodObject<{
         destinationLng?: number | null | undefined;
         distanceKm?: number | null | undefined;
     } | null | undefined;
+    registrationFields?: {
+        type: "number" | "date" | "text" | "textarea" | "select" | "checkbox";
+        id: string;
+        label: string;
+        options?: string[] | undefined;
+        required?: boolean | undefined;
+        help?: string | undefined;
+    }[] | undefined;
+    credentialMode?: "STANDARD" | "CUSTOM" | undefined;
 }>;
 export declare const updateEventSchema: z.ZodObject<{
     name: z.ZodOptional<z.ZodString>;
@@ -461,18 +757,70 @@ export declare const updateEventSchema: z.ZodObject<{
         destinationLng?: number | null | undefined;
         distanceKm?: number | null | undefined;
     }>>>>;
+    registrationFields: z.ZodOptional<z.ZodOptional<z.ZodEffects<z.ZodArray<z.ZodEffects<z.ZodObject<{
+        /** Identificador estable (lo genera el editor); las respuestas se guardan con esta clave. */
+        id: z.ZodString;
+        label: z.ZodString;
+        type: z.ZodEnum<["text", "textarea", "number", "date", "select", "checkbox"]>;
+        required: z.ZodDefault<z.ZodBoolean>;
+        help: z.ZodOptional<z.ZodString>;
+        options: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
+    }, "strict", z.ZodTypeAny, {
+        type: "number" | "date" | "text" | "textarea" | "select" | "checkbox";
+        id: string;
+        label: string;
+        required: boolean;
+        options?: string[] | undefined;
+        help?: string | undefined;
+    }, {
+        type: "number" | "date" | "text" | "textarea" | "select" | "checkbox";
+        id: string;
+        label: string;
+        options?: string[] | undefined;
+        required?: boolean | undefined;
+        help?: string | undefined;
+    }>, {
+        type: "number" | "date" | "text" | "textarea" | "select" | "checkbox";
+        id: string;
+        label: string;
+        required: boolean;
+        options?: string[] | undefined;
+        help?: string | undefined;
+    }, {
+        type: "number" | "date" | "text" | "textarea" | "select" | "checkbox";
+        id: string;
+        label: string;
+        options?: string[] | undefined;
+        required?: boolean | undefined;
+        help?: string | undefined;
+    }>, "many">, {
+        type: "number" | "date" | "text" | "textarea" | "select" | "checkbox";
+        id: string;
+        label: string;
+        required: boolean;
+        options?: string[] | undefined;
+        help?: string | undefined;
+    }[], {
+        type: "number" | "date" | "text" | "textarea" | "select" | "checkbox";
+        id: string;
+        label: string;
+        options?: string[] | undefined;
+        required?: boolean | undefined;
+        help?: string | undefined;
+    }[]>>>;
+    credentialMode: z.ZodOptional<z.ZodOptional<z.ZodEnum<["STANDARD", "CUSTOM"]>>>;
 }, "strip", z.ZodTypeAny, {
     capabilities?: ("INFO" | "LOCATION" | "REGISTRATION" | "PARTICIPANTS" | "CHECKIN" | "ROUTE" | "POINTS" | "CONTACTS" | "CERTIFICATES" | "VOLUNTEERS" | "COMMUNICATIONS" | "DOCUMENTS")[] | undefined;
     type?: "PILGRIMAGE" | "PROCESSION" | "PATRONAL_FEAST" | "LITURGICAL_CELEBRATION" | "ROSARY" | "RETREAT" | "GATHERING" | "COMMUNITY_ACTIVITY" | "CULTURAL_ACTIVITY" | "OTHER" | undefined;
     status?: "DRAFT" | "SCHEDULED" | "IN_PROGRESS" | "FINISHED" | "CANCELLED" | undefined;
     name?: string | undefined;
     description?: string | undefined;
+    address?: string | null | undefined;
     startsAt?: Date | undefined;
     endsAt?: Date | null | undefined;
     timezone?: string | undefined;
     parishName?: string | null | undefined;
     locationName?: string | null | undefined;
-    address?: string | null | undefined;
     latitude?: number | null | undefined;
     longitude?: number | null | undefined;
     capacity?: number | null | undefined;
@@ -496,18 +844,27 @@ export declare const updateEventSchema: z.ZodObject<{
         destinationLng?: number | null | undefined;
         distanceKm?: number | null | undefined;
     } | null | undefined;
+    registrationFields?: {
+        type: "number" | "date" | "text" | "textarea" | "select" | "checkbox";
+        id: string;
+        label: string;
+        required: boolean;
+        options?: string[] | undefined;
+        help?: string | undefined;
+    }[] | undefined;
+    credentialMode?: "STANDARD" | "CUSTOM" | undefined;
 }, {
     capabilities?: ("INFO" | "LOCATION" | "REGISTRATION" | "PARTICIPANTS" | "CHECKIN" | "ROUTE" | "POINTS" | "CONTACTS" | "CERTIFICATES" | "VOLUNTEERS" | "COMMUNICATIONS" | "DOCUMENTS")[] | undefined;
     type?: "PILGRIMAGE" | "PROCESSION" | "PATRONAL_FEAST" | "LITURGICAL_CELEBRATION" | "ROSARY" | "RETREAT" | "GATHERING" | "COMMUNITY_ACTIVITY" | "CULTURAL_ACTIVITY" | "OTHER" | undefined;
     status?: "DRAFT" | "SCHEDULED" | "IN_PROGRESS" | "FINISHED" | "CANCELLED" | undefined;
     name?: string | undefined;
     description?: string | undefined;
+    address?: string | null | undefined;
     startsAt?: Date | undefined;
     endsAt?: Date | null | undefined;
     timezone?: string | undefined;
     parishName?: string | null | undefined;
     locationName?: string | null | undefined;
-    address?: string | null | undefined;
     latitude?: number | null | undefined;
     longitude?: number | null | undefined;
     capacity?: number | null | undefined;
@@ -531,6 +888,15 @@ export declare const updateEventSchema: z.ZodObject<{
         destinationLng?: number | null | undefined;
         distanceKm?: number | null | undefined;
     } | null | undefined;
+    registrationFields?: {
+        type: "number" | "date" | "text" | "textarea" | "select" | "checkbox";
+        id: string;
+        label: string;
+        options?: string[] | undefined;
+        required?: boolean | undefined;
+        help?: string | undefined;
+    }[] | undefined;
+    credentialMode?: "STANDARD" | "CUSTOM" | undefined;
 }>;
 export type CreateEventInput = z.infer<typeof createEventSchema>;
 export declare const eventListQuerySchema: z.ZodObject<{
@@ -586,6 +952,7 @@ export declare function deriveRegistrationState(e: {
     activeParticipants: number;
 }, now?: Date): RegistrationState;
 /** Inscripción abierta ahora (capacidad + interruptor + estado operable + ventana opcional). */
+export declare const REGISTRATION_STATE_LABEL: Record<ReturnType<typeof deriveRegistrationState>, string>;
 export declare const isRegistrationOpenNow: (e: Parameters<typeof deriveRegistrationState>[0], now?: Date) => boolean;
 /**
  * A4: asistencia DERIVADA (sin columna). ATTENDED: tiene al menos una llegada ACTIVE.
@@ -895,18 +1262,18 @@ export declare const createCheckinSchema: z.ZodObject<{
     participantId: string;
     checkpointId: string;
     method: "NUMBER" | "QR" | "SEARCH";
+    id?: string | undefined;
     latitude?: number | undefined;
     longitude?: number | undefined;
-    id?: string | undefined;
     timestamp?: Date | undefined;
     deviceId?: string | undefined;
 }, {
     participantId: string;
     checkpointId: string;
     method: "NUMBER" | "QR" | "SEARCH";
+    id?: string | undefined;
     latitude?: number | undefined;
     longitude?: number | undefined;
-    id?: string | undefined;
     timestamp?: Date | undefined;
     deviceId?: string | undefined;
 }>;
@@ -1314,18 +1681,22 @@ export declare const createRegistrationSchema: z.ZodObject<{
     lastName: z.ZodString;
     documentNumber: z.ZodEffects<z.ZodString, string, string>;
     phone: z.ZodEffects<z.ZodString, string, string>;
+    /** B1: respuestas a las preguntas extra del evento (se validan contra Event.registrationFields). */
+    answers: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
 }, "strip", z.ZodTypeAny, {
     token: string;
     firstName: string;
     lastName: string;
     documentNumber: string;
     phone: string;
+    answers?: Record<string, unknown> | undefined;
 }, {
     token: string;
     firstName: string;
     lastName: string;
     documentNumber: string;
     phone: string;
+    answers?: Record<string, unknown> | undefined;
 }>;
 export declare const proofFieldsSchema: z.ZodObject<{
     amount: z.ZodEffects<z.ZodOptional<z.ZodNumber>, number | undefined, unknown>;

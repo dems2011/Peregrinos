@@ -5,6 +5,13 @@ const transport = cfg.SMTP_URL
   ? nodemailer.createTransport(cfg.SMTP_URL)
   : null;
 
+/** Si el envío de correo está configurado (se informa en /api/health para diagnosticar correos que no llegan). */
+export const mailConfigured = () => transport !== null;
+
+if (!transport && cfg.NODE_ENV === "production") {
+  console.warn("[correo no configurado] Falta SMTP_URL: no se enviarán correos (verificación, recuperación, invitaciones).");
+}
+
 const esc = (s: string) =>
   s.replace(
     /[&<>"']/g,

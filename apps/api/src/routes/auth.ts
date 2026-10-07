@@ -4,11 +4,13 @@ import { Prisma } from "@prisma/client";
 import { cfg } from "../config";
 import {
   bootstrapSchema,
+  changePasswordSchema,
   claimPersonSchema,
   loginSchema,
   registerPilgrimSchema,
 } from "@peregrinos/shared";
 import { claimPersonForUser, personData } from "../lib/persons";
+import { acceptUnverifiedPilgrim } from "../lib/emailPolicy";
 import { prisma } from "../lib/prisma";
 import { audit, auditTx } from "../lib/audit";
 import { AppError, unauthorized } from "../lib/errors";
@@ -281,7 +283,7 @@ export default async function authRoutes(app: FastifyInstance) {
       const { email, password } =
         loginSchema.parse(req.body);
 
-      const user = await prisma.user.findUnique({
+      let user = await prisma.user.findUnique({
         where: {
           email,
         },
@@ -299,6 +301,9 @@ export default async function authRoutes(app: FastifyInstance) {
             ),
             false
           );
+
+      // BETA (PILGRIM_EMAIL_VERIFICATION=optional, sin SMTP): la contraseña correcta activa la cuenta de peregrino.
+      if (ok && user) user = (await acceptUnverifiedPilgrim(user)) ?? user;
 
       if (
         !user ||
@@ -523,6 +528,34 @@ export default async function authRoutes(app: FastifyInstance) {
       clearPilgrimAccountSession(reply);
 
       return reply.status(204).send();
+    }
+  );
+
+  /**
+   * Cambio de la propia contraseña del personal (exige la actual). Cierra las demás sesiones (sessionVersion + 1 y
+   * refresh tokens revocados) y renueva la de este dispositivo conservando su segundo factor, si lo hubo.
+   */
+  app.post(
+    "/password",
+    { preHandler: app.authenticate, config: { rateLimit: { max: 10, timeWindow: "15 minutes" } } },
+    async (req, reply) => {
+      const { currentPassword, newPassword } = changePasswordSchema.parse(req.body);
+      const user = await prisma.user.findUniqueOrThrow({ where: { id: req.auth.id } });
+      if (!(await verifyPassword(user.passwordHash, currentPassword))) {
+        await audit(req, { action: "PASSWORD_CHANGE_FAILED", entityType: "User", entityId: user.id });
+        throw new AppError(400, "WRONG_PASSWORD", "La contraseña actual no es correcta.");
+      }
+      const passwordHash = await hashPassword(newPassword);
+      const updated = await prisma.$transaction(async (tx) => {
+        const r = await tx.user.updateMany({ where: { id: user.id, sessionVersion: user.sessionVersion }, data: { passwordHash, sessionVersion: { increment: 1 } } });
+        if (r.count !== 1) throw new AppError(409, "ACCOUNT_CHANGED", "La cuenta cambió. Vuelve a ingresar.");
+        await tx.refreshToken.updateMany({ where: { userId: user.id, revokedAt: null }, data: { revokedAt: new Date() } });
+        await tx.passwordResetToken.updateMany({ where: { userId: user.id, usedAt: null, expiresAt: { gt: new Date() } }, data: { expiresAt: new Date() } });
+        await auditTx(tx, req, { action: "PASSWORD_CHANGED", entityType: "User", entityId: user.id });
+        return tx.user.findUniqueOrThrow({ where: { id: user.id } });
+      });
+      await issueSession(app, req, reply, updated, { mfaAt: req.auth.mfaAt });
+      return { message: "Contraseña actualizada. Se cerraron tus otras sesiones." };
     }
   );
 

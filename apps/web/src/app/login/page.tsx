@@ -130,6 +130,11 @@ export default function LoginPage() {
               <p className="muted-on-blue" style={{ margin: "0 0 6px" }}>¿Eres peregrino y aún no tienes cuenta?</p>
               <Link className="link-on-blue" href="/cuenta/registro">Crear cuenta</Link>
             </div>
+            <div>
+              <p className="muted-on-blue" style={{ margin: "0 0 6px" }}>¿Tu parroquia todavía no está en Peregrinos?</p>
+              <Link className="link-on-blue" href="/solicitud-parroquia">Registrar mi parroquia</Link>
+            </div>
+            <Link className="link-on-blue" href="/parroquias">Buscar una parroquia</Link>
           </div>
         </form>
       )}

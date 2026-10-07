@@ -80,11 +80,14 @@ export default async function registrationAdminRoutes(app: FastifyInstance) {
         id: true, firstName: true, lastName: true, documentNumber: true, documentType: true, phone: true, status: true, rejectionReason: true,
         reviewedAt: true, createdAt: true, participant: { select: { id: true, number: true } },
         proofs: { orderBy: { createdAt: "desc" }, select: { id: true, registrationId: true, sha256: true, mimeType: true, sizeBytes: true, amount: true, reference: true, paidAt: true, note: true, status: true, createdAt: true } },
+        // B1: respuestas a las preguntas del formulario del evento y si se inscribió con su cuenta.
+        formAnswers: true, userId: true, event: { select: { registrationFields: true } },
       },
     });
     if (!r) throw notFound("Inscripción no encontrada.");
     const proofs = (await withDuplicateFlags(r.proofs, req.auth.organizationId)).map(({ sha256: _s, ...p }) => p);
-    return { ...r, proofs };
+    const { event, userId, ...rest } = r;
+    return { ...rest, proofs, withAccount: !!userId, formFields: Array.isArray(event.registrationFields) ? event.registrationFields : [] };
   });
 
   /** Ver el comprobante (imagen o PDF). Solo personal con permiso; nunca se sirve de forma pública. */

@@ -1,4 +1,4 @@
-import type { EventCapability, EventStatus, EventType, EventVisibility, RegistrationState } from "@peregrinos/shared";
+import type { CredentialMode, EventCapability, EventStatus, EventType, EventVisibility, RegistrationField, RegistrationState } from "@peregrinos/shared";
 
 export interface EventRoute {
   originName: string | null; originAddress: string | null; originLat: number | null; originLng: number | null;
@@ -17,6 +17,24 @@ export interface EventItem {
   /** A4: módulos activos del evento y estado derivado de la inscripción (no se guarda). */
   capabilities: EventCapability[]; registrationState: RegistrationState; activeParticipants: number;
   _count: { participants: number; checkpoints: number; checkins: number };
+  /** B1: preguntas extra del formulario público y diseño de la credencial. */
+  registrationFields: RegistrationField[]; credentialMode: CredentialMode;
+}
+/** B1: mensaje del chat de un evento tal como lo devuelve la API. */
+export interface ChatMessage {
+  id: string; createdAt: string; deleted: boolean; body: string | null; mine: boolean;
+  author: { kind: "STAFF" | "PILGRIM"; name: string; role: string | null };
+}
+/** B1: perfil público de una parroquia. */
+export interface ParishProfile {
+  id: string; name: string; description: string | null; address: string | null; phone: string | null; email: string | null;
+  website: string | null; instagram: string | null; facebook: string | null; youtube: string | null; tiktok: string | null;
+  followerCount: number; logoUrl: string | null; coverUrl: string | null;
+}
+export interface PublicEvent {
+  id: string; name: string; description: string | null; type: EventType; status: EventStatus; startsAt: string; endsAt: string | null;
+  timezone: string; locationName: string | null; address: string | null; capacity: number | null; spotsLeft: number | null;
+  registrationFee: string | null; registrationState: RegistrationState; registrationPath: string | null;
 }
 export interface Person {
   id: string; personId?: string; number: number; firstName: string; lastName: string; documentNumber: string; status: "ACTIVE" | "CANCELLED";

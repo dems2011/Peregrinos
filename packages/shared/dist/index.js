@@ -14,11 +14,12 @@ var __exportStar = (this && this.__exportStar) || function(m, exports) {
     for (var p in m) if (p !== "default" && !Object.prototype.hasOwnProperty.call(exports, p)) __createBinding(exports, m, p);
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.formatParticipantNumber = exports.mfaPasswordSchema = exports.mfaConfirmSchema = exports.mfaVerifySchema = exports.isMfaChallenge = exports.paginationSchema = exports.assignmentsSchema = exports.updateUserSchema = exports.createUserSchema = exports.isRegistrationOpenNow = exports.isCapacityFull = exports.REGISTRATION_STATES = exports.eventListQuerySchema = exports.updateEventSchema = exports.createEventSchema = exports.eventSettingsSchemas = exports.eventRouteSchema = exports.bootstrapSchema = exports.unlinkAccountSchema = exports.claimPersonSchema = exports.mergePersonSchema = exports.personListSchema = exports.updatePersonSchema = exports.createPersonSchema = exports.registerPilgrimSchema = exports.changePasswordSchema = exports.passwordResetConfirmSchema = exports.accountEmailSchema = exports.loginSchema = exports.ROLE_PERMISSIONS = exports.EVENT_VISIBILITY_LABEL = exports.EVENT_VISIBILITIES = exports.EVENT_TYPE_INFO = exports.EVENT_TYPES = exports.isEventOperable = exports.hasEventCapability = exports.EVENT_CAPABILITY_REQUIRES = exports.EVENT_CAPABILITY_LABEL = exports.DEFAULT_EVENT_CAPABILITIES = exports.IMPLEMENTED_EVENT_CAPABILITIES = exports.RESERVED_EVENT_CAPABILITIES = exports.EVENT_CAPABILITIES = exports.canTransitionEvent = exports.EVENT_TRANSITIONS = exports.EVENT_INITIAL_STATUSES = exports.EVENT_STATUS_LABEL = exports.EVENT_STATUSES = exports.ORGANIZATION_STATUS_LABEL = exports.ORGANIZATION_STATUSES = exports.ROLES = void 0;
-exports.canTransitionVolunteer = exports.VOLUNTEER_TRANSITIONS = exports.VOLUNTEER_INITIAL_STATUSES = exports.VOLUNTEER_STATUS_LABEL = exports.VOLUNTEER_STATUSES = exports.credentialQuerySchema = exports.reopenRegistrationSchema = exports.rejectRegistrationSchema = exports.approveRegistrationSchema = exports.registrationListSchema = exports.proofFieldsSchema = exports.createRegistrationSchema = exports.REGISTRATION_STATUSES = exports.qBool = exports.updateContactSchema = exports.createContactSchema = exports.issueAccessSchema = exports.pilgrimLoginSchema = exports.submitOrganizationReviewSchema = exports.organizationTransitionSchema = exports.platformRejectSchema = exports.platformApproveSchema = exports.organizationRequestTokenSchema = exports.resubmitOrganizationRequestSchema = exports.organizationRequestSchema = exports.acceptInvitationSchema = exports.createInvitationSchema = exports.ACCESS_LEVELS = exports.canInviteRole = exports.canGrantRole = exports.hasPermission = exports.GRANTABLE_PERMISSIONS = exports.checkinListSchema = exports.resolveConflictSchema = exports.correctCheckinSchema = exports.cancelCheckinSchema = exports.createCheckinSchema = exports.reorderCheckpointsSchema = exports.updateCheckpointSchema = exports.createCheckpointSchema = exports.participantListSchema = exports.updateParticipantSchema = exports.createParticipantSchema = exports.digitsOnly = exports.normalizeDocument = exports.parseQrContent = exports.qrContent = exports.QR_PREFIX = exports.CHECKIN_METHODS = exports.PARTICIPANT_STATUSES = void 0;
-exports.revokeAssignmentSchema = exports.createAssignmentSchema = exports.updateShiftSchema = exports.createShiftSchema = exports.catalogUpdateSchema = exports.catalogItemSchema = exports.volunteerTransitionSchema = exports.VOLUNTEER_REQUEST_STATUS_LABEL = exports.VOLUNTEER_REQUEST_STATUSES = exports.VOLUNTEER_CONSENT_CODE_HOURS = exports.volunteerConsentRequestSchema = exports.createVolunteerSchema = exports.VOLUNTEER_REASON_REQUIRED = void 0;
+exports.eventListQuerySchema = exports.updateEventSchema = exports.createEventSchema = exports.chatListQuerySchema = exports.chatMessageSchema = exports.sendNotificationSchema = exports.organizationProfileSchema = exports.PARISH_IMAGE_SPEC = exports.CREDENTIAL_SPEC = exports.CREDENTIAL_MODES = exports.registrationFieldsSchema = exports.registrationFieldSchema = exports.MAX_REGISTRATION_FIELDS = exports.REGISTRATION_FIELD_TYPE_LABEL = exports.REGISTRATION_FIELD_TYPES = exports.eventSettingsSchemas = exports.eventRouteSchema = exports.bootstrapSchema = exports.unlinkAccountSchema = exports.claimPersonSchema = exports.mergePersonSchema = exports.personListSchema = exports.updatePersonSchema = exports.createPersonSchema = exports.registerPilgrimSchema = exports.changePasswordSchema = exports.passwordResetConfirmSchema = exports.accountEmailSchema = exports.loginSchema = exports.ROLE_PERMISSIONS = exports.EVENT_VISIBILITY_LABEL = exports.EVENT_VISIBILITIES = exports.EVENT_TYPE_INFO = exports.EVENT_TYPES = exports.isEventOperable = exports.hasEventCapability = exports.EVENT_CAPABILITY_REQUIRES = exports.EVENT_CAPABILITY_LABEL = exports.DEFAULT_EVENT_CAPABILITIES = exports.IMPLEMENTED_EVENT_CAPABILITIES = exports.RESERVED_EVENT_CAPABILITIES = exports.EVENT_CAPABILITIES = exports.canTransitionEvent = exports.EVENT_TRANSITIONS = exports.EVENT_INITIAL_STATUSES = exports.EVENT_STATUS_LABEL = exports.EVENT_STATUSES = exports.ORGANIZATION_STATUS_LABEL = exports.ORGANIZATION_STATUSES = exports.ROLES = void 0;
+exports.qBool = exports.updateContactSchema = exports.createContactSchema = exports.issueAccessSchema = exports.pilgrimLoginSchema = exports.submitOrganizationReviewSchema = exports.organizationTransitionSchema = exports.platformRejectSchema = exports.platformApproveSchema = exports.organizationRequestTokenSchema = exports.resubmitOrganizationRequestSchema = exports.organizationRequestSchema = exports.acceptInvitationSchema = exports.createInvitationSchema = exports.ACCESS_LEVELS = exports.canInviteRole = exports.canGrantRole = exports.hasPermission = exports.GRANTABLE_PERMISSIONS = exports.checkinListSchema = exports.resolveConflictSchema = exports.correctCheckinSchema = exports.cancelCheckinSchema = exports.createCheckinSchema = exports.reorderCheckpointsSchema = exports.updateCheckpointSchema = exports.createCheckpointSchema = exports.participantListSchema = exports.updateParticipantSchema = exports.createParticipantSchema = exports.digitsOnly = exports.normalizeDocument = exports.parseQrContent = exports.qrContent = exports.QR_PREFIX = exports.CHECKIN_METHODS = exports.PARTICIPANT_STATUSES = exports.formatParticipantNumber = exports.mfaPasswordSchema = exports.mfaConfirmSchema = exports.mfaVerifySchema = exports.isMfaChallenge = exports.paginationSchema = exports.assignmentsSchema = exports.updateUserSchema = exports.createUserSchema = exports.isRegistrationOpenNow = exports.REGISTRATION_STATE_LABEL = exports.isCapacityFull = exports.REGISTRATION_STATES = void 0;
+exports.revokeAssignmentSchema = exports.createAssignmentSchema = exports.updateShiftSchema = exports.createShiftSchema = exports.catalogUpdateSchema = exports.catalogItemSchema = exports.volunteerTransitionSchema = exports.VOLUNTEER_REQUEST_STATUS_LABEL = exports.VOLUNTEER_REQUEST_STATUSES = exports.VOLUNTEER_CONSENT_CODE_HOURS = exports.volunteerConsentRequestSchema = exports.createVolunteerSchema = exports.VOLUNTEER_REASON_REQUIRED = exports.canTransitionVolunteer = exports.VOLUNTEER_TRANSITIONS = exports.VOLUNTEER_INITIAL_STATUSES = exports.VOLUNTEER_STATUS_LABEL = exports.VOLUNTEER_STATUSES = exports.credentialQuerySchema = exports.reopenRegistrationSchema = exports.rejectRegistrationSchema = exports.approveRegistrationSchema = exports.registrationListSchema = exports.proofFieldsSchema = exports.createRegistrationSchema = exports.REGISTRATION_STATUSES = void 0;
 exports.validateEventCapabilities = validateEventCapabilities;
 exports.can = can;
+exports.validateRegistrationAnswers = validateRegistrationAnswers;
 exports.validateEventCoherence = validateEventCoherence;
 exports.deriveRegistrationState = deriveRegistrationState;
 exports.deriveAttendance = deriveAttendance;
@@ -119,7 +120,9 @@ exports.EVENT_TYPE_INFO = {
 };
 exports.EVENT_VISIBILITIES = ["PRIVATE", "UNLISTED", "PUBLIC"];
 exports.EVENT_VISIBILITY_LABEL = {
-    PRIVATE: "Privado (solo personal)", UNLISTED: "Solo con enlace", PUBLIC: "Público",
+    PRIVATE: "Privado: solo lo ve el personal",
+    UNLISTED: "Solo con enlace: no aparece en el perfil de la parroquia",
+    PUBLIC: "Público: aparece en el perfil de la parroquia",
 };
 const OPERATOR = ["event:read", "participant:read", "checkpoint:read", "checkin:create"];
 const ADMIN = [
@@ -228,6 +231,127 @@ exports.eventSettingsSchemas = {
     ROSARY: noSettings, RETREAT: noSettings, GATHERING: noSettings, COMMUNITY_ACTIVITY: noSettings,
     CULTURAL_ACTIVITY: noSettings, OTHER: noSettings,
 };
+/* =====================  B1: FORMULARIO DE INSCRIPCIÓN POR EVENTO  ===================== */
+/**
+ * Campos extra que el SUPERADMIN agrega al formulario público de inscripción de un evento. Los datos básicos
+ * (nombre, apellido, documento y teléfono) son siempre fijos: identifican a la persona y evitan duplicados.
+ */
+exports.REGISTRATION_FIELD_TYPES = ["text", "textarea", "number", "date", "select", "checkbox"];
+exports.REGISTRATION_FIELD_TYPE_LABEL = {
+    text: "Texto corto", textarea: "Texto largo", number: "Número", date: "Fecha", select: "Opciones (elegir una)", checkbox: "Casilla (sí/no)",
+};
+exports.MAX_REGISTRATION_FIELDS = 15;
+exports.registrationFieldSchema = zod_1.z.object({
+    /** Identificador estable (lo genera el editor); las respuestas se guardan con esta clave. */
+    id: zod_1.z.string().regex(/^[a-z0-9_-]{1,40}$/i, "Identificador de campo inválido"),
+    label: zod_1.z.string().trim().min(2, "Falta la pregunta").max(120),
+    type: zod_1.z.enum(exports.REGISTRATION_FIELD_TYPES),
+    required: zod_1.z.boolean().default(false),
+    help: zod_1.z.string().trim().max(200).optional(),
+    options: zod_1.z.array(zod_1.z.string().trim().min(1).max(80)).max(20).optional(),
+}).strict().refine((f) => f.type !== "select" || (f.options?.length ?? 0) >= 2, { message: "Una pregunta de opciones necesita al menos 2 opciones", path: ["options"] });
+exports.registrationFieldsSchema = zod_1.z.array(exports.registrationFieldSchema).max(exports.MAX_REGISTRATION_FIELDS)
+    .refine((fs) => new Set(fs.map((f) => f.id)).size === fs.length, "Hay preguntas repetidas");
+/**
+ * Valida las respuestas contra los campos del evento. Devuelve las respuestas normalizadas (solo campos conocidos) o
+ * la lista de problemas por campo. Lo usan la API (fuente de verdad) y el formulario web (aviso inmediato).
+ */
+function validateRegistrationAnswers(fields, raw) {
+    const input = raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
+    const answers = {};
+    const issues = [];
+    for (const f of fields) {
+        const v = input[f.id];
+        const empty = v === undefined || v === null || (typeof v === "string" && v.trim() === "") || (f.type === "checkbox" && v === false);
+        if (empty) {
+            if (f.required)
+                issues.push({ field: f.id, message: `«${f.label}» es obligatorio` });
+            continue;
+        }
+        if (f.type === "checkbox") {
+            if (typeof v !== "boolean")
+                issues.push({ field: f.id, message: `«${f.label}»: valor inválido` });
+            else
+                answers[f.id] = v;
+            continue;
+        }
+        if (f.type === "number") {
+            const n = typeof v === "number" ? v : Number(String(v).replace(",", "."));
+            if (!Number.isFinite(n) || Math.abs(n) > 1e9)
+                issues.push({ field: f.id, message: `«${f.label}» debe ser un número` });
+            else
+                answers[f.id] = n;
+            continue;
+        }
+        const s = String(v).trim();
+        if (f.type === "date") {
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(s) || Number.isNaN(Date.parse(s)))
+                issues.push({ field: f.id, message: `«${f.label}» debe ser una fecha` });
+            else
+                answers[f.id] = s;
+            continue;
+        }
+        if (f.type === "select") {
+            if (!f.options?.includes(s))
+                issues.push({ field: f.id, message: `«${f.label}»: elige una de las opciones` });
+            else
+                answers[f.id] = s;
+            continue;
+        }
+        const max = f.type === "textarea" ? 1000 : 200;
+        if (s.length > max)
+            issues.push({ field: f.id, message: `«${f.label}» admite hasta ${max} caracteres` });
+        else
+            answers[f.id] = s;
+    }
+    return issues.length ? { ok: false, issues } : { ok: true, answers };
+}
+/* =====================  B1: CREDENCIAL VERTICAL  ===================== */
+exports.CREDENTIAL_MODES = ["STANDARD", "CUSTOM"];
+/**
+ * Credencial SIEMPRE vertical, tamaño CR80 (tarjeta estándar): 54 × 85,6 mm (proporción 0,6308).
+ * Diseño propio: imagen de fondo PNG o JPEG que cubre toda la tarjeta. Peregrinos dibuja encima, en la ZONA SEGURA
+ * (mitad inferior), un panel blanco con el número, el QR y, si se pide, el nombre. El arte importante va arriba.
+ */
+exports.CREDENTIAL_SPEC = {
+    widthMm: 54, heightMm: 85.6, ratio: 54 / 85.6, ratioTolerance: 0.02,
+    minPx: { width: 638, height: 1011 }, // 300 ppp
+    recommendedPx: { width: 1276, height: 2022 }, // 600 ppp
+    maxBytes: 3 * 1024 * 1024,
+    mimes: ["image/png", "image/jpeg"],
+    /** Zona segura donde Peregrinos coloca los datos (milímetros desde la esquina superior izquierda). */
+    dataZoneMm: { x: 4, y: 40, width: 46, height: 41.6 },
+};
+/* =====================  B1: IMÁGENES DE LA PARROQUIA  ===================== */
+exports.PARISH_IMAGE_SPEC = {
+    /** Logo: cuadrado (proporción 0,8–1,25), se muestra en un círculo. */
+    logo: { mimes: ["image/png", "image/jpeg", "image/webp"], maxBytes: 1024 * 1024, minPx: 256, maxPx: 4096, minRatio: 0.8, maxRatio: 1.25 },
+    /** Imagen de la parroquia (portada): horizontal, proporción 1,5–2,2 (recomendado 1600 × 900). */
+    cover: { mimes: ["image/png", "image/jpeg", "image/webp"], maxBytes: 2 * 1024 * 1024, minWidth: 1200, minHeight: 600, maxPx: 6000, minRatio: 1.5, maxRatio: 2.2 },
+};
+exports.organizationProfileSchema = zod_1.z.object({
+    name: zod_1.z.string().trim().min(3).max(160).optional(),
+    description: zod_1.z.string().trim().max(2000).nullable().optional(),
+    address: zod_1.z.string().trim().max(240).nullable().optional(),
+    phone: zod_1.z.string().trim().max(40).nullable().optional(),
+    email: zod_1.z.string().trim().toLowerCase().email().max(200).nullable().optional(),
+    website: zod_1.z.string().trim().url().max(300).nullable().optional(),
+    instagram: zod_1.z.string().trim().max(200).nullable().optional(),
+    facebook: zod_1.z.string().trim().max(200).nullable().optional(),
+    youtube: zod_1.z.string().trim().max(200).nullable().optional(),
+    tiktok: zod_1.z.string().trim().max(200).nullable().optional(),
+}).strict();
+/* =====================  B1: AVISOS Y CHAT  ===================== */
+exports.sendNotificationSchema = zod_1.z.object({
+    title: zod_1.z.string().trim().min(3, "Escribe un título").max(120),
+    body: zod_1.z.string().trim().min(3, "Escribe el mensaje").max(2000),
+}).strict();
+exports.chatMessageSchema = zod_1.z.object({ body: zod_1.z.string().trim().min(1, "Escribe un mensaje").max(2000) }).strict();
+exports.chatListQuerySchema = zod_1.z.object({
+    /** Solo mensajes posteriores a este instante (para el sondeo periódico). */
+    after: zod_1.z.coerce.date().optional(),
+    limit: zod_1.z.coerce.number().int().min(1).max(200).default(100),
+});
 /** Campos comunes de alta/edición. Las reglas entre campos se validan con validateEventCoherence. */
 const eventFields = {
     name: zod_1.z.string().trim().min(3).max(160),
@@ -258,6 +382,10 @@ const eventFields = {
     settings: zod_1.z.record(zod_1.z.unknown()).optional(),
     /** null quita el trayecto. */
     route: exports.eventRouteSchema.nullable().optional(),
+    /** B1: preguntas extra del formulario público de inscripción. */
+    registrationFields: exports.registrationFieldsSchema.optional(),
+    /** B1: diseño de la credencial (estándar o fondo propio subido). */
+    credentialMode: zod_1.z.enum(exports.CREDENTIAL_MODES).optional(),
 };
 /** Sin `type` se asume OTHER (compatibilidad con clientes que aún no lo envían). */
 exports.createEventSchema = zod_1.z.object({ ...eventFields, type: eventFields.type.default("OTHER"), status: zod_1.z.enum(exports.EVENT_INITIAL_STATUSES).default("DRAFT") });
@@ -318,6 +446,9 @@ function deriveRegistrationState(e, now = new Date()) {
     return "OPEN";
 }
 /** Inscripción abierta ahora (capacidad + interruptor + estado operable + ventana opcional). */
+exports.REGISTRATION_STATE_LABEL = {
+    DISABLED: "Sin inscripción", NOT_YET_OPEN: "Todavía no abre", OPEN: "Inscripción abierta", FULL: "Cupo completo", CLOSED: "Inscripción cerrada",
+};
 const isRegistrationOpenNow = (e, now = new Date()) => deriveRegistrationState(e, now) === "OPEN";
 exports.isRegistrationOpenNow = isRegistrationOpenNow;
 function deriveAttendance(p) {
@@ -557,6 +688,8 @@ exports.createRegistrationSchema = zod_1.z.object({
     lastName: participantBase.lastName,
     documentNumber: participantBase.documentNumber,
     phone: participantBase.phone,
+    /** B1: respuestas a las preguntas extra del evento (se validan contra Event.registrationFields). */
+    answers: zod_1.z.record(zod_1.z.unknown()).optional(),
 });
 const emptyToUndef = (v) => (v === "" || v === null ? undefined : v);
 exports.proofFieldsSchema = zod_1.z.object({

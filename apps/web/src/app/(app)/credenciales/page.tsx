@@ -1,4 +1,5 @@
 "use client";
+import Link from "next/link";
 import { useState } from "react";
 import { Download, QrCode } from "lucide-react";
 import { api, ApiError, download } from "@/lib/api";
@@ -44,7 +45,8 @@ export default function Credenciales() {
               <div className="num"><small>N.º DE PEREGRINO</small><b>001</b></div>
               <div className="qr"><QrCode size="70%" /></div>
             </div>
-            <p className="muted" style={{ textAlign: "center" }}>Tamaño tarjeta (85,6 × 54 mm) · 10 por hoja A4 · el QR solo contiene un identificador seguro.</p>
+            <p className="muted" style={{ textAlign: "center" }}>Tarjeta vertical (54 × 85,6 mm) · 9 por hoja A4 · el QR solo contiene un identificador seguro.{event?.credentialMode === "CUSTOM" && " Este evento usa el diseño propio de la parroquia."}</p>
+            <Link className="btn" href="/evento/credencial">Diseño de la credencial</Link>
           </div>
           <div className="card stack">
             <h2>Exportar para imprimir</h2>

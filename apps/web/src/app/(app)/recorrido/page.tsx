@@ -30,7 +30,7 @@ export default function Recorrido() {
   }
 
   return (
-    <Page title="Recorrido" action={manage ? <Link href="/recorrido/nuevo" className="ic" aria-label="Agregar punto"><Plus size={24} /></Link> : undefined}>
+    <Page title="Recorrido" back="/evento" action={manage ? <Link href="/recorrido/nuevo" className="ic" aria-label="Agregar punto"><Plus size={24} /></Link> : undefined}>
       {points.length > 0 ? <MapView points={points} /> : <div className="alert info">Agrega coordenadas a los puntos para verlos en el mapa.</div>}
       <ErrorBox msg={list.error} />
       <div className="card flat">

@@ -10,6 +10,7 @@ import { cfg } from "./config";
 import { AppError } from "./lib/errors";
 import { prisma } from "./lib/prisma";
 import { redactUrl, reqSerializer } from "./lib/logRedact";
+import { mailConfigured } from "./lib/mailer";
 import authPlugin from "./plugins/auth";
 import authRoutes from "./routes/auth";
 import mfaRoutes from "./routes/mfa";
@@ -35,6 +36,10 @@ import personRoutes from "./routes/persons";
 import pilgrimAccountRoutes from "./routes/pilgrimAccount";
 import volunteerRoutes from "./routes/volunteers";
 import geoRoutes from "./routes/geo";
+import publicRoutes from "./routes/public";
+import accountSocialRoutes from "./routes/accountSocial";
+import chatRoutes from "./routes/chat";
+import reportRoutes from "./routes/report";
 
 export async function buildApp() {
   const app = Fastify({
@@ -100,7 +105,8 @@ export async function buildApp() {
 
   app.get("/api/health", async () => {
     await prisma.$queryRaw`SELECT 1`;
-    return { status: "ok", time: new Date().toISOString() };
+    // Solo indica si hay SMTP (no expone la configuración): permite diagnosticar correos que no llegan.
+    return { status: "ok", time: new Date().toISOString(), mail: mailConfigured() ? "smtp" : "disabled" };
   });
 
   await app.register(authRoutes, { prefix: "/api/auth" });
@@ -133,6 +139,11 @@ export async function buildApp() {
   await app.register(volunteerRoutes, { prefix: "/api/events/:eventId/volunteering" });
   // G1: catálogo geográfico de solo lectura (países, niveles, áreas) para el selector encadenado.
   await app.register(geoRoutes, { prefix: "/api/geo" });
+  // B1: perfil público de parroquias (sin sesión), chat por evento e informe del evento.
+  await app.register(publicRoutes, { prefix: "/api/public" });
+  await app.register(accountSocialRoutes, { prefix: "/api/auth/account" });
+  await app.register(chatRoutes, { prefix: "/api/events/:eventId/chat" });
+  await app.register(reportRoutes, { prefix: "/api/events/:eventId/report" });
 
   return app;
 }

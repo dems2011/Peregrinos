@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState, type FormEvent } from "react";
-import { EVENT_TYPE_INFO, type EventType } from "@peregrinos/shared";
+import { EVENT_TYPE_INFO, validateRegistrationAnswers, type EventType, type RegistrationField } from "@peregrinos/shared";
 import { ApiError, api, post } from "@/lib/api";
 import { errorText } from "@/components/account/AccountContext";
 import { PublicShell } from "@/components/PublicShell";
@@ -18,11 +18,14 @@ import { fmtDateMedium, fmtDateTimeMedium, money } from "@/lib/format";
  */
 
 interface Info {
-  event: { name: string; description: string | null; startsAt: string; endsAt: string | null; parishName: string; type: EventType; locationName: string | null; address: string | null };
+  event: { name: string; description: string | null; startsAt: string; endsAt: string | null; parishName: string; type: EventType; locationName: string | null; address: string | null; timezone?: string; organizationId?: string };
   registrationFee: string | null;
   paymentInstructions: string | null;
+  /** B1: preguntas propias del evento. */
+  fields?: RegistrationField[];
 }
-interface Created { access: { link: string; code: string } }
+interface Created { access: { link: string; code: string }; linkedToAccount?: boolean }
+type Answer = string | boolean;
 
 const MESSAGES: Record<string, string> = {
   EVENT_FULL: "El cupo del evento está completo. Consulta con la organización.",
@@ -43,18 +46,35 @@ export default function Registro() {
   const [saved, setSaved] = useState(false);
   const [copied, setCopied] = useState<"link" | "code" | null>(null);
 
+  const [answers, setAnswers] = useState<Record<string, Answer>>({});
+  const [linked, setLinked] = useState(false);
+  // B1: con la cuenta abierta, la inscripción queda en la cuenta (historial, chat y avisos). Se precargan sus datos.
+  const [account, setAccount] = useState<{ name: string } | null>(null);
+
   useEffect(() => {
     api<Info>(`/registration/info?token=${encodeURIComponent(token)}`).then(setInfo, (e) => setLoadErr(text(e)));
+    api<{ user: { name: string; documentNumber: string | null; phone: string | null }; person: { firstName: string; lastName: string | null } | null }>("/auth/account/me")
+      .then((me) => {
+        setAccount({ name: me.user.name });
+        setF((cur) => ({
+          firstName: cur.firstName || me.person?.firstName || "", lastName: cur.lastName || me.person?.lastName || "",
+          documentNumber: cur.documentNumber || me.user.documentNumber || "", phone: cur.phone || me.user.phone || "",
+        }));
+      })
+      .catch(() => setAccount(null));
   }, [token]);
 
   const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement>) => setF({ ...f, [k]: e.target.value });
-  const ready = f.firstName.trim() && f.lastName.trim() && f.documentNumber.trim().length >= 5 && f.phone.replace(/\D/g, "").length >= 7;
+  const fields = info?.fields ?? [];
+  const local = validateRegistrationAnswers(fields, answers);
+  const ready = f.firstName.trim() && f.lastName.trim() && f.documentNumber.trim().length >= 5 && f.phone.replace(/\D/g, "").length >= 7 && local.ok;
 
   async function submit(e: FormEvent) {
     e.preventDefault(); if (!ready || busy) return;
     setBusy(true); setErr(null); setAlready(false);
     try {
-      const r = await post<Created>("/registration", { token, ...Object.fromEntries(Object.entries(f).map(([k, v]) => [k, v.trim()])) });
+      const r = await post<Created>("/registration", { token, ...Object.fromEntries(Object.entries(f).map(([k, v]) => [k, v.trim()])), answers });
+      setLinked(!!r.linkedToAccount);
       setAccess(r.access); window.scrollTo(0, 0);
     } catch (e2) {
       setAlready(e2 instanceof ApiError && e2.code === "ALREADY_REGISTERED");
@@ -77,7 +97,7 @@ export default function Registro() {
   // Acceso personal: se muestra una sola vez. La sesión ya quedó abierta en este dispositivo.
   if (access) return (
     <PublicShell subtitle="Inscripción">
-      <div className="alert ok" role="status">¡Listo! Tu inscripción a «{e.name}» quedó registrada.</div>
+      <div className="alert ok" role="status">¡Listo! Tu inscripción a «{e.name}» quedó registrada.{linked && " Quedó guardada en tu cuenta: la verás en «Mis eventos», con el chat del evento."}</div>
       <section className="card stack-sm">
         <h2>Guarda tu acceso personal</h2>
         <div className="alert warn">Por seguridad se muestra solo ahora. Con el enlace o el código entras desde cualquier teléfono para ver tu estado y, cuando te confirmen, tu credencial con QR.</div>
@@ -116,9 +136,38 @@ export default function Registro() {
         <div className="field"><label htmlFor="dn">Documento <span className="req">*</span></label><input id="dn" value={f.documentNumber} onChange={set("documentNumber")} maxLength={25} autoComplete="off" />
           <span className="hint">Número de documento o pasaporte (se usa para evitar inscripciones repetidas).</span></div>
         <div className="field"><label htmlFor="ph">Teléfono <span className="req">*</span></label><input id="ph" type="tel" value={f.phone} onChange={set("phone")} maxLength={30} autoComplete="tel" placeholder="Con código de país" /></div>
+        {fields.length > 0 && <h3 style={{ margin: "8px 0" }}>Preguntas del evento</h3>}
+        {fields.map((q) => <FieldInput key={q.id} field={q} value={answers[q.id]} onChange={(v) => setAnswers((a) => ({ ...a, [q.id]: v }))} />)}
+        {account
+          ? <p className="muted small">Te inscribes con tu cuenta (<b>{account.name}</b>): la inscripción quedará en «Mis eventos».</p>
+          : <p className="muted small">¿Tienes cuenta? <Link href="/login">Ingresa</Link> antes de inscribirte para tenerla en «Mis eventos» y recibir los avisos.</p>}
         <button className="btn btn-primary" disabled={busy || !ready}>{busy ? "Inscribiendo…" : "Inscribirme"}</button>
         <p className="muted small" style={{ marginTop: 12 }}>¿Ya te inscribiste? <Link href="/p">Entra con tu código personal</Link>.</p>
       </form>
     </PublicShell>
+  );
+}
+
+/** B1 — Pregunta extra del evento según su tipo. */
+function FieldInput({ field, value, onChange }: { field: RegistrationField; value: Answer | undefined; onChange: (v: Answer) => void }) {
+  const id = `q-${field.id}`;
+  const label = <label htmlFor={id}>{field.label}{field.required && <span className="req"> *</span>}</label>;
+  const hint = field.help ? <span className="hint">{field.help}</span> : null;
+  const str = typeof value === "string" ? value : "";
+  if (field.type === "checkbox") {
+    return <label className="check" style={{ marginBottom: 14 }}><input id={id} type="checkbox" checked={value === true} onChange={(e) => onChange(e.target.checked)} /> {field.label}{field.required && <span className="req"> *</span>}</label>;
+  }
+  return (
+    <div className="field">
+      {label}
+      {field.type === "textarea" ? <textarea id={id} value={str} maxLength={1000} onChange={(e) => onChange(e.target.value)} />
+        : field.type === "select" ? (
+          <select id={id} value={str} onChange={(e) => onChange(e.target.value)}>
+            <option value="">Elegir…</option>
+            {field.options?.map((o) => <option key={o} value={o}>{o}</option>)}
+          </select>
+        ) : <input id={id} type={field.type === "date" ? "date" : "text"} inputMode={field.type === "number" ? "decimal" : undefined} value={str} maxLength={200} onChange={(e) => onChange(e.target.value)} />}
+      {hint}
+    </div>
   );
 }

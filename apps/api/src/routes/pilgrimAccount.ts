@@ -12,6 +12,7 @@ import { sendEmailVerification, sendPasswordReset } from "../lib/mailer";
 import { buildPilgrimAccountMe, clearPilgrimAccountSession, issuePilgrimAccountSession } from "../lib/session";
 import { answerVolunteerRequest, issueVolunteerConsentCode } from "../lib/volunteerConsent";
 import { formatCode } from "../lib/pilgrim";
+import { acceptUnverifiedPilgrim } from "../lib/emailPolicy";
 import { z } from "zod";
 
 /**
@@ -28,6 +29,8 @@ const TOKEN_WINDOW_MS = 60 * 60 * 1000;
 
 const GENERIC_RESEND = "Si existe una cuenta pendiente de verificación con ese correo, te enviamos un enlace nuevo.";
 const GENERIC_RESET = "Si existe una cuenta con ese correo, te enviamos un enlace para restablecer la contraseña.";
+/** Cuentas que pueden recuperar la contraseña por correo (el operador de plataforma no). */
+const RESETTABLE: readonly string[] = ["PILGRIM", "STAFF"];
 
 export default async function pilgrimAccountRoutes(app: FastifyInstance) {
   const limit = (max: number, timeWindow: string) => ({ config: { rateLimit: { max, timeWindow } } });
@@ -35,9 +38,11 @@ export default async function pilgrimAccountRoutes(app: FastifyInstance) {
   /** Ingreso exclusivo de cuentas PILGRIM. Credenciales del personal o de PLATFORM → 401 genérico (sin sesión). */
   app.post("/login", limit(10, "1 minute"), async (req, reply) => {
     const { email, password } = loginSchema.parse(req.body);
-    const user = await prisma.user.findUnique({ where: { email } });
+    const found = await prisma.user.findUnique({ where: { email } });
     // Mismo costo con o sin usuario (no revela si el correo existe por tiempo de respuesta).
-    const ok = user ? await verifyPassword(user.passwordHash, password) : (await verifyPassword(await dummyHash(), password), false);
+    const ok = found ? await verifyPassword(found.passwordHash, password) : (await verifyPassword(await dummyHash(), password), false);
+    // BETA (PILGRIM_EMAIL_VERIFICATION=optional, sin SMTP): la contraseña correcta activa la cuenta sin verificar.
+    const user = ok && found ? ((await acceptUnverifiedPilgrim(found)) ?? found) : found;
     const pilgrim = !!user && user.accountType === "PILGRIM" && user.isActive;
     if (!ok || !pilgrim || !user.emailVerifiedAt) {
       await audit(req, { action: "LOGIN_FAILED", entityType: "User", entityId: user?.id, userId: user?.id, organizationId: user?.organizationId, metadata: { email, area: "PILGRIM_ACCOUNT" } });
@@ -75,11 +80,15 @@ export default async function pilgrimAccountRoutes(app: FastifyInstance) {
     return reply.status(202).send({ message: GENERIC_RESEND });
   });
 
-  /** Pedido de recuperación. Respuesta siempre igual (no permite enumerar cuentas). */
+  /**
+   * Pedido de recuperación. Respuesta siempre igual (no permite enumerar cuentas).
+   * Sirve a las cuentas de peregrino y del personal (ingreso único); nunca a PLATFORM. El MFA, si está activo, se sigue
+   * exigiendo al ingresar: recuperar la contraseña no saltea el segundo factor.
+   */
   app.post("/password-reset/request", limit(5, "15 minutes"), async (req, reply) => {
     const { email } = accountEmailSchema.parse(req.body);
     const user = await prisma.user.findUnique({ where: { email } });
-    if (user && user.accountType === "PILGRIM" && user.isActive) {
+    if (user && RESETTABLE.includes(user.accountType) && user.isActive) {
       const now = new Date();
       const recent = await prisma.passwordResetToken.count({ where: { userId: user.id, createdAt: { gt: new Date(now.getTime() - TOKEN_WINDOW_MS) } } });
       if (recent < MAX_TOKENS_PER_WINDOW) {
@@ -87,7 +96,7 @@ export default async function pilgrimAccountRoutes(app: FastifyInstance) {
         await prisma.$transaction(async (tx) => {
           await tx.passwordResetToken.updateMany({ where: { userId: user.id, usedAt: null, expiresAt: { gt: now } }, data: { expiresAt: now } });
           await tx.passwordResetToken.create({ data: { userId: user.id, tokenHash: token.hash, expiresAt: new Date(now.getTime() + RESET_MINUTES * 60_000) } });
-          await auditTx(tx, req, { action: "PASSWORD_RESET_REQUESTED", entityType: "User", entityId: user.id, userId: user.id, organizationId: null });
+          await auditTx(tx, req, { action: "PASSWORD_RESET_REQUESTED", entityType: "User", entityId: user.id, userId: user.id, organizationId: user.organizationId });
         });
         // El token va en el fragmento (#): el navegador no lo envía al servidor web ni queda en sus logs.
         void sendPasswordReset({ to: user.email, name: user.name, url: `${cfg.WEB_ORIGIN}/cuenta/restablecer#token=${encodeURIComponent(token.raw)}`, minutes: RESET_MINUTES })
@@ -98,8 +107,9 @@ export default async function pilgrimAccountRoutes(app: FastifyInstance) {
   });
 
   /**
-   * Restablecer con el token: un solo uso (consumo condicional), vencimiento, solo cuentas PILGRIM activas.
-   * Invalida todas las sesiones de la cuenta (sessionVersion + 1) y los demás enlaces pendientes.
+   * Restablecer con el token: un solo uso (consumo condicional), vencimiento, solo cuentas PILGRIM o STAFF activas.
+   * Invalida todas las sesiones de la cuenta (sessionVersion + 1; en el personal también sus refresh tokens) y los demás
+   * enlaces pendientes.
    */
   app.post("/password-reset/confirm", limit(10, "15 minutes"), async (req, reply) => {
     const { token, password } = passwordResetConfirmSchema.parse(req.body);
@@ -108,12 +118,14 @@ export default async function pilgrimAccountRoutes(app: FastifyInstance) {
     await prisma.$transaction(async (tx) => {
       const now = new Date();
       const row = await tx.passwordResetToken.findUnique({ where: { tokenHash: sha256(token) }, include: { user: true } });
-      if (!row || row.usedAt || row.expiresAt <= now || row.user.accountType !== "PILGRIM" || !row.user.isActive) throw invalid();
+      if (!row || row.usedAt || row.expiresAt <= now || !RESETTABLE.includes(row.user.accountType) || !row.user.isActive) throw invalid();
       const used = await tx.passwordResetToken.updateMany({ where: { id: row.id, usedAt: null, expiresAt: { gt: now } }, data: { usedAt: now } });
       if (used.count !== 1) throw invalid();
       await tx.user.update({ where: { id: row.userId }, data: { passwordHash, sessionVersion: { increment: 1 } } });
+      // Personal: también se cierran sus sesiones renovables (refresh tokens).
+      if (row.user.accountType === "STAFF") await tx.refreshToken.updateMany({ where: { userId: row.userId, revokedAt: null }, data: { revokedAt: now } });
       await tx.passwordResetToken.updateMany({ where: { userId: row.userId, usedAt: null, expiresAt: { gt: now } }, data: { expiresAt: now } });
-      await auditTx(tx, req, { action: "PASSWORD_RESET", entityType: "User", entityId: row.userId, userId: row.userId, organizationId: null });
+      await auditTx(tx, req, { action: "PASSWORD_RESET", entityType: "User", entityId: row.userId, userId: row.userId, organizationId: row.user.organizationId });
     });
     clearPilgrimAccountSession(reply);
     return { message: "Contraseña actualizada. Ingresa con tu contraseña nueva." };

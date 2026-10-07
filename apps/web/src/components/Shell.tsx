@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Clock, CreditCard, HandHeart, Home, IdCard, LogOut, MapPin, Menu as MenuIcon, ScanLine, Settings, Users, Wallet } from "lucide-react";
+import { CalendarDays, Clock, HandHeart, Home, IdCard, LogOut, MapPin, Menu as MenuIcon, ScanLine, Settings, Users, Wallet } from "lucide-react";
 import { hasEventCapability, type EventCapability, type Permission } from "@peregrinos/shared";
 import { logout } from "@/lib/api";
 import { useApp } from "./AppContext";
@@ -11,7 +11,8 @@ export const NAV: NavItem[] = [
   { href: "/", label: "Inicio", icon: Home, perm: "checkin:read" },
   { href: "/personas", label: "Personas", icon: Users, perm: "participant:read" },
   { href: "/pagos", label: "Pagos por revisar", icon: Wallet, perm: "payment:review" },
-  { href: "/recorrido", label: "Recorrido", icon: MapPin, perm: "checkpoint:read" },
+  // B1: el recorrido, el chat, el informe y el resto viven dentro del evento activo (no hay un menú general de recorridos).
+  { href: "/evento", label: "Evento", icon: CalendarDays, perm: "event:read" },
   { href: "/registrar", label: "Registrar llegada", icon: ScanLine, perm: "checkin:create" },
   { href: "/historial", label: "Historial", icon: Clock, perm: "checkin:read" },
   { href: "/credenciales", label: "Credenciales", icon: IdCard, perm: "credential:export" },
@@ -21,7 +22,7 @@ export const NAV: NavItem[] = [
 
 /** A4: cada sección del menú depende de una capacidad del evento activo (ya no del tipo). */
 const NAV_CAPABILITY: Partial<Record<string, EventCapability>> = {
-  "/personas": "PARTICIPANTS", "/pagos": "REGISTRATION", "/recorrido": "POINTS",
+  "/personas": "PARTICIPANTS", "/pagos": "REGISTRATION",
   "/registrar": "CHECKIN", "/historial": "CHECKIN", "/credenciales": "PARTICIPANTS", "/voluntarios": "VOLUNTEERS",
 };
 
@@ -57,7 +58,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const items = useNav();
   const on = (href: string) => (href === "/" ? path === "/" : path.startsWith(href));
   const find = (href: string) => items.find((i) => i.href === href);
-  const mobile = [find("/"), find("/personas"), find("/registrar"), find("/recorrido")].filter(Boolean) as NavItem[];
+  const mobile = [find("/"), find("/personas"), find("/registrar"), find("/evento")].filter(Boolean) as NavItem[];
   const roleLabel = me.user.role === "SUPERADMIN" ? "Superadministrador" : me.user.role === "ADMIN" ? "Administrador" : "Operador";
 
   return (
@@ -84,7 +85,13 @@ export function Shell({ children }: { children: React.ReactNode }) {
         </div>
       </aside>
 
-      <div className="main">{children}</div>
+      <div className="main">
+        {children}
+        {/* Quién toma las llegadas y opera el panel en este dispositivo (usuario autenticado real). */}
+        <footer className="resp-foot" aria-label="Administrador responsable">
+          Administrador responsable: <b>{me.user.name}</b>
+        </footer>
+      </div>
 
       <nav className="bottom" aria-label="Navegación">
         {mobile.map((n) => (

@@ -7,9 +7,9 @@ import { useApp } from "@/components/AppContext";
 import { EventPicker, useNav } from "@/components/Shell";
 import { Page } from "@/components/ui";
 
-const COLORS: Record<string, string> = { "/": "#1677FF", "/personas": "#18A957", "/pagos": "#F29B18", "/recorrido": "#1677FF", "/registrar": "#7B3FE4", "/historial": "#F29B18", "/credenciales": "#0E9AA7", "/voluntarios": "#D9467A", "/configuracion": "#4A5563" };
+const COLORS: Record<string, string> = { "/": "#1677FF", "/personas": "#18A957", "/pagos": "#F29B18", "/evento": "#0B3158", "/registrar": "#7B3FE4", "/historial": "#F29B18", "/credenciales": "#0E9AA7", "/voluntarios": "#D9467A", "/configuracion": "#4A5563" };
 const SUB: Record<string, string> = {
-  "/": "Resumen del evento", "/personas": "Ver, agregar o editar personas", "/pagos": "Confirmar comprobantes de pago", "/recorrido": "Gestionar los puntos de control",
+  "/": "Resumen del evento", "/personas": "Ver, agregar o editar personas", "/pagos": "Confirmar comprobantes de pago", "/evento": "Recorrido, chat, informe y todo el evento",
   "/registrar": "Escanear o ingresar número", "/historial": "Ver registros de llegadas", "/credenciales": "Exportar carnets para imprimir", "/voluntarios": "Voluntarios, turnos y asignaciones", "/configuracion": "Ajustes, usuarios e invitaciones",
 };
 

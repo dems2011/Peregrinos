@@ -1,6 +1,6 @@
 "use client";
 import { useParams, useRouter } from "next/navigation";
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { BadgeCheck, FileText, IdCard, RotateCcw, TriangleAlert, X } from "lucide-react";
 import { api, ApiError, download, post } from "@/lib/api";
 import { useLoad } from "@/lib/hooks";
@@ -10,7 +10,12 @@ import { useApp, useLive } from "@/components/AppContext";
 import { ErrorBox, Loading, Modal, Page, StatusPill } from "@/components/ui";
 
 interface Proof { id: string; mimeType: string; sizeBytes: number; amount: string | null; reference: string | null; paidAt: string | null; note: string | null; status: string; createdAt: string; duplicateOfOther: boolean }
-interface Detail { id: string; firstName: string; lastName: string; documentNumber: string; phone: string; status: RegStatus; rejectionReason: string | null; participant: { id: string; number: number } | null; proofs: Proof[] }
+interface Detail {
+  id: string; firstName: string; lastName: string; documentNumber: string; phone: string; status: RegStatus; rejectionReason: string | null; participant: { id: string; number: number } | null; proofs: Proof[];
+  /** B1: respuestas a las preguntas del formulario del evento. */
+  formAnswers: Record<string, string | number | boolean>; formFields: { id: string; label: string; type: string }[]; withAccount: boolean;
+}
+const answerText = (v: string | number | boolean | undefined) => (v === undefined || v === "" ? "—" : v === true ? "Sí" : v === false ? "No" : String(v));
 
 export default function RevisarPago() {
   const { id } = useParams<{ id: string }>();
@@ -57,6 +62,10 @@ export default function RevisarPago() {
         <div className="row"><h2>{r.firstName} {r.lastName}</h2><StatusPill s={r.status} /></div>
         <dl className="kv"><dt>Documento</dt><dd>{fmtDoc(r.documentNumber)}</dd><dt>Teléfono</dt><dd><a href={`tel:${r.phone}`}>{r.phone}</a></dd>{event?.registrationFee && <><dt>Monto esperado</dt><dd>{money(event.registrationFee)}</dd></>}</dl>
         {r.status === "REJECTED" && r.rejectionReason && <div className="alert err">Rechazada: {r.rejectionReason}</div>}
+        {r.withAccount && <p className="muted small" style={{ margin: 0 }}>Se inscribió con su cuenta de Peregrinos.</p>}
+        {r.formFields.length > 0 && (
+          <dl className="kv">{r.formFields.map((f) => <Fragment key={f.id}><dt>{f.label}</dt><dd style={{ overflowWrap: "anywhere" }}>{answerText(r.formAnswers[f.id])}</dd></Fragment>)}</dl>
+        )}
       </section>
 
       {proof ? (

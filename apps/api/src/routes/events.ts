@@ -12,6 +12,7 @@ import { assertCapabilitiesRemovable, assertEventTransition, assertOwnDataRemova
 import { lockEvent } from "../lib/access";
 import { Prisma } from "@prisma/client";
 import { newOpaqueToken } from "../lib/tokens";
+import { notifyEventPublishedIfDue } from "../lib/notifications";
 
 type EventRow = {
   id: string; registrationToken?: string | null; capabilities: EventCapability[]; registrationOpen: boolean; status: EventStatus;
@@ -90,16 +91,25 @@ export default async function eventRoutes(app: FastifyInstance) {
     // A3: publicar y abrir inscripciones requieren organización aprobada.
     if ((PUBLISHED_EVENT_STATUSES as readonly string[]).includes(body.status)) assertOrgCan(req.auth.organizationStatus, "PUBLISH_EVENT");
     if (body.registrationOpen) assertOrgCan(req.auth.organizationStatus, "OPEN_REGISTRATION");
-    const event = await prisma.event.create({
-      data: {
-        ...body,
-        capabilities,
-        organizationId: req.auth.organizationId,
-        settings: (settings ?? {}) as Prisma.InputJsonObject,
-        ...(body.registrationOpen ? { registrationToken: newOpaqueToken().raw } : {}),
-        ...(route ? { route: { create: route } } : {}),
-      },
-      include,
+    // B1: un evento nuevo no tiene fondo propio todavía: siempre nace con la credencial estándar.
+    if (body.credentialMode === "CUSTOM") throw new AppError(409, "CREDENTIAL_BACKGROUND_MISSING", "Primero sube el diseño propio de la credencial.");
+    const { registrationFields, ...rest } = body;
+    const event = await prisma.$transaction(async (tx) => {
+      const created = await tx.event.create({
+        data: {
+          ...rest,
+          ...(registrationFields ? { registrationFields: registrationFields as Prisma.InputJsonArray } : {}),
+          capabilities,
+          organizationId: req.auth.organizationId,
+          settings: (settings ?? {}) as Prisma.InputJsonObject,
+          ...(body.registrationOpen ? { registrationToken: newOpaqueToken().raw } : {}),
+          ...(route ? { route: { create: route } } : {}),
+        },
+        include,
+      });
+      // B1: si nace público y publicado, se avisa a los seguidores de la parroquia (una sola vez).
+      await notifyEventPublishedIfDue(tx, created.id, req.auth.id);
+      return created;
     });
     await audit(req, { action: "EVENT_CREATED", entityType: "Event", entityId: event.id, eventId: event.id, metadata: { name: event.name, type: event.type } });
     return reply.status(201).send(await safe(event));
@@ -143,7 +153,14 @@ export default async function eventRoutes(app: FastifyInstance) {
     }
     if (body.registrationOpen && !before.registrationOpen) assertOrgCan(req.auth.organizationStatus, "OPEN_REGISTRATION");
 
-    const data: Prisma.EventUpdateInput = { ...body };
+    // B1: la credencial propia exige que exista el fondo subido para este evento.
+    if (body.credentialMode === "CUSTOM" && before.credentialMode !== "CUSTOM") {
+      const bg = await prisma.mediaAsset.findFirst({ where: { eventId: id, kind: "CREDENTIAL_BACKGROUND" }, select: { id: true } });
+      if (!bg) throw new AppError(409, "CREDENTIAL_BACKGROUND_MISSING", "Primero sube el diseño propio de la credencial.");
+    }
+    const { registrationFields, ...plain } = body;
+    const data: Prisma.EventUpdateInput = { ...plain };
+    if (registrationFields !== undefined) data.registrationFields = registrationFields as Prisma.InputJsonArray;
     if (requested !== undefined) data.capabilities = capabilities;
     if (settings !== undefined) data.settings = settings as Prisma.InputJsonObject;
     if (body.registrationOpen && !before.registrationToken) data.registrationToken = newOpaqueToken().raw;
@@ -157,7 +174,10 @@ export default async function eventRoutes(app: FastifyInstance) {
       await assertCapabilitiesRemovable(tx, id, removed);
       try {
         // Transición condicional: si otro cambio de estado se adelantó, no se pisa.
-        return await tx.event.update({ where: { id, status: before.status }, data, include });
+        const updated = await tx.event.update({ where: { id, status: before.status }, data, include });
+        // B1: primera publicación como evento público → aviso a los seguidores de esta parroquia (una sola vez).
+        await notifyEventPublishedIfDue(tx, id, req.auth.id);
+        return updated;
       } catch (e) {
         if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2025") {
           throw new AppError(409, "EVENT_STATUS_CHANGED", "El estado del evento cambió. Vuelve a cargarlo.");

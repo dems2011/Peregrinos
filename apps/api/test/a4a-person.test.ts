@@ -104,8 +104,12 @@ describe("A4a: modelo y migración", () => {
 });
 
 describe("A4a: el código usa Person (no User) como identidad", () => {
-  it("registro público: crea su Person de la organización en la misma operación", () =>
-    assert.match(read("src/routes/registration.ts"), /person: \{\s*create: \{[\s\S]*?ownerOrganization: \{ connect: \{ id: event\.organizationId \} \}/));
+  it("registro público: sin cuenta crea su Person de la organización; con cuenta usa la Person de la sesión (B1)", () => {
+    const reg = read("src/routes/registration.ts");
+    assert.match(reg, /person: account\s*\?\s*\{ connect: \{ id: account\.personId \} \}\s*:\s*\{\s*create: \{[\s\S]*?ownerOrganization: \{ connect: \{ id: event\.organizationId \} \}/);
+    // La cuenta sale SOLO de la sesión autenticada (nunca de coincidencias de documento o correo).
+    assert.match(reg, /await app\.authenticatePilgrimAccount\(req, reply\)/);
+  });
   it("aprobar: el Participant hereda la Person de la inscripción", () => assert.match(read("src/routes/registrations.ts"), /personId: reg\.personId/));
   it("alta manual: elige o crea Person con confirmación de duplicados", () => assert.match(read("src/routes/participants.ts"), /resolvePersonForParticipation\(tx, personScope\(req\.auth\), body\)/));
   it("registro PILGRIM: siempre crea su Person; nunca reclama ni vincula por coincidencia", () => {

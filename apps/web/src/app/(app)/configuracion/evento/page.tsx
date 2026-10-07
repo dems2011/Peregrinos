@@ -3,8 +3,8 @@ import { useEffect, useState } from "react";
 import { Plus } from "lucide-react";
 import {
   EVENT_CAPABILITY_LABEL, EVENT_CAPABILITY_REQUIRES, EVENT_STATUS_LABEL, EVENT_TRANSITIONS, EVENT_TYPES, EVENT_TYPE_INFO,
-  EVENT_VISIBILITIES, EVENT_VISIBILITY_LABEL, IMPLEMENTED_EVENT_CAPABILITIES,
-  type EventCapability, type EventStatus, type RegistrationState,
+  EVENT_VISIBILITIES, EVENT_VISIBILITY_LABEL, IMPLEMENTED_EVENT_CAPABILITIES, REGISTRATION_STATE_LABEL,
+  type EventCapability, type EventStatus,
 } from "@peregrinos/shared";
 import { ApiError, patch } from "@/lib/api";
 import { useApp } from "@/components/AppContext";
@@ -26,9 +26,6 @@ const routeForm = (r: EventRoute | null): RouteForm => Object.fromEntries(ROUTE_
 
 /** A4: INFO siempre está activa; el resto se elige por evento. */
 const SELECTABLE = IMPLEMENTED_EVENT_CAPABILITIES.filter((c) => c !== "INFO");
-const REGISTRATION_STATE_LABEL: Record<RegistrationState, string> = {
-  DISABLED: "Sin inscripción", NOT_YET_OPEN: "Todavía no abre", OPEN: "Abierta", FULL: "Cupo completo", CLOSED: "Cerrada",
-};
 
 /**
  * A4: una capacidad con datos guardados no se puede desactivar (la API responde 409 y no borra nada).
@@ -148,10 +145,6 @@ export default function EventoConfig() {
               <div className="field"><label htmlFor="ln">Nombre del lugar</label><input id="ln" value={f.locationName} onChange={set("locationName")} placeholder="Ej: Templo parroquial" /></div>
               <div className="field"><label htmlFor="la">Dirección</label><input id="la" value={f.address} onChange={set("address")} /></div>
             </div>
-            <div className="grid2">
-              <div className="field"><label htmlFor="lt">Latitud (opcional)</label><input id="lt" inputMode="decimal" value={f.latitude} onChange={set("latitude")} /></div>
-              <div className="field"><label htmlFor="lg">Longitud (opcional)</label><input id="lg" inputMode="decimal" value={f.longitude} onChange={set("longitude")} /></div>
-            </div>
           </>}
 
           {has("ROUTE") && <>
@@ -164,18 +157,22 @@ export default function EventoConfig() {
               <div className="field"><label htmlFor="roa">Dirección de origen</label><input id="roa" value={route.originAddress} onChange={setR("originAddress")} /></div>
               <div className="field"><label htmlFor="rda">Dirección de destino</label><input id="rda" value={route.destinationAddress} onChange={setR("destinationAddress")} /></div>
             </div>
-            <div className="grid2">
-              <div className="field"><label htmlFor="rol">Origen: latitud, longitud</label><div style={{ display: "flex", gap: 8 }}><input id="rol" aria-label="Latitud de origen" inputMode="decimal" value={route.originLat} onChange={setR("originLat")} /><input aria-label="Longitud de origen" inputMode="decimal" value={route.originLng} onChange={setR("originLng")} /></div></div>
-              <div className="field"><label htmlFor="rdl">Destino: latitud, longitud</label><div style={{ display: "flex", gap: 8 }}><input id="rdl" aria-label="Latitud de destino" inputMode="decimal" value={route.destinationLat} onChange={setR("destinationLat")} /><input aria-label="Longitud de destino" inputMode="decimal" value={route.destinationLng} onChange={setR("destinationLng")} /></div></div>
-            </div>
-            <div className="field"><label htmlFor="rk">Distancia (km)</label><input id="rk" inputMode="decimal" value={route.distanceKm} onChange={setR("distanceKm")} /></div>
+            <p className="muted small" style={{ marginTop: 0 }}>Los puntos de control del recorrido se cargan en «Recorrido» de este evento (con su ubicación en el mapa).</p>
           </>}
           {dropsRoute && <div className="alert warn" style={{ marginBottom: 12 }}>Al guardar se quitará el trayecto cargado (origen y destino).</div>}
 
-          <h3 style={{ margin: "8px 0" }}>Participación y visibilidad</h3>
-          <div className="grid2">
-            <div className="field"><label htmlFor="vc">Capacidad (informativa)</label><input id="vc" inputMode="numeric" value={f.capacity} onChange={set("capacity")} /></div>
-            <div className="field"><label htmlFor="vv">Visibilidad</label><select id="vv" value={f.visibility} onChange={set("visibility")}>{EVENT_VISIBILITIES.map((v) => <option key={v} value={v}>{EVENT_VISIBILITY_LABEL[v]}</option>)}</select></div>
+          <h3 style={{ margin: "8px 0" }}>Cupo</h3>
+          <div className="field">
+            <label htmlFor="vc">Cupo máximo de peregrinos</label>
+            <input id="vc" inputMode="numeric" value={f.capacity} onChange={set("capacity")} placeholder="Sin límite" />
+            <span className="hint">Cuando los peregrinos confirmados llegan a este número, la inscripción se cierra sola y no se aprueban más. Vacío: sin límite.</span>
+          </div>
+
+          <h3 style={{ margin: "8px 0" }}>Visibilidad</h3>
+          <div className="field">
+            <label htmlFor="vv">¿Quién puede ver este evento?</label>
+            <select id="vv" value={f.visibility} onChange={set("visibility")}>{EVENT_VISIBILITIES.map((v) => <option key={v} value={v}>{EVENT_VISIBILITY_LABEL[v]}</option>)}</select>
+            <span className="hint">Solo los eventos públicos y publicados (o en curso) aparecen en el perfil de la parroquia y notifican a sus seguidores.</span>
           </div>
 
           {has("REGISTRATION") && <>

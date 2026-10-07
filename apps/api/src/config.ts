@@ -22,8 +22,20 @@ const schema = z.object({
     .string()
     .optional()
     .refine((v) => !v || Buffer.from(v, "base64").length === 32, "MFA_ENCRYPTION_KEY debe ser base64 de 32 bytes"),
-  /** A6: sin MFA activo, un SUPERADMIN solo puede enrolarse (ARQUITECTURA-CUENTAS §8.1). "false" solo para transición. */
-  MFA_ENFORCE_SUPERADMIN: z.enum(["true", "false"]).default("true").transform((v) => v === "true"),
+  /**
+   * A6: con "true", un SUPERADMIN sin MFA solo puede enrolarse (ARQUITECTURA-CUENTAS §8.1).
+   * BETA: desactivado por defecto (la arquitectura MFA sigue completa; se reactiva con MFA_ENFORCE_SUPERADMIN=true).
+   */
+  MFA_ENFORCE_SUPERADMIN: z.enum(["true", "false"]).default("false").transform((v) => v === "true"),
+  /**
+   * Verificación del correo de las cuentas de peregrino. "required" (por defecto): no se ingresa sin verificar.
+   * "optional": solo para operar sin SMTP (BETA); el primer ingreso con la contraseña correcta marca el correo como
+   * verificado. Nunca se habilita por sí solo.
+   */
+  PILGRIM_EMAIL_VERIFICATION: z.enum(["required", "optional"]).default("required"),
+  /** Informe del evento con IA (opcional). Sin clave, la API responde que el servicio no está configurado. */
+  ANTHROPIC_API_KEY: z.string().optional(),
+  ANTHROPIC_MODEL: z.string().default("claude-opus-5-5"),
 });
 
 const parsed = schema.safeParse(process.env);
