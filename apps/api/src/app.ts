@@ -11,6 +11,7 @@ import { AppError } from "./lib/errors";
 import { prisma } from "./lib/prisma";
 import { redactUrl, reqSerializer } from "./lib/logRedact";
 import { mailConfigured } from "./lib/mailer";
+import { pushConfigured } from "./lib/push";
 import authPlugin from "./plugins/auth";
 import authRoutes from "./routes/auth";
 import mfaRoutes from "./routes/mfa";
@@ -106,8 +107,8 @@ export async function buildApp() {
 
   app.get("/api/health", async () => {
     await prisma.$queryRaw`SELECT 1`;
-    // Solo indica si hay SMTP (no expone la configuración): permite diagnosticar correos que no llegan.
-    return { status: "ok", time: new Date().toISOString(), mail: mailConfigured() ? "smtp" : "disabled" };
+    // Solo indica si hay SMTP y FCM (no expone la configuración): permite diagnosticar correos y push que no llegan.
+    return { status: "ok", time: new Date().toISOString(), mail: mailConfigured() ? "smtp" : "disabled", push: pushConfigured() ? "fcm" : "disabled" };
   });
 
   await app.register(authRoutes, { prefix: "/api/auth" });

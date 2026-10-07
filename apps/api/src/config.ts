@@ -36,7 +36,27 @@ const schema = z.object({
   /** Informe del evento con IA (opcional). Sin clave, la API responde que el servicio no está configurado. */
   ANTHROPIC_API_KEY: z.string().optional(),
   ANTHROPIC_MODEL: z.string().default("claude-opus-5-5"),
+  /**
+   * Notificaciones push (FCM, opcional): JSON de la cuenta de servicio de Firebase codificado en base64.
+   * Sin esta variable no se envían push (los avisos siguen llegando a la bandeja de la app).
+   */
+  FIREBASE_SERVICE_ACCOUNT: z
+    .string()
+    .optional()
+    .refine((v) => !v || parseServiceAccount(v) !== null, "FIREBASE_SERVICE_ACCOUNT debe ser el JSON de la cuenta de servicio en base64"),
 });
+
+/** Decodifica la cuenta de servicio (base64 → JSON). null si no es válida; nunca incluye el valor en errores. */
+export function parseServiceAccount(b64: string): { projectId: string; clientEmail: string; privateKey: string } | null {
+  try {
+    const j = JSON.parse(Buffer.from(b64.trim(), "base64").toString("utf8")) as Record<string, unknown>;
+    const { project_id: projectId, client_email: clientEmail, private_key: privateKey } = j;
+    if (typeof projectId !== "string" || typeof clientEmail !== "string" || typeof privateKey !== "string" || !privateKey.includes("PRIVATE KEY")) return null;
+    return { projectId, clientEmail, privateKey };
+  } catch {
+    return null;
+  }
+}
 
 const parsed = schema.safeParse(process.env);
 if (!parsed.success) {

@@ -13,3 +13,8 @@ apps/api/geo/.downloads/
 apps/web/out/
 # Reportes generados por npm run geo:dry-run
 apps/api/geo/reports/
+# Secretos de Firebase/FCM y firmas Android (nunca al repositorio)
+google-services.json
+*.jks
+*.keystore
+service-account*.json
