@@ -2,6 +2,7 @@
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ApiError, api, post } from "@/lib/api";
+import { disablePushForAccount, enablePushForAccount } from "@/lib/pushNotifications";
 
 /** Respuesta de GET /api/auth/account/me (la fuente de los datos: no se duplican en el navegador). */
 export interface AccountMe {
@@ -27,7 +28,12 @@ export function AccountProvider({ children }: { children: React.ReactNode }) {
     }
   }, [router]);
   useEffect(() => { void reload(); }, [reload]);
+  // Push (solo en la app Android): con la sesión de cuenta confirmada se registra el dispositivo de esta cuenta.
+  const userId = me?.user.id;
+  useEffect(() => { if (userId) void enablePushForAccount(); }, [userId]);
   const logout = useCallback(async () => {
+    // Primero la baja del dispositivo (necesita la sesión); nunca bloquea ni impide el cierre de sesión.
+    await disablePushForAccount();
     await post("/auth/account/logout").catch(() => undefined);
     router.replace("/login");
   }, [router]);

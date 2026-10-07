@@ -7,7 +7,7 @@ import { AppError, forbidden } from "../lib/errors";
 import { assertOrgCan, assertOrgTransition } from "../lib/orgLifecycle";
 import { recordStatusChange } from "../lib/orgStatus";
 import { readSingleFile, validateImage } from "../lib/image";
-import { notifyFollowers } from "../lib/notifications";
+import { notifyFollowers, pushNotification } from "../lib/notifications";
 import { parishMediaUrls } from "./public";
 
 /** B1: el perfil público, sus imágenes y los avisos a seguidores los gestiona solo el SUPERADMIN de la parroquia. */
@@ -113,6 +113,8 @@ export default async function organizationRoutes(app: FastifyInstance) {
       await auditTx(tx, req, { action: "NOTIFICATION_SENT", entityType: "Notification", entityId: created.id, metadata: { recipients: created.recipientCount } });
       return created;
     });
+    // Push después de confirmar el aviso; sin esperar: un fallo de FCM no afecta al aviso ni a la respuesta.
+    void pushNotification(n);
     return reply.status(201).send({ id: n.id, recipientCount: n.recipientCount });
   });
 }

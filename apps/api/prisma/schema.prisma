@@ -196,8 +196,30 @@ model User {
   chatMessages             EventChatMessage[]         @relation("ChatAuthorStaff")
   chatMessagesDeleted      EventChatMessage[]         @relation("ChatDeletedBy")
   mediaUploaded            MediaAsset[]
+  /// Push: dispositivos (tokens FCM) registrados por esta cuenta.
+  deviceTokens             DeviceToken[]
 
   @@index([organizationId, role])
+}
+
+enum DevicePlatform {
+  ANDROID
+}
+
+/// Push — token FCM de un dispositivo. El token es único: si otra cuenta inicia sesión en el mismo teléfono, la fila
+/// pasa a esa cuenta. revokedAt != null: dado de baja (cierre de sesión o FCM lo rechazó); no se usa para enviar.
+/// Índice parcial (solo en la migración, Prisma no lo modela): tokens activos por cuenta, "DeviceToken_active_userId_idx".
+model DeviceToken {
+  id         String         @id @default(uuid())
+  userId     String
+  token      String         @unique
+  platform   DevicePlatform @default(ANDROID)
+  createdAt  DateTime       @default(now())
+  lastSeenAt DateTime       @default(now())
+  revokedAt  DateTime?
+  user       User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 model RefreshToken {

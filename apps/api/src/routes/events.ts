@@ -12,7 +12,7 @@ import { assertCapabilitiesRemovable, assertEventTransition, assertOwnDataRemova
 import { lockEvent } from "../lib/access";
 import { Prisma } from "@prisma/client";
 import { newOpaqueToken } from "../lib/tokens";
-import { notifyEventPublishedIfDue } from "../lib/notifications";
+import { notifyEventPublishedIfDue, pushNotification } from "../lib/notifications";
 
 type EventRow = {
   id: string; registrationToken?: string | null; capabilities: EventCapability[]; registrationOpen: boolean; status: EventStatus;
@@ -94,7 +94,7 @@ export default async function eventRoutes(app: FastifyInstance) {
     // B1: un evento nuevo no tiene fondo propio todavía: siempre nace con la credencial estándar.
     if (body.credentialMode === "CUSTOM") throw new AppError(409, "CREDENTIAL_BACKGROUND_MISSING", "Primero sube el diseño propio de la credencial.");
     const { registrationFields, ...rest } = body;
-    const event = await prisma.$transaction(async (tx) => {
+    const { event, notice } = await prisma.$transaction(async (tx) => {
       const created = await tx.event.create({
         data: {
           ...rest,
@@ -108,9 +108,11 @@ export default async function eventRoutes(app: FastifyInstance) {
         include,
       });
       // B1: si nace público y publicado, se avisa a los seguidores de la parroquia (una sola vez).
-      await notifyEventPublishedIfDue(tx, created.id, req.auth.id);
-      return created;
+      const notice = await notifyEventPublishedIfDue(tx, created.id, req.auth.id);
+      return { event: created, notice };
     });
+    // Push del aviso después de confirmar la transacción; sin esperar (un fallo de FCM no afecta al evento).
+    if (notice) void pushNotification(notice);
     await audit(req, { action: "EVENT_CREATED", entityType: "Event", entityId: event.id, eventId: event.id, metadata: { name: event.name, type: event.type } });
     return reply.status(201).send(await safe(event));
   });
@@ -167,7 +169,7 @@ export default async function eventRoutes(app: FastifyInstance) {
     if (route === null && before.route) data.route = { delete: true };
     if (route) data.route = { upsert: { create: route, update: route } };
 
-    const event = await prisma.$transaction(async (tx) => {
+    const { event, notice } = await prisma.$transaction(async (tx) => {
       // Mismo bloqueo que el alta de participantes y la aprobación de inscripciones.
       await lockEvent(tx, id);
       // A4: desactivar una capacidad nunca borra datos; si el módulo los tiene, 409.
@@ -176,8 +178,8 @@ export default async function eventRoutes(app: FastifyInstance) {
         // Transición condicional: si otro cambio de estado se adelantó, no se pisa.
         const updated = await tx.event.update({ where: { id, status: before.status }, data, include });
         // B1: primera publicación como evento público → aviso a los seguidores de esta parroquia (una sola vez).
-        await notifyEventPublishedIfDue(tx, id, req.auth.id);
-        return updated;
+        const notice = await notifyEventPublishedIfDue(tx, id, req.auth.id);
+        return { event: updated, notice };
       } catch (e) {
         if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2025") {
           throw new AppError(409, "EVENT_STATUS_CHANGED", "El estado del evento cambió. Vuelve a cargarlo.");
@@ -185,6 +187,8 @@ export default async function eventRoutes(app: FastifyInstance) {
         throw e;
       }
     });
+    // Push del aviso después de confirmar la transacción; sin esperar (un fallo de FCM no afecta a la edición).
+    if (notice) void pushNotification(notice);
     const fields = [...Object.keys(body), ...(requested !== undefined ? ["capabilities"] : []), ...(settings !== undefined ? ["settings"] : []), ...(route !== undefined ? ["route"] : [])];
     const changes = Object.fromEntries(
       fields.map((k) => [k, { from: (before as Record<string, unknown>)[k] ?? null, to: (event as Record<string, unknown>)[k] ?? null }]),

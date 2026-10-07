@@ -10,11 +10,17 @@ import { parishMediaUrls } from "./public";
 
 /**
  * B1 — Lo social de la cuenta del peregrino (prefijo /api/auth/account): seguir parroquias, bandeja de avisos, sus
- * eventos con el chat de cada uno y el QR de su credencial. Todo limitado a la propia cuenta y a su Person.
+ * dispositivos para push, sus eventos con el chat de cada uno y el QR de su credencial. Todo limitado a la propia
+ * cuenta y a su Person.
  */
 const orgParam = z.object({ organizationId: z.string().uuid() });
 const eventParamSchema = z.object({ eventId: z.string().uuid() });
 const idParam = z.object({ id: z.string().uuid() });
+/** Token FCM: texto opaco de Firebase (letras, dígitos, ":", "_" y "-"); se valida el formato, no el contenido. */
+const fcmToken = z.string().trim().min(20, "Token de dispositivo inválido.").max(4096).regex(/^[A-Za-z0-9_:-]+$/, "Token de dispositivo inválido.");
+const deviceBody = z.object({ token: fcmToken, platform: z.enum(["ANDROID"]).default("ANDROID") }).strict();
+/** Baja: el token va en el cuerpo, nunca en la URL (las URL quedan en los logs). */
+const deviceRevokeBody = z.object({ token: fcmToken }).strict();
 
 async function personOf(req: FastifyRequest) {
   const u = await prisma.user.findUniqueOrThrow({ where: { id: req.pilgrimAccount.id }, select: { personId: true } });
@@ -80,6 +86,35 @@ export default async function accountSocialRoutes(app: FastifyInstance) {
   app.post("/notifications/read-all", auth, async (req) => {
     const r = await prisma.notificationRecipient.updateMany({ where: { userId: req.pilgrimAccount.id, readAt: null }, data: { readAt: new Date() } });
     return { read: r.count };
+  });
+
+  /* ---------- Dispositivos para notificaciones push (tokens FCM) ---------- */
+  /**
+   * Registra o renueva el token del dispositivo. El token es único: si ya existía (otra cuenta en el mismo teléfono,
+   * o dado de baja), pasa a esta cuenta y vuelve a estar activo. La respuesta nunca incluye el token.
+   */
+  app.post("/devices", limited(30), async (req, reply) => {
+    const { token, platform } = deviceBody.parse(req.body);
+    const userId = req.pilgrimAccount.id;
+    const prev = await prisma.deviceToken.findUnique({ where: { token }, select: { userId: true } });
+    const device = await prisma.deviceToken.upsert({
+      where: { token },
+      create: { userId, token, platform },
+      update: { userId, platform, lastSeenAt: new Date(), revokedAt: null },
+      select: { id: true, platform: true, lastSeenAt: true },
+    });
+    // Se audita el alta y el cambio de cuenta (no cada renovación al abrir la app). Nunca se guarda el token.
+    if (!prev || prev.userId !== userId) {
+      await audit(req, { action: "DEVICE_REGISTERED", entityType: "DeviceToken", entityId: device.id, userId, metadata: { platform, reassigned: !!prev } });
+    }
+    return reply.status(prev ? 200 : 201).send({ registered: true, device });
+  });
+
+  /** Da de baja el token (p. ej. al cerrar sesión). Solo el de esta cuenta; no se borra, queda con revokedAt. */
+  app.delete("/devices", limited(30), async (req) => {
+    const { token } = deviceRevokeBody.parse(req.body);
+    const r = await prisma.deviceToken.updateMany({ where: { token, userId: req.pilgrimAccount.id, revokedAt: null }, data: { revokedAt: new Date() } });
+    return { revoked: r.count > 0 };
   });
 
   /* ---------- Mis eventos (participación, inscripción o voluntariado) ---------- */

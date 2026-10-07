@@ -1,5 +1,7 @@
-import type { NotificationKind, Prisma } from "@prisma/client";
+import type { Notification, NotificationKind, Prisma } from "@prisma/client";
 import { formatDate } from "@peregrinos/shared";
+import { prisma } from "./prisma";
+import { pushConfigured, sendPushToUsers } from "./push";
 
 type Tx = Prisma.TransactionClient;
 
@@ -21,6 +23,37 @@ export async function notifyFollowers(tx: Tx, input: {
     await tx.notificationRecipient.createMany({ data: followers.map((f) => ({ notificationId: n.id, userId: f.userId })), skipDuplicates: true });
   }
   return n;
+}
+
+/** FCM admite hasta 4 KB por mensaje: el push lleva un extracto; el texto completo queda en la bandeja de la app. */
+const PUSH_BODY_MAX = 500;
+
+/**
+ * Push de un aviso ya guardado: se llama DESPUÉS de confirmar la transacción que lo creó, sin esperar (`void`).
+ * Destinatarios: los NotificationRecipient del aviso; dispositivos: sus DeviceToken activos (revokedAt IS NULL).
+ * Nunca lanza: si FCM falla o no está configurado, el aviso de la bandeja ya existe y no se ve afectado.
+ * Los tokens que FCM rechaza (no registrados o inválidos) quedan dados de baja (revokedAt).
+ */
+export async function pushNotification(n: Pick<Notification, "id" | "organizationId" | "eventId" | "title" | "body">) {
+  if (!pushConfigured()) return;
+  try {
+    const recipients = await prisma.notificationRecipient.findMany({ where: { notificationId: n.id }, select: { userId: true } });
+    if (!recipients.length) return;
+    const body = n.body.length > PUSH_BODY_MAX ? `${n.body.slice(0, PUSH_BODY_MAX - 1).trimEnd()}…` : n.body;
+    const data: Record<string, string> = { notificationId: n.id, organizationId: n.organizationId };
+    if (n.eventId) data.eventId = n.eventId;
+    const result = await sendPushToUsers(recipients.map((r) => r.userId), { title: n.title, body, data }, (userIds) =>
+      prisma.deviceToken.findMany({ where: { userId: { in: userIds }, revokedAt: null }, select: { userId: true, token: true } }),
+    );
+    if (result.invalid.length) {
+      await prisma.deviceToken.updateMany({ where: { token: { in: result.invalid.map((t) => t.token) }, revokedAt: null }, data: { revokedAt: new Date() } });
+    }
+    if (result.sent || result.failed) {
+      console.info(`[push] aviso ${n.id}: ${result.sent} enviados, ${result.failed} fallidos, ${result.invalid.length} tokens dados de baja`);
+    }
+  } catch (e) {
+    console.error(`[push] No se pudo enviar el aviso ${n.id}:`, (e as Error).message);
+  }
 }
 
 /** Estados en los que un evento se considera publicado para los seguidores. */
