@@ -1425,6 +1425,36 @@ export declare const acceptInvitationSchema: z.ZodObject<{
     token: string;
     name: string;
 }>;
+declare const SOCIAL_HOSTS: {
+    readonly instagram: readonly ["instagram.com"];
+    readonly facebook: readonly ["facebook.com", "fb.com"];
+    readonly youtube: readonly ["youtube.com", "youtu.be"];
+};
+export type SocialNetwork = keyof typeof SOCIAL_HOSTS;
+export declare const SOCIAL_NETWORK_LABEL: Record<SocialNetwork, string>;
+/**
+ * Red social: acepta "@usuario", "usuario" o el enlace completo del dominio de esa red. Devuelve "@usuario" o el enlace
+ * en https; null si no corresponde a esa red. (El perfil público entiende ambos formatos.)
+ */
+export declare function normalizeSocial(net: SocialNetwork, raw: string): string | null;
+/** Sitio web: agrega https:// si falta; exige un dominio con punto. null si no es una dirección válida. */
+export declare function normalizeWebsite(raw: string): string | null;
+/**
+ * Foto principal de la solicitud: se recorta en el navegador a 2:1 y, al aprobar, pasa a ser la imagen de la parroquia
+ * (PARISH_IMAGE_SPEC.cover). Recomendado 1600 × 800 px.
+ */
+export declare const PARISH_REQUEST_PHOTO_SPEC: {
+    readonly mimes: readonly ["image/png", "image/jpeg", "image/webp"];
+    readonly maxBytes: number;
+    readonly minWidth: 1200;
+    readonly minHeight: 600;
+    readonly maxPx: 6000;
+    readonly ratio: 2;
+    readonly minRatio: 1.95;
+    readonly maxRatio: 2.05;
+    readonly outputWidth: 1600;
+    readonly outputHeight: 800;
+};
 /** Solicitud pública de una nueva parroquia. No incluye estado, rol ni organización: los decide la plataforma. */
 export declare const organizationRequestSchema: z.ZodObject<{
     acceptTerms: z.ZodLiteral<true>;
@@ -1437,6 +1467,10 @@ export declare const organizationRequestSchema: z.ZodObject<{
     locality: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, string | undefined>;
     address: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, string | undefined>;
     notes: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, string | undefined>;
+    website: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, string | undefined>;
+    instagram: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, string | undefined>;
+    facebook: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, string | undefined>;
+    youtube: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, string | undefined>;
 }, "strict", z.ZodTypeAny, {
     acceptTerms: true;
     parishName: string;
@@ -1444,6 +1478,10 @@ export declare const organizationRequestSchema: z.ZodObject<{
     contactEmail: string;
     countryCode: string;
     address?: string | undefined;
+    website?: string | undefined;
+    instagram?: string | undefined;
+    facebook?: string | undefined;
+    youtube?: string | undefined;
     notes?: string | undefined;
     contactPhone?: string | undefined;
     locality?: string | undefined;
@@ -1454,6 +1492,10 @@ export declare const organizationRequestSchema: z.ZodObject<{
     contactEmail: string;
     countryCode: string;
     address?: string | undefined;
+    website?: string | undefined;
+    instagram?: string | undefined;
+    facebook?: string | undefined;
+    youtube?: string | undefined;
     notes?: string | undefined;
     contactPhone?: string | undefined;
     locality?: string | undefined;
@@ -1469,6 +1511,10 @@ export declare const resubmitOrganizationRequestSchema: z.ZodObject<{
     locality: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, string | undefined>;
     address: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, string | undefined>;
     notes: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, string | undefined>;
+    website: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, string | undefined>;
+    instagram: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, string | undefined>;
+    facebook: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, string | undefined>;
+    youtube: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, string | undefined>;
     token: z.ZodString;
 }, "strict", z.ZodTypeAny, {
     token: string;
@@ -1477,6 +1523,10 @@ export declare const resubmitOrganizationRequestSchema: z.ZodObject<{
     contactEmail: string;
     countryCode: string;
     address?: string | undefined;
+    website?: string | undefined;
+    instagram?: string | undefined;
+    facebook?: string | undefined;
+    youtube?: string | undefined;
     notes?: string | undefined;
     contactPhone?: string | undefined;
     locality?: string | undefined;
@@ -1487,6 +1537,10 @@ export declare const resubmitOrganizationRequestSchema: z.ZodObject<{
     contactEmail: string;
     countryCode: string;
     address?: string | undefined;
+    website?: string | undefined;
+    instagram?: string | undefined;
+    facebook?: string | undefined;
+    youtube?: string | undefined;
     notes?: string | undefined;
     contactPhone?: string | undefined;
     locality?: string | undefined;

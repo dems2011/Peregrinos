@@ -2,11 +2,12 @@
 import Link from "next/link";
 import { Suspense, useEffect, useState, type FormEvent } from "react";
 import { useSearchParams } from "next/navigation";
-import { ORGANIZATION_STATUS_LABEL, type OrganizationStatus } from "@peregrinos/shared";
-import { ApiError, api, post } from "@/lib/api";
+import { ORGANIZATION_STATUS_LABEL, SOCIAL_NETWORK_LABEL, normalizeSocial, normalizeWebsite, type OrganizationStatus, type SocialNetwork } from "@peregrinos/shared";
+import { ApiError, api, post, upload } from "@/lib/api";
 import { errorText } from "@/components/account/AccountContext";
 import { AreaPicker, type AreaPickerValue } from "@/components/AreaPicker";
 import { PublicShell } from "@/components/PublicShell";
+import { PhotoCropper } from "@/components/PhotoCropper";
 import { copyText } from "@/components/ui";
 import { fmtDateTimeMedium, viewerTimeZone } from "@/lib/format";
 
@@ -15,13 +16,25 @@ import { fmtDateTimeMedium, viewerTimeZone } from "@/lib/format";
  * que devuelve el alta (?token=…: GET /status y, si fue rechazada, POST /resubmit). No crea organización ni cuenta:
  * la decide la plataforma. El país y la localidad salen del selector geográfico (AreaPicker); el contrato guarda
  * countryCode (ISO 3166-1 alfa-2) y la localidad como texto, así que el área elegida se envía por su nombre.
+ * B2: datos opcionales del perfil público (sitio web, Instagram, Facebook, YouTube) y foto principal recortada a 2:1;
+ * la foto se sube después del alta con el token privado (PUT /organization-requests/photo).
  */
 
 /** Vista pública de la solicitud (lo único que devuelve la API al solicitante). */
-interface RequestView { id: string; parishName: string; status: OrganizationStatus; rejectionReason: string | null; submissionCount: number; createdAt: string; updatedAt: string }
-interface Fields { parishName: string; contactName: string; contactEmail: string; contactPhone: string; address: string; notes: string }
+interface RequestView { id: string; parishName: string; status: OrganizationStatus; rejectionReason: string | null; submissionCount: number; createdAt: string; updatedAt: string; hasPhoto?: boolean }
+interface Fields { parishName: string; contactName: string; contactEmail: string; contactPhone: string; address: string; notes: string; website: string; instagram: string; facebook: string; youtube: string }
 
-const EMPTY: Fields = { parishName: "", contactName: "", contactEmail: "", contactPhone: "", address: "", notes: "" };
+const EMPTY: Fields = { parishName: "", contactName: "", contactEmail: "", contactPhone: "", address: "", notes: "", website: "", instagram: "", facebook: "", youtube: "" };
+const SOCIAL: { key: SocialNetwork; placeholder: string }[] = [
+  { key: "instagram", placeholder: "@parroquia o enlace" },
+  { key: "facebook", placeholder: "@parroquia o enlace" },
+  { key: "youtube", placeholder: "@parroquia o enlace" },
+];
+/** Sube la foto recortada con el token privado (en cabecera, nunca en la URL). */
+const sendPhoto = (token: string, photo: Blob) => {
+  const form = new FormData(); form.append("file", photo, "parroquia.jpg");
+  return upload<{ request: RequestView }>("/organization-requests/photo", form, "PUT", { "X-Request-Token": token });
+};
 const LOCALITY_MAX = 160;
 const MESSAGES: Record<string, string> = {
   REQUEST_ALREADY_PENDING: "Ya hay una solicitud en revisión para esta parroquia con este correo. Usa el enlace que te enviamos para consultarla.",
@@ -41,8 +54,9 @@ function localityOf(v: AreaPickerValue | null): string | undefined {
 
 function RequestForm({ initial, withTerms, submitLabel, busy, onSubmit }: {
   initial?: Partial<Fields>; withTerms: boolean; submitLabel: string; busy: boolean;
-  onSubmit: (body: Record<string, unknown>) => void;
+  onSubmit: (body: Record<string, unknown>, photo: Blob | null) => void;
 }) {
+  const [photo, setPhoto] = useState<Blob | null>(null);
   const [f, setF] = useState<Fields>({ ...EMPTY, ...initial });
   const [place, setPlace] = useState<AreaPickerValue | null>(null);
   // Sin catálogo geográfico (o si no carga): país por código y localidad escrita.
@@ -54,18 +68,22 @@ function RequestForm({ initial, withTerms, submitLabel, busy, onSubmit }: {
 
   const countryCode = manual ? manualCountry.trim().toUpperCase() : place?.countryCode ?? "";
   const locality = manual ? manualLocality.trim() || undefined : localityOf(place);
+  // Los datos del perfil público son opcionales, pero si se escriben tienen que ser válidos.
+  const webErr = f.website.trim() && !normalizeWebsite(f.website) ? "Escribe una dirección como https://parroquia.org" : null;
+  const socialErr = (k: SocialNetwork) => (f[k].trim() && !normalizeSocial(k, f[k]) ? `Escribe @usuario o el enlace de ${SOCIAL_NETWORK_LABEL[k]}` : null);
+  const profileOk = !webErr && SOCIAL.every(({ key }) => !socialErr(key));
   const ready = f.parishName.trim().length >= 3 && f.contactName.trim().length >= 2 && /\S+@\S+\.\S+/.test(f.contactEmail)
-    && /^[A-Z]{2}$/.test(countryCode) && (!withTerms || terms);
+    && /^[A-Z]{2}$/.test(countryCode) && (!withTerms || terms) && profileOk;
 
   function submit(e: FormEvent) {
     e.preventDefault();
     if (!ready || busy) return;
     // Los opcionales vacíos no se envían (la API los guarda como ausentes).
-    const optional = Object.fromEntries((["contactPhone", "address", "notes"] as const).map((k) => [k, f[k].trim()]).filter(([, v]) => v));
+    const optional = Object.fromEntries((["contactPhone", "address", "notes", "website", "instagram", "facebook", "youtube"] as const).map((k) => [k, f[k].trim()]).filter(([, v]) => v));
     onSubmit({
       parishName: f.parishName.trim(), contactName: f.contactName.trim(), contactEmail: f.contactEmail.trim(), ...optional,
       countryCode, ...(locality ? { locality } : {}), ...(withTerms ? { acceptTerms: true } : {}),
-    });
+    }, photo);
   }
 
   return (
@@ -97,6 +115,25 @@ function RequestForm({ initial, withTerms, submitLabel, busy, onSubmit }: {
         <input id="ad" value={f.address} onChange={set("address")} maxLength={240} autoComplete="street-address" /></div>
       <div className="field"><label htmlFor="nt">Comentarios</label>
         <textarea id="nt" value={f.notes} onChange={set("notes")} maxLength={2000} rows={3} placeholder="Por ejemplo: qué eventos organizan y cuántas personas participan." /></div>
+
+      <div className="form-section">
+        <h2>Perfil público (opcional)</h2>
+        <span className="hint">Con estos datos armamos la página pública de la parroquia. Podrás cambiarlos después desde el perfil.</span>
+      </div>
+      <div className="field"><label htmlFor="ws">Sitio web oficial</label>
+        <input id="ws" type="url" inputMode="url" value={f.website} onChange={set("website")} maxLength={300} autoComplete="url" placeholder="https://parroquia.org"
+          aria-invalid={!!webErr} aria-describedby={webErr ? "ws-err" : undefined} />
+        {webErr && <span id="ws-err" className="hint" style={{ color: "var(--err)" }}>{webErr}</span>}</div>
+      {SOCIAL.map(({ key, placeholder }) => {
+        const e = socialErr(key);
+        return (
+          <div className="field" key={key}><label htmlFor={`sn-${key}`}>{SOCIAL_NETWORK_LABEL[key]}</label>
+            <input id={`sn-${key}`} value={f[key]} onChange={set(key)} maxLength={200} autoCapitalize="none" autoCorrect="off" spellCheck={false} placeholder={placeholder}
+              aria-invalid={!!e} aria-describedby={e ? `sn-${key}-err` : undefined} />
+            {e && <span id={`sn-${key}-err`} className="hint" style={{ color: "var(--err)" }}>{e}</span>}</div>
+        );
+      })}
+      <PhotoCropper disabled={busy} onChange={setPhoto} />
       {withTerms && (
         <label className="check"><input type="checkbox" checked={terms} onChange={(e) => setTerms(e.target.checked)} /> Acepto los términos y condiciones</label>
       )}
@@ -121,19 +158,48 @@ function StatusCard({ r }: { r: RequestView }) {
   );
 }
 
+/** B2: mientras está en revisión, la foto principal se puede agregar o cambiar con el enlace privado. */
+function PendingPhoto({ token, r, onUpdated }: { token: string; r: RequestView; onUpdated: (r: RequestView) => void }) {
+  const [photo, setPhoto] = useState<Blob | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  async function send() {
+    if (!photo) return;
+    setBusy(true); setMsg(null);
+    try { onUpdated((await sendPhoto(token, photo)).request); setMsg({ ok: true, text: "Foto guardada." }); }
+    catch (e) { setMsg({ ok: false, text: text(e) }); } finally { setBusy(false); }
+  }
+  return (
+    <section className="card stack-sm">
+      <h2>Foto de la parroquia</h2>
+      <p className="muted" style={{ margin: 0 }}>{r.hasPhoto ? "Ya enviaste una foto. Puedes reemplazarla mientras la solicitud está en revisión." : "Todavía no enviaste una foto. Es opcional."}</p>
+      {msg && <div className={`alert ${msg.ok ? "ok" : "err"}`} role="status">{msg.text}</div>}
+      <PhotoCropper disabled={busy} onChange={setPhoto} />
+      <button type="button" className="btn btn-primary" disabled={busy || !photo} onClick={() => void send()}>{busy ? "Subiendo…" : r.hasPhoto ? "Reemplazar foto" : "Enviar foto"}</button>
+    </section>
+  );
+}
+
 /** Seguimiento con el enlace privado. El token se quita de la barra de direcciones apenas se lee. */
 function Track({ token }: { token: string }) {
   const [r, setR] = useState<RequestView | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [resent, setResent] = useState(false);
+  const [photoMsg, setPhotoMsg] = useState<{ ok: boolean; text: string } | null>(null);
   useEffect(() => {
     api<{ request: RequestView }>(`/organization-requests/status?token=${encodeURIComponent(token)}`).then((x) => setR(x.request), (e) => setErr(text(e)));
   }, [token]);
 
-  async function resubmit(body: Record<string, unknown>) {
-    setBusy(true); setErr(null);
-    try { setR((await post<{ request: RequestView }>("/organization-requests/resubmit", { token, ...body })).request); setResent(true); }
+  async function resubmit(body: Record<string, unknown>, photo: Blob | null) {
+    setBusy(true); setErr(null); setPhotoMsg(null);
+    try {
+      setR((await post<{ request: RequestView }>("/organization-requests/resubmit", { token, ...body })).request); setResent(true);
+      if (photo) {
+        try { setR((await sendPhoto(token, photo)).request); }
+        catch (e) { setPhotoMsg({ ok: false, text: `La solicitud se envió, pero la foto no se pudo subir: ${text(e)}` }); }
+      }
+    }
     catch (e) { setErr(text(e)); } finally { setBusy(false); }
   }
 
@@ -147,7 +213,9 @@ function Track({ token }: { token: string }) {
   return (
     <>
       {resent && <div className="alert ok" role="status">Enviamos la solicitud corregida. Vuelve a quedar en revisión.</div>}
+      {photoMsg && <div className={`alert ${photoMsg.ok ? "ok" : "warn"}`} role="status">{photoMsg.text}</div>}
       <StatusCard r={r} />
+      {r.status === "PENDING_REVIEW" && <PendingPhoto token={token} r={r} onUpdated={setR} />}
       {r.status === "REJECTED" && (
         <>
           <section className="card stack-sm">
@@ -167,16 +235,27 @@ function NewRequest() {
   const [err, setErr] = useState<string | null>(null);
   const [done, setDone] = useState<{ request: RequestView; trackingUrl: string; emailSent: boolean } | null>(null);
   const [copied, setCopied] = useState(false);
+  const [photoErr, setPhotoErr] = useState<string | null>(null);
 
-  async function create(body: Record<string, unknown>) {
-    setBusy(true); setErr(null);
-    try { setDone(await post<{ request: RequestView; trackingUrl: string; emailSent: boolean }>("/organization-requests", body)); window.scrollTo(0, 0); }
+  async function create(body: Record<string, unknown>, photo: Blob | null) {
+    setBusy(true); setErr(null); setPhotoErr(null);
+    try {
+      const res = await post<{ request: RequestView; trackingUrl: string; emailSent: boolean }>("/organization-requests", body);
+      // La foto se sube con el token privado que devuelve el alta. Si falla, la solicitud ya quedó guardada.
+      const token = new URL(res.trackingUrl, window.location.origin).searchParams.get("token");
+      if (photo && token) {
+        try { res.request = (await sendPhoto(token, photo)).request; }
+        catch (e) { setPhotoErr(text(e)); }
+      }
+      setDone(res); window.scrollTo(0, 0);
+    }
     catch (e) { setErr(text(e)); window.scrollTo(0, 0); } finally { setBusy(false); }
   }
 
   if (done) return (
     <>
       <div className="alert ok" role="status">Recibimos tu solicitud. La plataforma la revisará y te avisará por correo.</div>
+      {photoErr && <div className="alert warn" role="status">La solicitud quedó guardada, pero la foto no se pudo subir: {photoErr} Puedes enviarla desde el enlace de seguimiento.</div>}
       <StatusCard r={done.request} />
       <section className="card stack-sm">
         <h2>Tu enlace de seguimiento</h2>

@@ -57,20 +57,30 @@ export default async function platformRoutes(app: FastifyInstance) {
       where: status ? { status } : {}, orderBy: { createdAt: "asc" }, take: 200,
       select: {
         id: true, parishName: true, contactName: true, contactEmail: true, contactPhone: true, countryCode: true, locality: true,
-        address: true, notes: true, status: true, rejectionReason: true, submissionCount: true, organizationId: true, createdAt: true, updatedAt: true,
+        address: true, notes: true, website: true, instagram: true, facebook: true, youtube: true,
+        status: true, rejectionReason: true, submissionCount: true, organizationId: true, createdAt: true, updatedAt: true,
+        photo: { select: { width: true, height: true, sizeBytes: true } },
       },
     });
-    return { items };
+    return { items: items.map(({ photo, ...r }) => ({ ...r, hasPhoto: !!photo, photo })) };
   });
 
   app.get("/requests/:id", guard, async (req) => {
     const { id } = idParam.parse(req.params);
     const request = await prisma.organizationRequest.findUnique({
-      where: { id }, include: { statusChanges: { orderBy: { createdAt: "asc" } } },
+      where: { id }, include: { statusChanges: { orderBy: { createdAt: "asc" } }, photo: { select: { width: true, height: true, sizeBytes: true, mime: true } } },
     });
     if (!request) throw notFound("Solicitud no encontrada.");
     const { editTokenHash: _hidden, ...rest } = request;
-    return { request: rest };
+    return { request: { ...rest, hasPhoto: !!rest.photo } };
+  });
+
+  /** B2: foto principal de la solicitud (solo PLATFORM; nunca pública mientras no se aprueba). */
+  app.get("/requests/:id/photo", guard, async (req, reply) => {
+    const { id } = idParam.parse(req.params);
+    const photo = await prisma.organizationRequestPhoto.findUnique({ where: { requestId: id } });
+    if (!photo) throw notFound("La solicitud no tiene foto.");
+    return reply.header("Content-Type", photo.mime).header("Cache-Control", "private, no-store").header("X-Content-Type-Options", "nosniff").send(Buffer.from(photo.data));
   });
 
   /** Aprobar: crea la Organization (APPROVED) y la invitación de FUNDADOR (único camino de invitación a SUPERADMIN). */
@@ -90,8 +100,22 @@ export default async function platformRoutes(app: FastifyInstance) {
       // Si el reclamo atómico falla (otro operador decidió antes), la transacción revierte también la organización.
       const address = [request.address, request.locality, request.countryCode].filter(Boolean).join(", ");
       const organization = await tx.organization.create({
-        data: { name: request.parishName, email: request.contactEmail, phone: request.contactPhone, address: address || null, status: "APPROVED" },
+        data: {
+          name: request.parishName, email: request.contactEmail, phone: request.contactPhone, address: address || null, status: "APPROVED",
+          // B2: el perfil público nace con lo que la parroquia envió en la solicitud (luego lo edita su SUPERADMIN).
+          website: request.website, instagram: request.instagram, facebook: request.facebook, youtube: request.youtube,
+        },
       });
+      // B2: la foto de la solicitud pasa a ser la imagen de la parroquia (PARISH_COVER). La de la solicitud se conserva.
+      const photo = await tx.organizationRequestPhoto.findUnique({ where: { requestId: id } });
+      if (photo) {
+        await tx.mediaAsset.create({
+          data: {
+            organizationId: organization.id, kind: "PARISH_COVER", mime: photo.mime, width: photo.width, height: photo.height,
+            sizeBytes: photo.sizeBytes, sha256: photo.sha256, data: photo.data, createdById: req.platform.id,
+          },
+        });
+      }
       const claimed = await tx.organizationRequest.updateMany({
         where: { id, status: "PENDING_REVIEW" },
         data: { status: "APPROVED", organizationId: organization.id, reviewedById: req.platform.id, reviewedAt: new Date() },

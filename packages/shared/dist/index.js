@@ -15,8 +15,8 @@ var __exportStar = (this && this.__exportStar) || function(m, exports) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.eventListQuerySchema = exports.updateEventSchema = exports.createEventSchema = exports.chatListQuerySchema = exports.chatMessageSchema = exports.sendNotificationSchema = exports.organizationProfileSchema = exports.PARISH_IMAGE_SPEC = exports.CREDENTIAL_SPEC = exports.CREDENTIAL_MODES = exports.registrationFieldsSchema = exports.registrationFieldSchema = exports.MAX_REGISTRATION_FIELDS = exports.REGISTRATION_FIELD_TYPE_LABEL = exports.REGISTRATION_FIELD_TYPES = exports.eventSettingsSchemas = exports.eventRouteSchema = exports.bootstrapSchema = exports.unlinkAccountSchema = exports.claimPersonSchema = exports.mergePersonSchema = exports.personListSchema = exports.updatePersonSchema = exports.createPersonSchema = exports.registerPilgrimSchema = exports.changePasswordSchema = exports.passwordResetConfirmSchema = exports.accountEmailSchema = exports.loginSchema = exports.ROLE_PERMISSIONS = exports.EVENT_VISIBILITY_LABEL = exports.EVENT_VISIBILITIES = exports.EVENT_TYPE_INFO = exports.EVENT_TYPES = exports.isEventOperable = exports.hasEventCapability = exports.EVENT_CAPABILITY_REQUIRES = exports.EVENT_CAPABILITY_LABEL = exports.DEFAULT_EVENT_CAPABILITIES = exports.IMPLEMENTED_EVENT_CAPABILITIES = exports.RESERVED_EVENT_CAPABILITIES = exports.EVENT_CAPABILITIES = exports.canTransitionEvent = exports.EVENT_TRANSITIONS = exports.EVENT_INITIAL_STATUSES = exports.EVENT_STATUS_LABEL = exports.EVENT_STATUSES = exports.ORGANIZATION_STATUS_LABEL = exports.ORGANIZATION_STATUSES = exports.ROLES = void 0;
-exports.qBool = exports.updateContactSchema = exports.createContactSchema = exports.issueAccessSchema = exports.pilgrimLoginSchema = exports.submitOrganizationReviewSchema = exports.organizationTransitionSchema = exports.platformRejectSchema = exports.platformApproveSchema = exports.organizationRequestTokenSchema = exports.resubmitOrganizationRequestSchema = exports.organizationRequestSchema = exports.acceptInvitationSchema = exports.createInvitationSchema = exports.ACCESS_LEVELS = exports.canInviteRole = exports.canGrantRole = exports.hasPermission = exports.GRANTABLE_PERMISSIONS = exports.checkinListSchema = exports.resolveConflictSchema = exports.correctCheckinSchema = exports.cancelCheckinSchema = exports.createCheckinSchema = exports.reorderCheckpointsSchema = exports.updateCheckpointSchema = exports.createCheckpointSchema = exports.participantListSchema = exports.updateParticipantSchema = exports.createParticipantSchema = exports.digitsOnly = exports.normalizeDocument = exports.parseQrContent = exports.qrContent = exports.QR_PREFIX = exports.CHECKIN_METHODS = exports.PARTICIPANT_STATUSES = exports.formatParticipantNumber = exports.mfaPasswordSchema = exports.mfaConfirmSchema = exports.mfaVerifySchema = exports.isMfaChallenge = exports.paginationSchema = exports.assignmentsSchema = exports.updateUserSchema = exports.createUserSchema = exports.isRegistrationOpenNow = exports.REGISTRATION_STATE_LABEL = exports.isCapacityFull = exports.REGISTRATION_STATES = void 0;
-exports.revokeAssignmentSchema = exports.createAssignmentSchema = exports.updateShiftSchema = exports.createShiftSchema = exports.catalogUpdateSchema = exports.catalogItemSchema = exports.volunteerTransitionSchema = exports.VOLUNTEER_REQUEST_STATUS_LABEL = exports.VOLUNTEER_REQUEST_STATUSES = exports.VOLUNTEER_CONSENT_CODE_HOURS = exports.volunteerConsentRequestSchema = exports.createVolunteerSchema = exports.VOLUNTEER_REASON_REQUIRED = exports.canTransitionVolunteer = exports.VOLUNTEER_TRANSITIONS = exports.VOLUNTEER_INITIAL_STATUSES = exports.VOLUNTEER_STATUS_LABEL = exports.VOLUNTEER_STATUSES = exports.credentialQuerySchema = exports.reopenRegistrationSchema = exports.rejectRegistrationSchema = exports.approveRegistrationSchema = exports.registrationListSchema = exports.proofFieldsSchema = exports.createRegistrationSchema = exports.REGISTRATION_STATUSES = void 0;
+exports.createContactSchema = exports.issueAccessSchema = exports.pilgrimLoginSchema = exports.submitOrganizationReviewSchema = exports.organizationTransitionSchema = exports.platformRejectSchema = exports.platformApproveSchema = exports.organizationRequestTokenSchema = exports.resubmitOrganizationRequestSchema = exports.organizationRequestSchema = exports.PARISH_REQUEST_PHOTO_SPEC = exports.SOCIAL_NETWORK_LABEL = exports.acceptInvitationSchema = exports.createInvitationSchema = exports.ACCESS_LEVELS = exports.canInviteRole = exports.canGrantRole = exports.hasPermission = exports.GRANTABLE_PERMISSIONS = exports.checkinListSchema = exports.resolveConflictSchema = exports.correctCheckinSchema = exports.cancelCheckinSchema = exports.createCheckinSchema = exports.reorderCheckpointsSchema = exports.updateCheckpointSchema = exports.createCheckpointSchema = exports.participantListSchema = exports.updateParticipantSchema = exports.createParticipantSchema = exports.digitsOnly = exports.normalizeDocument = exports.parseQrContent = exports.qrContent = exports.QR_PREFIX = exports.CHECKIN_METHODS = exports.PARTICIPANT_STATUSES = exports.formatParticipantNumber = exports.mfaPasswordSchema = exports.mfaConfirmSchema = exports.mfaVerifySchema = exports.isMfaChallenge = exports.paginationSchema = exports.assignmentsSchema = exports.updateUserSchema = exports.createUserSchema = exports.isRegistrationOpenNow = exports.REGISTRATION_STATE_LABEL = exports.isCapacityFull = exports.REGISTRATION_STATES = void 0;
+exports.revokeAssignmentSchema = exports.createAssignmentSchema = exports.updateShiftSchema = exports.createShiftSchema = exports.catalogUpdateSchema = exports.catalogItemSchema = exports.volunteerTransitionSchema = exports.VOLUNTEER_REQUEST_STATUS_LABEL = exports.VOLUNTEER_REQUEST_STATUSES = exports.VOLUNTEER_CONSENT_CODE_HOURS = exports.volunteerConsentRequestSchema = exports.createVolunteerSchema = exports.VOLUNTEER_REASON_REQUIRED = exports.canTransitionVolunteer = exports.VOLUNTEER_TRANSITIONS = exports.VOLUNTEER_INITIAL_STATUSES = exports.VOLUNTEER_STATUS_LABEL = exports.VOLUNTEER_STATUSES = exports.credentialQuerySchema = exports.reopenRegistrationSchema = exports.rejectRegistrationSchema = exports.approveRegistrationSchema = exports.registrationListSchema = exports.proofFieldsSchema = exports.createRegistrationSchema = exports.REGISTRATION_STATUSES = exports.qBool = exports.updateContactSchema = void 0;
 exports.validateEventCapabilities = validateEventCapabilities;
 exports.can = can;
 exports.validateRegistrationAnswers = validateRegistrationAnswers;
@@ -24,6 +24,8 @@ exports.validateEventCoherence = validateEventCoherence;
 exports.deriveRegistrationState = deriveRegistrationState;
 exports.deriveAttendance = deriveAttendance;
 exports.effectivePermissions = effectivePermissions;
+exports.normalizeSocial = normalizeSocial;
+exports.normalizeWebsite = normalizeWebsite;
 const zod_1 = require("zod");
 const locale_1 = require("./locale");
 /* ---------- Roles y permisos (única fuente de verdad: API y Web) ---------- */
@@ -630,6 +632,80 @@ exports.acceptInvitationSchema = zod_1.z.object({
 /* =====================  A3: SOLICITUDES DE PARROQUIA Y PLATAFORMA  ===================== */
 const reqText = (min, max) => zod_1.z.string().trim().min(min).max(max);
 const optReqText = (max) => zod_1.z.string().trim().max(max).optional().transform((v) => (v ? v : undefined));
+/* B2: perfil público en la solicitud (sitio web, redes y foto principal). */
+const SOCIAL_HOSTS = { instagram: ["instagram.com"], facebook: ["facebook.com", "fb.com"], youtube: ["youtube.com", "youtu.be"] };
+exports.SOCIAL_NETWORK_LABEL = { instagram: "Instagram", facebook: "Facebook", youtube: "YouTube" };
+/**
+ * Red social: acepta "@usuario", "usuario" o el enlace completo del dominio de esa red. Devuelve "@usuario" o el enlace
+ * en https; null si no corresponde a esa red. (El perfil público entiende ambos formatos.)
+ */
+function normalizeSocial(net, raw) {
+    const v = raw.trim();
+    if (!v)
+        return null;
+    if (/^https?:\/\//i.test(v)) {
+        let u;
+        try {
+            u = new URL(v);
+        }
+        catch {
+            return null;
+        }
+        const host = u.hostname.toLowerCase().replace(/^(www\.|m\.)/, "");
+        if (!SOCIAL_HOSTS[net].includes(host) || u.pathname.replace(/\/+$/, "").length < 2)
+            return null;
+        u.protocol = "https:";
+        const s = u.toString();
+        return s.length <= 200 ? s : null;
+    }
+    const handle = v.replace(/^@/, "");
+    return /^[A-Za-z0-9._-]{1,100}$/.test(handle) ? `@${handle}` : null;
+}
+/** Sitio web: agrega https:// si falta; exige un dominio con punto. null si no es una dirección válida. */
+function normalizeWebsite(raw) {
+    const v = raw.trim();
+    if (!v || /\s/.test(v))
+        return null;
+    let u;
+    try {
+        u = new URL(/^https?:\/\//i.test(v) ? v : `https://${v}`);
+    }
+    catch {
+        return null;
+    }
+    if (!/^https?:$/.test(u.protocol) || !/^[^.]+\..+[^.]$/.test(u.hostname) || u.username || u.password)
+        return null;
+    const s = u.toString();
+    return s.length <= 300 ? s : null;
+}
+const optWebsite = zod_1.z.string().trim().max(300).optional().transform((v, ctx) => {
+    if (!v)
+        return undefined;
+    const n = normalizeWebsite(v);
+    if (!n) {
+        ctx.addIssue({ code: zod_1.z.ZodIssueCode.custom, message: "Sitio web: escribe una dirección como https://parroquia.org" });
+        return zod_1.z.NEVER;
+    }
+    return n;
+});
+const optSocial = (net) => zod_1.z.string().trim().max(200).optional().transform((v, ctx) => {
+    if (!v)
+        return undefined;
+    const n = normalizeSocial(net, v);
+    if (!n) {
+        ctx.addIssue({ code: zod_1.z.ZodIssueCode.custom, message: `${exports.SOCIAL_NETWORK_LABEL[net]}: escribe @usuario o el enlace de la página` });
+        return zod_1.z.NEVER;
+    }
+    return n;
+});
+/**
+ * Foto principal de la solicitud: se recorta en el navegador a 2:1 y, al aprobar, pasa a ser la imagen de la parroquia
+ * (PARISH_IMAGE_SPEC.cover). Recomendado 1600 × 800 px.
+ */
+exports.PARISH_REQUEST_PHOTO_SPEC = {
+    mimes: ["image/png", "image/jpeg", "image/webp"], maxBytes: 2 * 1024 * 1024,
+    minWidth: 1200, minHeight: 600, maxPx: 6000, ratio: 2, minRatio: 1.95, maxRatio: 2.05, outputWidth: 1600, outputHeight: 800,
+};
 const organizationRequestFields = {
     parishName: reqText(3, 160),
     contactName: reqText(2, 120),
@@ -640,6 +716,10 @@ const organizationRequestFields = {
     locality: optReqText(160),
     address: optReqText(240),
     notes: optReqText(2000),
+    website: optWebsite,
+    instagram: optSocial("instagram"),
+    facebook: optSocial("facebook"),
+    youtube: optSocial("youtube"),
 };
 /** Solicitud pública de una nueva parroquia. No incluye estado, rol ni organización: los decide la plataforma. */
 exports.organizationRequestSchema = zod_1.z.object({

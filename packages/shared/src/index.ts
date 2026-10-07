@@ -691,6 +691,61 @@ export const acceptInvitationSchema = z.object({
 /* =====================  A3: SOLICITUDES DE PARROQUIA Y PLATAFORMA  ===================== */
 const reqText = (min: number, max: number) => z.string().trim().min(min).max(max);
 const optReqText = (max: number) => z.string().trim().max(max).optional().transform((v) => (v ? v : undefined));
+
+/* B2: perfil público en la solicitud (sitio web, redes y foto principal). */
+const SOCIAL_HOSTS = { instagram: ["instagram.com"], facebook: ["facebook.com", "fb.com"], youtube: ["youtube.com", "youtu.be"] } as const;
+export type SocialNetwork = keyof typeof SOCIAL_HOSTS;
+export const SOCIAL_NETWORK_LABEL: Record<SocialNetwork, string> = { instagram: "Instagram", facebook: "Facebook", youtube: "YouTube" };
+/**
+ * Red social: acepta "@usuario", "usuario" o el enlace completo del dominio de esa red. Devuelve "@usuario" o el enlace
+ * en https; null si no corresponde a esa red. (El perfil público entiende ambos formatos.)
+ */
+export function normalizeSocial(net: SocialNetwork, raw: string): string | null {
+  const v = raw.trim();
+  if (!v) return null;
+  if (/^https?:\/\//i.test(v)) {
+    let u: URL;
+    try { u = new URL(v); } catch { return null; }
+    const host = u.hostname.toLowerCase().replace(/^(www\.|m\.)/, "");
+    if (!(SOCIAL_HOSTS[net] as readonly string[]).includes(host) || u.pathname.replace(/\/+$/, "").length < 2) return null;
+    u.protocol = "https:";
+    const s = u.toString();
+    return s.length <= 200 ? s : null;
+  }
+  const handle = v.replace(/^@/, "");
+  return /^[A-Za-z0-9._-]{1,100}$/.test(handle) ? `@${handle}` : null;
+}
+/** Sitio web: agrega https:// si falta; exige un dominio con punto. null si no es una dirección válida. */
+export function normalizeWebsite(raw: string): string | null {
+  const v = raw.trim();
+  if (!v || /\s/.test(v)) return null;
+  let u: URL;
+  try { u = new URL(/^https?:\/\//i.test(v) ? v : `https://${v}`); } catch { return null; }
+  if (!/^https?:$/.test(u.protocol) || !/^[^.]+\..+[^.]$/.test(u.hostname) || u.username || u.password) return null;
+  const s = u.toString();
+  return s.length <= 300 ? s : null;
+}
+const optWebsite = z.string().trim().max(300).optional().transform((v, ctx) => {
+  if (!v) return undefined;
+  const n = normalizeWebsite(v);
+  if (!n) { ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Sitio web: escribe una dirección como https://parroquia.org" }); return z.NEVER; }
+  return n;
+});
+const optSocial = (net: SocialNetwork) => z.string().trim().max(200).optional().transform((v, ctx) => {
+  if (!v) return undefined;
+  const n = normalizeSocial(net, v);
+  if (!n) { ctx.addIssue({ code: z.ZodIssueCode.custom, message: `${SOCIAL_NETWORK_LABEL[net]}: escribe @usuario o el enlace de la página` }); return z.NEVER; }
+  return n;
+});
+/**
+ * Foto principal de la solicitud: se recorta en el navegador a 2:1 y, al aprobar, pasa a ser la imagen de la parroquia
+ * (PARISH_IMAGE_SPEC.cover). Recomendado 1600 × 800 px.
+ */
+export const PARISH_REQUEST_PHOTO_SPEC = {
+  mimes: ["image/png", "image/jpeg", "image/webp"] as const, maxBytes: 2 * 1024 * 1024,
+  minWidth: 1200, minHeight: 600, maxPx: 6000, ratio: 2, minRatio: 1.95, maxRatio: 2.05, outputWidth: 1600, outputHeight: 800,
+} as const;
+
 const organizationRequestFields = {
   parishName: reqText(3, 160),
   contactName: reqText(2, 120),
@@ -701,6 +756,10 @@ const organizationRequestFields = {
   locality: optReqText(160),
   address: optReqText(240),
   notes: optReqText(2000),
+  website: optWebsite,
+  instagram: optSocial("instagram"),
+  facebook: optSocial("facebook"),
+  youtube: optSocial("youtube"),
 };
 /** Solicitud pública de una nueva parroquia. No incluye estado, rol ni organización: los decide la plataforma. */
 export const organizationRequestSchema = z.object({

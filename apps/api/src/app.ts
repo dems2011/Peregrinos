@@ -52,7 +52,8 @@ export async function buildApp() {
   await app.register(cors, {
     origin: cfg.WEB_ORIGIN,
     credentials: true,
-    allowedHeaders: ["Content-Type", "X-PG-Client"],
+    // X-Request-Token: token privado de la solicitud de parroquia al subir su foto (nunca en la URL).
+    allowedHeaders: ["Content-Type", "X-PG-Client", "X-Request-Token"],
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   });
   await app.register(cookie);

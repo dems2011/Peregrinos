@@ -110,7 +110,8 @@ export const post = <T>(path: string, body?: unknown) => api<T>(path, { method: 
 export const patch = <T>(path: string, body: unknown) => api<T>(path, { method: "PATCH", body: JSON.stringify(body) });
 export const put = <T>(path: string, body: unknown) => api<T>(path, { method: "PUT", body: JSON.stringify(body) });
 export const del = <T>(path: string) => api<T>(path, { method: "DELETE" });
-export const upload = <T>(path: string, form: FormData) => api<T>(path, { method: "POST", body: form });
+export const upload = <T>(path: string, form: FormData, method: "POST" | "PUT" = "POST", headers?: Record<string, string>) =>
+  api<T>(path, { method, body: form, headers });
 
 /** Descarga un archivo (PDF, CSV…) con la sesión actual. `method: "POST"` para endpoints que emiten datos. */
 export async function download(path: string, filename: string, init: RequestInit = {}) {

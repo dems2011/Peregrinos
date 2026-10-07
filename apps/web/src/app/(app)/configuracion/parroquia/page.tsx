@@ -50,7 +50,7 @@ export default function PerfilParroquia() {
     const max = PARISH_IMAGE_SPEC[kind].maxBytes;
     if (file.size > max) { setErr(`La imagen pesa ${(file.size / 1048576).toFixed(1)} MB; el máximo es ${max / 1048576} MB.`); return; }
     const form = new FormData(); form.append("file", file);
-    void run(() => upload(`/organization/media/${kind}`, form), kind === "logo" ? "Logo actualizado." : "Imagen actualizada.");
+    void run(() => upload(`/organization/media/${kind}`, form, "PUT"), kind === "logo" ? "Logo actualizado." : "Imagen actualizada.");
   };
 
   return (

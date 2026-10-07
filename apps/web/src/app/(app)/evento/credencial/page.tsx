@@ -35,7 +35,7 @@ export default function CredencialDiseno() {
     if (!f) return;
     if (f.size > S.maxBytes) { setErr(`El archivo pesa ${(f.size / 1048576).toFixed(1)} MB; el máximo es ${S.maxBytes / 1048576} MB.`); return; }
     const form = new FormData(); form.append("file", f);
-    await run(() => upload(`/events/${eid}/credentials/background`, form), "Diseño subido. Elige «Diseño propio» para usarlo.");
+    await run(() => upload(`/events/${eid}/credentials/background`, form, "PUT"), "Diseño subido. Elige «Diseño propio» para usarlo.");
     if (file.current) file.current.value = "";
   };
   const data = d.data;

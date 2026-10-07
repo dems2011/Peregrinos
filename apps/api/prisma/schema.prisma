@@ -51,6 +51,8 @@ model Organization {
   followers     ParishFollower[]
   /// B1: avisos enviados por esta parroquia (manuales o automáticos).
   notifications Notification[]
+  /// B2: suscripción de la parroquia (estructura preparada; todavía sin lógica de cobro ni de acceso).
+  subscription  OrganizationSubscription?
 }
 
 /// A4a: identidad humana. Independiente de la cuenta (User), de la participación (Participant) y de la inscripción
@@ -738,6 +740,11 @@ model OrganizationRequest {
   locality        String?
   address         String?
   notes           String?
+  /// B2: datos opcionales para el perfil público; se copiarán a Organization al aprobar.
+  website         String?
+  instagram       String?
+  facebook        String?
+  youtube         String?
   status          OrganizationStatus         @default(PENDING_REVIEW)
   /// Hash del token privado que permite al solicitante consultar y corregir su solicitud.
   editTokenHash   String                     @unique
@@ -751,9 +758,64 @@ model OrganizationRequest {
   reviewedBy      User?                      @relation("OrganizationRequestReviewer", fields: [reviewedById], references: [id], onDelete: Restrict)
   organization    Organization?              @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   statusChanges   OrganizationStatusChange[]
+  /// B2: foto principal de la iglesia o parroquia (una por solicitud).
+  photo           OrganizationRequestPhoto?
 
   @@index([status, createdAt])
   @@index([contactEmail])
+}
+
+/// B2: foto principal enviada con la solicitud de parroquia. Se guarda en la base (el disco de Render es efímero).
+/// Al aprobar, se copiará a MediaAsset (PARISH_COVER). Tipo, peso y dimensiones también se validan con CHECK.
+model OrganizationRequestPhoto {
+  id        String              @id @default(uuid())
+  requestId String              @unique
+  mime      String
+  width     Int
+  height    Int
+  sizeBytes Int
+  sha256    String
+  data      Bytes
+  createdAt DateTime            @default(now())
+  updatedAt DateTime            @updatedAt
+  request   OrganizationRequest @relation(fields: [requestId], references: [id], onDelete: Restrict)
+}
+
+/// B2: estados de suscripción (alineados con los de Google Play Billing). NONE: sin suscripción.
+enum SubscriptionStatus {
+  NONE
+  TRIAL
+  ACTIVE
+  GRACE_PERIOD
+  ON_HOLD
+  PAUSED
+  CANCELED
+  EXPIRED
+}
+
+/// B2: origen de la suscripción. MANUAL: otorgada por la plataforma.
+enum SubscriptionProvider {
+  NONE
+  GOOGLE_PLAY
+  MANUAL
+}
+
+/// B2: suscripción de una parroquia (como máximo una). Estructura preparada: nada la lee ni la exige todavía.
+/// externalRef guarda un hash (nunca el token de compra en claro).
+model OrganizationSubscription {
+  id                  String               @id @default(uuid())
+  organizationId      String               @unique
+  status              SubscriptionStatus   @default(NONE)
+  provider            SubscriptionProvider @default(NONE)
+  productId           String?
+  basePlanId          String?
+  currentPeriodEndsAt DateTime?
+  externalRef         String?
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  organization        Organization         @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  @@index([status])
 }
 
 /// A3: auditoría persistente (append-only) de cada transición de solicitud u organización.
