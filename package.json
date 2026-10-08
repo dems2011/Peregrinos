@@ -8,6 +8,7 @@
   ],
   "scripts": {
     "postinstall": "npm run build -w @peregrinos/shared",
+    "build": "npm run db:generate -w @peregrinos/api && npm run build -w @peregrinos/api",
     "build:shared": "npm run build -w @peregrinos/shared",
     "dev:api": "npm run dev -w @peregrinos/api",
     "dev:web": "npm run dev -w @peregrinos/web",
