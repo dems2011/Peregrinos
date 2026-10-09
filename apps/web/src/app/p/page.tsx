@@ -64,7 +64,8 @@ export default function AppPeregrino() {
   else body = (
     <>
       {me.stage === "OFFICIAL" ? <Official me={me} /> : <RegistrationView me={me} onChange={setMe} onRefresh={load} />}
-      {(me.stage === "OFFICIAL" || me.registration.status !== "CANCELLED") && <ChatToggle timezone={me.stage === "OFFICIAL" ? me.event.timezone : null} />}
+      {(me.stage === "OFFICIAL" || me.registration.status !== "CANCELLED") && <ChatToggle timezone={me.stage === "OFFICIAL" ? me.event.timezone : null}
+        viewerId={me.stage === "OFFICIAL" ? `${me.event.id}:n${me.participant.number}` : `${me.event.id}:r${me.registration.documentMasked}`} />}
       <Contacts contacts={me.contacts} />
       <button type="button" className="btn" onClick={() => void logout()}>Salir de este dispositivo</button>
     </>
@@ -220,12 +221,13 @@ function Official({ me }: { me: PilgrimMe }) {
 }
 
 /** B1 — Chat del evento (equipo de la parroquia y personas inscritas). Plegado: solo consulta mientras está abierto. */
-function ChatToggle({ timezone }: { timezone: string | null }) {
+/** `viewerId`: separa «Limpiar mensajes anteriores» por persona (evento + número o inscripción) en un mismo dispositivo. */
+function ChatToggle({ timezone, viewerId }: { timezone: string | null; viewerId: string }) {
   const [open, setOpen] = useState(false);
   return (
     <section className="card stack-sm">
       <div className="row"><h2 style={{ margin: 0 }}>Chat del evento</h2><button type="button" className="btn btn-sm" onClick={() => setOpen(!open)} aria-expanded={open}>{open ? "Cerrar" : "Abrir"}</button></div>
-      {open ? <EventChat base="/pilgrim/chat" timezone={timezone} /> : <p className="muted small" style={{ margin: 0 }}>Conversa con el equipo de la parroquia y las demás personas inscritas.</p>}
+      {open ? <EventChat base="/pilgrim/chat" timezone={timezone} viewerId={viewerId} /> : <p className="muted small" style={{ margin: 0 }}>Conversa con el equipo de la parroquia y las demás personas inscritas.</p>}
     </section>
   );
 }

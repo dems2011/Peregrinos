@@ -14,7 +14,7 @@ export default function Aviso() {
   return (
     <Page title="Aviso">
       <ErrorBox msg={prof.error} />
-      {prof.data ? <ParishNotifications followers={prof.data.profile.followerCount} /> : !prof.error && <Loading />}
+      {prof.data ? <ParishNotifications followers={prof.data.profile.followerCount} viewerId={me.user.id} /> : !prof.error && <Loading />}
     </Page>
   );
 }

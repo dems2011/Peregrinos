@@ -10,7 +10,7 @@ export default function ChatEvento() {
   return (
     <Page title="Chat del evento" back="/evento">
       <p className="muted small" style={{ margin: 0 }}>Conversación de <b>{event.name}</b>: el equipo de la parroquia y los peregrinos inscritos en este evento. No se mezcla con otros eventos.</p>
-      <EventChat key={event.id} base={`/events/${event.id}/chat`} timezone={event.timezone} canModerate={me.user.role !== "OPERATOR"} />
+      <EventChat key={event.id} base={`/events/${event.id}/chat`} timezone={event.timezone} canModerate={me.user.role !== "OPERATOR"} viewerId={me.user.id} />
     </Page>
   );
 }
