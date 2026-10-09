@@ -5,7 +5,7 @@ import { ApiError, post } from "@/lib/api";
 import { ErrorBox, Modal } from "@/components/ui";
 import { fromZonedInput } from "@/lib/format";
 
-/** Alta mínima de un evento: el resto se completa después en Configuración → Evento. */
+/** Alta mínima de un evento: el resto se completa después en Evento → Datos del evento. */
 export function NewEventModal({ onClose, onCreated }: { onClose: () => void; onCreated: (id: string) => void }) {
   const [type, setType] = useState<EventType | "">(""); const [name, setName] = useState(""); const [parish, setParish] = useState("");
   const [startsAt, setStartsAt] = useState(""); const [endsAt, setEndsAt] = useState(""); const [err, setErr] = useState<string | null>(null); const [busy, setBusy] = useState(false);

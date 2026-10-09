@@ -25,7 +25,7 @@ export default function CredencialDiseno() {
   const file = useRef<HTMLInputElement>(null);
   const editable = can("event:update");
 
-  if (!event) return <Page title="Credenciales" back="/evento"><div className="empty">No hay un evento seleccionado.</div></Page>;
+  if (!event) return <Page title="Credenciales" back="/credenciales"><div className="empty">No hay un evento seleccionado.</div></Page>;
   const run = async (fn: () => Promise<unknown>, done: string) => {
     setBusy(true); setErr(null); setOk(null);
     try { await fn(); setOk(done); await d.reload(); await reloadEvents(); }
@@ -41,7 +41,7 @@ export default function CredencialDiseno() {
   const data = d.data;
 
   return (
-    <Page title="Diseño de la credencial" back="/evento">
+    <Page title="Diseño de la credencial" back="/credenciales">
       <ErrorBox msg={err ?? d.error} />
       {ok && <div className="alert ok" role="status">{ok}</div>}
       {d.loading && !data ? <Loading /> : data && <>

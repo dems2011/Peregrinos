@@ -16,7 +16,7 @@ export default function Contactos() {
   const cps = useLoad(() => (eid ? api<{ items: Checkpoint[] }>(`/events/${eid}/checkpoints`) : Promise.resolve(null)), [eid]);
   const [edit, setEdit] = useState<Contact | "new" | null>(null);
   return (
-    <Page title="Contactos del evento" back="/configuracion" action={eid ? <button className="ic" aria-label="Agregar contacto" onClick={() => setEdit("new")}><Plus size={24} /></button> : undefined}>
+    <Page title="Contactos del evento" back="/evento" action={eid ? <button className="ic" aria-label="Agregar contacto" onClick={() => setEdit("new")}><Plus size={24} /></button> : undefined}>
       <p className="muted">Estas personas aparecen en la pestaña «Contactos» de la app del peregrino, con botón para llamar.</p>
       {!eid && <div className="empty">No hay un evento seleccionado.</div>}
       <ErrorBox msg={list.error} />

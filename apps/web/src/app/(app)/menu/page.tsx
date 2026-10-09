@@ -4,7 +4,8 @@ import { useRouter } from "next/navigation";
 import { ChevronRight, LogOut } from "lucide-react";
 import { logout } from "@/lib/api";
 import { useApp } from "@/components/AppContext";
-import { EventPicker, useNav } from "@/components/Shell";
+import { AdminMenu } from "@/components/AdminMenu";
+import { useNav } from "@/components/Shell";
 import { Page } from "@/components/ui";
 
 const COLORS: Record<string, string> = { "/": "#1677FF", "/personas": "#18A957", "/pagos": "#F29B18", "/evento": "#0B3158", "/registrar": "#7B3FE4", "/historial": "#F29B18", "/credenciales": "#0E9AA7", "/voluntarios": "#D9467A", "/configuracion": "#4A5563" };
@@ -14,12 +15,17 @@ const SUB: Record<string, string> = {
 };
 
 export default function Menu() {
+  const { me } = useApp();
+  return me.user.role === "SUPERADMIN" ? <AdminMenu /> : <MenuPrincipal />;
+}
+
+/** Administrador y operador (móvil): el mismo menú que la barra lateral. El evento se elige en Evento o en Inicio. */
+function MenuPrincipal() {
   const router = useRouter();
   const items = useNav();
   const { pendingPayments, me } = useApp();
   return (
     <Page title="Menú principal">
-      <EventPicker />
       <div className="card flat">
         {items.map((n) => (
           <Link key={n.href} href={n.href} className="list-item">

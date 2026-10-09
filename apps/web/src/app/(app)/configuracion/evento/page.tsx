@@ -107,10 +107,10 @@ export default function EventoConfig() {
       await reloadEvents(); setOk(true);
     } catch (e) { setErr(e instanceof ApiError ? (e.details?.map((d) => d.message).join(". ") || e.message) : "No se pudo guardar."); } finally { setBusy(false); }
   }
-  if (!can("event:update")) return <Page title="Evento" back="/configuracion"><div className="alert warn">Solo un superadministrador puede editar el evento.</div></Page>;
+  if (!can("event:update")) return <Page title="Evento" back="/evento"><div className="alert warn">Solo un superadministrador puede editar el evento.</div></Page>;
 
   return (
-    <Page title="Evento e inscripción" back="/configuracion" action={can("event:create") ? <button className="ic" aria-label="Nuevo evento" onClick={() => setCreating(true)}><Plus size={24} /></button> : undefined}>
+    <Page title="Evento e inscripción" back="/evento" action={can("event:create") ? <button className="ic" aria-label="Nuevo evento" onClick={() => setCreating(true)}><Plus size={24} /></button> : undefined}>
       {!event || !f ? <div className="empty">No hay eventos todavía.{can("event:create") && <button className="btn btn-primary" style={{ marginTop: 12 }} onClick={() => setCreating(true)}>Crear el primer evento</button>}</div> : (
         <div className="card">
           <ErrorBox msg={err} />{ok && <div className="alert ok" style={{ marginBottom: 12 }}>Cambios guardados.</div>}

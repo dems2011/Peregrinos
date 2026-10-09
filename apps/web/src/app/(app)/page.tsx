@@ -10,8 +10,15 @@ import type { Checkin, Paged } from "@/lib/types";
 import { useApp, useLive } from "@/components/AppContext";
 import { Avatar, Loading, Page, StatusPill } from "@/components/ui";
 import { EventPicker } from "@/components/Shell";
+import { ParishProfileEditor } from "@/components/ParishProfileEditor";
 
+/** El Inicio del superadministrador es el perfil de su parroquia; el resto del personal ve el resumen del evento. */
 export default function Inicio() {
+  const { me } = useApp();
+  return me.user.role === "SUPERADMIN" ? <ParishProfileEditor /> : <ResumenEvento />;
+}
+
+function ResumenEvento() {
   const router = useRouter();
   const { me, can, event, pendingPayments } = useApp();
   const isOperatorOnly = !can("checkin:read");

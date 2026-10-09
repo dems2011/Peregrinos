@@ -19,7 +19,7 @@ export default function Accesos() {
     } catch (e) { setErr(e instanceof ApiError ? e.message : "No se pudo emitir."); } finally { setBusy(false); }
   };
   return (
-    <Page title="Acceso de peregrinos" back="/configuracion">
+    <Page title="Acceso de peregrinos" back="/evento">
       <p className="muted">Cada peregrino entra a su app con un enlace personal o un código corto. Por seguridad solo se muestran al emitirlos: se descargan en un archivo (para enviarlos por WhatsApp/correo o imprimirlos en la credencial).</p>
       {st.loading ? <Loading /> : st.data && (
         <div className="grid2"><div className="card stat"><span className="l">Con acceso</span><span className="n">{st.data.withAccess}</span></div><div className="card stat"><span className="l">Sin acceso</span><span className="n">{st.data.without}</span></div></div>

@@ -268,9 +268,12 @@ img, svg, video { max-width: 100%; }
 .parish-info a { color: var(--blue); }
 .hub { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 @media (min-width: 640px) { .hub { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
-.hub a { display: grid; gap: 6px; padding: 14px; background: #fff; border: 1px solid var(--line); border-radius: var(--radius); min-height: 96px; }
-.hub a .tile { width: 40px; height: 40px; }
-.hub a b { font-size: 15px; } .hub a span.s { color: var(--muted); font-size: 12.5px; }
+.hub a, .hub button { display: grid; gap: 6px; padding: 14px; background: #fff; border: 1px solid var(--line); border-radius: var(--radius); min-height: 96px; }
+.hub button { font: inherit; color: inherit; text-align: left; align-content: start; justify-items: start; cursor: pointer; width: 100%; }
+.hub a .tile, .hub button .tile { width: 40px; height: 40px; }
+.hub a b, .hub button b { font-size: 15px; } .hub a span.s, .hub button span.s { color: var(--muted); font-size: 12.5px; }
+/* El selector de evento de escritorio está en la cabecera de la barra lateral. */
+@media (min-width: 900px) { .only-mobile { display: none; } }
 .stat-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 @media (min-width: 640px) { .stat-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
 .stat { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 12px; }
