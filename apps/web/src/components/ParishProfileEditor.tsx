@@ -10,8 +10,8 @@ import { ErrorBox, Loading, Page } from "@/components/ui";
 import type { ParishProfile, PublicEvent } from "@/lib/types";
 
 /**
- * B1 — Perfil público de la parroquia (solo el superadministrador): datos, logo e imagen y vista previa EXACTA de lo
- * que ve un peregrino. Es el Inicio del superadministrador; los avisos a seguidores están en «Aviso» (/avisos).
+ * B1 — Perfil público de la parroquia (solo el superadministrador): primero la vista EXACTA de lo que ve un peregrino y
+ * debajo la edición (datos, logo e imagen). Es el Inicio del superadministrador; los avisos están en «Aviso» (/avisos).
  */
 type Profile = ParishProfile & { status: string };
 const FIELDS = [
@@ -58,6 +58,12 @@ export function ParishProfileEditor({ back }: { back?: string }) {
       {ok && <div className="alert ok" role="status">{ok}</div>}
       {!p ? <Loading /> : <>
         {p.status !== "APPROVED" && <div className="alert warn">La parroquia todavía no está aprobada: su perfil no es público hasta que la plataforma la apruebe.</div>}
+        <section className="stack-sm">
+          <h2 style={{ margin: "8px 0 0" }}>Así ve tu parroquia un peregrino</h2>
+          <ParishProfileView preview parish={p} events={pub.data?.events ?? []} action={<span className="btn btn-primary" aria-disabled="true">Seguir</span>} />
+        </section>
+
+        <h2 style={{ margin: "16px 0 0" }}>Editar el perfil</h2>
         <form className="card" onSubmit={save} noValidate>
           <h2>Información pública</h2>
           {FIELDS.map(([k, label, max]) => (
@@ -71,11 +77,6 @@ export function ParishProfileEditor({ back }: { back?: string }) {
           hint={`Cuadrado (proporción ${PARISH_IMAGE_SPEC.logo.minRatio}–${PARISH_IMAGE_SPEC.logo.maxRatio}), mínimo ${PARISH_IMAGE_SPEC.logo.minPx} × ${PARISH_IMAGE_SPEC.logo.minPx} px, PNG/JPEG/WEBP, hasta 1 MB. Se muestra en un círculo.`} />
         <ImageCard title="Imagen de la parroquia" kind="cover" url={p.coverUrl} busy={busy} onPick={sendImage} onRemove={() => void run(() => del("/organization/media/cover"), "Imagen quitada.")}
           hint={`Horizontal (recomendado 1600 × 900 px, proporción ${PARISH_IMAGE_SPEC.cover.minRatio}–${PARISH_IMAGE_SPEC.cover.maxRatio}), mínimo ${PARISH_IMAGE_SPEC.cover.minWidth} × ${PARISH_IMAGE_SPEC.cover.minHeight} px, PNG/JPEG/WEBP, hasta 2 MB.`} />
-
-        <section className="stack-sm">
-          <h2 style={{ margin: "8px 0 0" }}>Vista previa (así la ve un peregrino)</h2>
-          <ParishProfileView preview parish={p} events={pub.data?.events ?? []} action={<span className="btn btn-primary" aria-disabled="true">Seguir</span>} />
-        </section>
       </>}
     </Page>
   );

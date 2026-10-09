@@ -29,8 +29,9 @@ const NAV_CAPABILITY: Partial<Record<string, EventCapability>> = {
 };
 
 /**
- * Superadministrador: cuatro accesos (escritorio y móvil). Inicio = perfil de la parroquia; Evento = secciones del evento
- * activo; Aviso = avisos a los seguidores; Menú = configuración y administración.
+ * Superadministrador (escritorio y móvil): Inicio = perfil de la parroquia; Evento = secciones del evento activo;
+ * Registrar (verde, al centro) = el mismo acceso a /registrar del resto del personal; Aviso = avisos a los seguidores;
+ * Menú = configuración y administración.
  */
 export const SA_NAV: NavItem[] = [
   { href: "/", label: "Inicio", icon: Home, perm: "event:read" },
@@ -41,8 +42,9 @@ export const SA_NAV: NavItem[] = [
 
 const under = (path: string, href: string) => path === href || path.startsWith(`${href}/`);
 /** Acceso del superadministrador que corresponde a la ruta actual (las secciones viven dentro de Evento o Menú). */
-function saSection(path: string): string {
+function saSection(path: string, hasRegistrar: boolean): string {
   if (path === "/" || under(path, "/configuracion/parroquia")) return "/";
+  if (hasRegistrar && under(path, "/registrar")) return "/registrar";
   if (under(path, "/evento") || EVENT_SECTIONS.some((s) => under(path, s.href))) return "/evento";
   if (under(path, "/avisos")) return "/avisos";
   return "/menu";
@@ -51,14 +53,20 @@ function saSection(path: string): string {
 /** Menú según permisos y capacidades del evento activo. */
 export function useNav() {
   const { can, event, me } = useApp();
-  if (me.user.role === "SUPERADMIN") return SA_NAV;
+  const on = (c: EventCapability) => !event || hasEventCapability(event, c);
+  const visible = (n: NavItem) => { const c = NAV_CAPABILITY[n.href]; return !c || on(c); };
+  const label = (n: NavItem) => (n.href === "/registrar" && !on("ROUTE") ? { ...n, label: "Registrar asistencia" } : n);
+  if (me.user.role === "SUPERADMIN") {
+    // Registrar: mismo permiso y capacidad que en el resto del personal.
+    const reg = NAV.find((n) => n.href === "/registrar")!;
+    return can(reg.perm as Permission) && visible(reg) ? [SA_NAV[0], SA_NAV[1], label(reg), SA_NAV[2], SA_NAV[3]] : SA_NAV;
+  }
   // Mismos permisos que las secciones de /configuracion (y que exige la API en cada una).
   const canConfig = can("event:update") || can("invitation:manage") || can("user:manage") || can("contact:manage") || can("participant:manage") || can("audit:read");
-  const on = (c: EventCapability) => !event || hasEventCapability(event, c);
   return NAV
     .filter((n) => (n.perm === "config" ? canConfig : can(n.perm)))
-    .filter((n) => { const c = NAV_CAPABILITY[n.href]; return !c || on(c); })
-    .map((n) => (n.href === "/registrar" && !on("ROUTE") ? { ...n, label: "Registrar asistencia" } : n));
+    .filter(visible)
+    .map(label);
 }
 
 export function EventPicker() {
@@ -80,11 +88,12 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const { me, pendingPayments, events, event, setEventId } = useApp();
   const items = useNav();
   const sa = me.user.role === "SUPERADMIN";
-  const on = (href: string) => (sa ? saSection(path) === href : href === "/" ? path === "/" : path.startsWith(href));
+  const find = (href: string) => items.find((i) => i.href === href);
+  const saActive = sa ? saSection(path, !!find("/registrar")) : "";
+  const on = (href: string) => (sa ? saActive === href : href === "/" ? path === "/" : path.startsWith(href));
   // Pagos por revisar: en la barra lateral del resto del personal; para el superadministrador, dentro de Evento.
   const badgeOn = sa ? "/evento" : "/pagos";
-  const find = (href: string) => items.find((i) => i.href === href);
-  const mobile = sa ? SA_NAV : [find("/"), find("/personas"), find("/registrar"), find("/evento")].filter(Boolean) as NavItem[];
+  const mobile = sa ? items : [find("/"), find("/personas"), find("/registrar"), find("/evento")].filter(Boolean) as NavItem[];
   const roleLabel = me.user.role === "SUPERADMIN" ? "Superadministrador" : me.user.role === "ADMIN" ? "Administrador" : "Operador";
 
   return (

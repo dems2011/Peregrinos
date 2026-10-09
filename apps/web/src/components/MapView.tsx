@@ -8,7 +8,8 @@ import "leaflet/dist/leaflet.css";
  * Es el ÚNICO archivo que conoce a Leaflet/OpenStreetMap: para cambiar de proveedor (Google, Mapbox)
  * se reemplaza este componente manteniendo las mismas props.
  */
-export interface MapPoint { id: string; order: number; name: string; lat: number; lng: number; color?: string }
+/** `order` ordena la línea; `label` reemplaza al número en el marcador (p. ej. origen y destino del trayecto). */
+export interface MapPoint { id: string; order: number; name: string; lat: number; lng: number; color?: string; label?: string }
 interface Props { points: MapPoint[]; line?: boolean; marker?: { lat: number; lng: number } | null; onClick?: (lat: number, lng: number) => void; tall?: boolean }
 
 export default function MapView({ points, line = true, marker, onClick, tall }: Props) {
@@ -36,7 +37,7 @@ export default function MapView({ points, line = true, marker, onClick, tall }: 
     sorted.forEach((p) => {
       L.marker([p.lat, p.lng], {
         title: p.name,
-        icon: L.divIcon({ className: "", iconSize: [30, 30], iconAnchor: [15, 15], html: `<div class="pin" style="background:${p.color ?? "#1677FF"}">${p.order}</div>` }),
+        icon: L.divIcon({ className: "", iconSize: [30, 30], iconAnchor: [15, 15], html: `<div class="pin" style="background:${p.color ?? "#1677FF"}">${p.label ?? p.order}</div>` }),
       }).addTo(g);
     });
     if (line && sorted.length > 1) L.polyline(sorted.map((p) => [p.lat, p.lng] as [number, number]), { color: "#1677FF", weight: 4, opacity: 0.8 }).addTo(g);
