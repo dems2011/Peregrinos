@@ -138,9 +138,13 @@ export function newRecoveryCodes(userId: string, n = RECOVERY_CODES_COUNT) {
 /** Formato de un código de recuperación (10 caracteres del alfabeto de códigos, con o sin guion). */
 export const looksLikeRecoveryCode = (input: string) => normalizeCode(input).length === 10;
 
-/** §8.1: un SUPERADMIN sin MFA activo solo puede enrolarse (desactivable solo para la transición). */
-export const mfaEnrollmentRequired = (u: { role: string | null; mfaEnabledAt: Date | null }) =>
-  cfg.MFA_ENFORCE_SUPERADMIN && u.role === "SUPERADMIN" && !u.mfaEnabledAt;
+/**
+ * Si el segundo factor se exige a esta cuenta: solo con MFA activo y nunca al SUPERADMIN, que entra con usuario y
+ * contraseña (decisión del 2026-10-09). Un secreto MFA que un SUPERADMIN haya activado antes queda guardado pero no se
+ * pide ni se usa. El resto del personal conserva su MFA opcional sin cambios.
+ */
+export const mfaApplies = (u: { role: string | null; mfaEnabledAt: Date | null }) =>
+  !!u.mfaEnabledAt && u.role !== "SUPERADMIN";
 
 /** El paso de una sesión verificada con MFA sigue vigente para acciones sensibles. */
 export const isRecentMfa = (mfaAtSec: number | null | undefined, nowMs = Date.now()) =>

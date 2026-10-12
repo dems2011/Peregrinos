@@ -2,7 +2,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import type { MeResponse, Permission } from "@peregrinos/shared";
-import { ApiError, MFA_ENROLLMENT_EVENT, SESSION_EXPIRED_EVENT, api, getMe, qs } from "@/lib/api";
+import { ApiError, SESSION_EXPIRED_EVENT, api, getMe, qs } from "@/lib/api";
 import { StepUpDialog } from "@/components/StepUpDialog";
 import { useEventStream } from "@/lib/hooks";
 import type { EventItem } from "@/lib/types";
@@ -62,11 +62,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setBootError(null);
     try {
       const m = await getMe(); setMe(m);
-      // A6: SUPERADMIN sin MFA → la API solo permite enrolarse (el resto responde 403 MFA_ENROLLMENT_REQUIRED).
-      if (m.mfa?.enrollmentRequired) {
-        if (!window.location.pathname.startsWith("/configuracion/seguridad")) router.replace("/configuracion/seguridad");
-        return;
-      }
       await loadEvents(m);
     }
     catch (e) {
@@ -80,12 +75,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // La sesión venció y no se pudo renovar en cualquier pantalla → login del personal.
   useEffect(() => {
     const onExpired = () => router.replace("/login");
-    const onEnroll = () => router.replace("/configuracion/seguridad");
     window.addEventListener(SESSION_EXPIRED_EVENT, onExpired);
-    window.addEventListener(MFA_ENROLLMENT_EVENT, onEnroll);
     return () => {
       window.removeEventListener(SESSION_EXPIRED_EVENT, onExpired);
-      window.removeEventListener(MFA_ENROLLMENT_EVENT, onEnroll);
     };
   }, [router]);
 

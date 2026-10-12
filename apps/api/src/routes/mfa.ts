@@ -11,7 +11,7 @@ import {
   MFA_PENDING_MINUTES,
   decryptSecret,
   encryptSecret,
-  mfaEnrollmentRequired,
+  mfaApplies,
   newRecoveryCodes,
   newTotpSecret,
   otpauthUrl,
@@ -28,10 +28,13 @@ import {
 
 /**
  * A6 — MFA del personal (prefijo /api/auth/mfa). Login en dos pasos, enrolamiento TOTP, códigos de recuperación,
- * step-up de STEP_UP_MINUTES y baja. Las rutas con `mfaEnrollment` quedan disponibles para un SUPERADMIN sin MFA.
+ * step-up de STEP_UP_MINUTES y baja. No aplica al SUPERADMIN, que entra con usuario y contraseña (mfaApplies).
  */
 export default async function mfaRoutes(app: FastifyInstance) {
   const limit = (max: number, timeWindow: string) => ({ rateLimit: { max, timeWindow } });
+  const notForSuperadmin = (req: FastifyRequest) => {
+    if (req.auth.role === "SUPERADMIN") throw new AppError(409, "MFA_NOT_FOR_ROLE", "El superadministrador ingresa con usuario y contraseña: no usa verificación en dos pasos.");
+  };
 
   /** Contraseña de la cuenta autenticada (enrolar, regenerar códigos o desactivar: protege ante una sesión robada). */
   async function assertPassword(req: FastifyRequest, password: string, action: string) {
@@ -63,8 +66,8 @@ export default async function mfaRoutes(app: FastifyInstance) {
       where: { id: challenge.sub },
       select: { id: true, role: true, accountType: true, isActive: true, organizationId: true, sessionVersion: true, mfaEnabledAt: true },
     });
-    // El desafío deja de valer si la cuenta cambió (sv) o ya no es personal activo con MFA.
-    if (!user || !user.isActive || user.accountType !== "STAFF" || !user.role || !user.mfaEnabledAt || user.sessionVersion !== challenge.sv) {
+    // El desafío deja de valer si la cuenta cambió (sv) o ya no es personal activo al que se le exige MFA.
+    if (!user || !user.isActive || user.accountType !== "STAFF" || !user.role || !mfaApplies(user) || user.sessionVersion !== challenge.sv) {
       clearMfaChallenge(reply);
       throw unauthorized("La verificación venció. Ingresa de nuevo con tu contraseña.");
     }
@@ -80,9 +83,10 @@ export default async function mfaRoutes(app: FastifyInstance) {
   /* ---------- Enrolamiento ---------- */
   app.post(
     "/enroll/start",
-    { preHandler: app.authenticate, config: { ...limit(10, "15 minutes"), mfaEnrollment: true } },
+    { preHandler: app.authenticate, config: limit(10, "15 minutes") },
     async (req) => {
       const { password } = mfaPasswordSchema.parse(req.body);
+      notForSuperadmin(req);
       if (req.auth.mfaEnabled) throw new AppError(409, "MFA_ALREADY_ENABLED", "La verificación en dos pasos ya está activa.");
       await assertPassword(req, password, "ENROLL_START");
 
@@ -102,9 +106,10 @@ export default async function mfaRoutes(app: FastifyInstance) {
 
   app.post(
     "/enroll/confirm",
-    { preHandler: app.authenticate, config: { ...limit(10, "15 minutes"), mfaEnrollment: true } },
+    { preHandler: app.authenticate, config: limit(10, "15 minutes") },
     async (req, reply) => {
       const { code } = mfaConfirmSchema.parse(req.body);
+      notForSuperadmin(req);
       const u = await prisma.user.findUniqueOrThrow({
         where: { id: req.auth.id },
         select: { mfaEnabledAt: true, mfaPendingSecret: true, mfaPendingAt: true },
@@ -184,10 +189,6 @@ export default async function mfaRoutes(app: FastifyInstance) {
     async (req, reply) => {
       const { password } = mfaPasswordSchema.parse(req.body);
       if (!req.auth.mfaEnabled) throw new AppError(409, "MFA_NOT_ENABLED", "La verificación en dos pasos no está activa.");
-      // §8.1: un SUPERADMIN no puede quedar sin MFA (para cambiar de teléfono: otro SUPERADMIN lo restablece).
-      if (mfaEnrollmentRequired({ role: req.auth.role, mfaEnabledAt: null })) {
-        throw new AppError(409, "MFA_REQUIRED_FOR_ROLE", "La verificación en dos pasos es obligatoria para tu rol.");
-      }
       await assertPassword(req, password, "DISABLE");
       await prisma.$transaction(async (tx) => {
         await tx.user.update({

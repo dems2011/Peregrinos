@@ -121,8 +121,6 @@ export function refreshSession(): Promise<boolean> {
   return refreshing;
 }
 
-/** A6: se emite cuando la API exige enrolar MFA (SUPERADMIN sin segundo factor). */
-export const MFA_ENROLLMENT_EVENT = "pg:mfa-enrollment-required";
 
 /**
  * A6: acciones sensibles responden 403 STEP_UP_REQUIRED. Un componente (StepUpDialog) registra aquí cómo pedir el
@@ -150,8 +148,6 @@ async function call(path: string, init: RequestInit = {}, retry = true) {
     // Varias peticiones a la vez comparten un solo diálogo.
     stepUpPending ??= stepUpHandler().finally(() => { setTimeout(() => { stepUpPending = null; }, 0); });
     if (await stepUpPending) res = await raw(path, init, retry);
-  } else if (forbiddenCode === "MFA_ENROLLMENT_REQUIRED" && typeof window !== "undefined") {
-    window.dispatchEvent(new Event(MFA_ENROLLMENT_EVENT));
   }
   return res;
 }

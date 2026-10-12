@@ -9,7 +9,7 @@ import {
 import { cfg } from "../config";
 import { prisma } from "./prisma";
 import { newOpaqueToken } from "./tokens";
-import { MFA_CHALLENGE_MINUTES, STEP_UP_MINUTES, isRecentMfa, mfaEnrollmentRequired } from "./mfa";
+import { MFA_CHALLENGE_MINUTES, STEP_UP_MINUTES, isRecentMfa, mfaApplies } from "./mfa";
 import {
   ACCESS_COOKIE,
   REFRESH_COOKIE,
@@ -293,14 +293,14 @@ export async function buildMe(userId: string, mfaAt?: Date | null): Promise<MeRe
     ),
     assignments,
     currentCheckpoint: current,
+    // El SUPERADMIN no usa segundo factor (mfaApplies): para él, MFA figura inactivo.
     mfa: {
-      enabled: !!user.mfaEnabledAt,
-      enrollmentRequired: mfaEnrollmentRequired(user),
+      enabled: mfaApplies(user),
       stepUpValidUntil:
-        user.mfaEnabledAt && mfaAt && isRecentMfa(Math.floor(mfaAt.getTime() / 1000))
+        mfaApplies(user) && mfaAt && isRecentMfa(Math.floor(mfaAt.getTime() / 1000))
           ? new Date(mfaAt.getTime() + STEP_UP_MINUTES * 60_000).toISOString()
           : null,
-      recoveryCodesRemaining: user.mfaEnabledAt ? user._count.mfaRecoveryCodes : 0,
+      recoveryCodesRemaining: mfaApplies(user) ? user._count.mfaRecoveryCodes : 0,
     },
   };
 }

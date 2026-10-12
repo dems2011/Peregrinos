@@ -160,7 +160,7 @@ describe("A6: reglas de sesión y rutas (fuente)", () => {
   const flow = read("src/lib/mfaFlow.ts");
 
   it("login: con MFA activo emite el desafío y NO la sesión", () => {
-    const branch = auth.slice(auth.indexOf("if (user.mfaEnabledAt)"), auth.indexOf("await issueSession(\n        app,\n        req,\n        reply,\n        user\n      );"));
+    const branch = auth.slice(auth.indexOf("if (mfaApplies(user))"), auth.indexOf("await issueSession(", auth.indexOf("if (mfaApplies(user))")));
     assert.match(branch, /issueMfaChallenge\(app, reply, user\)/);
     assert.match(branch, /return \{ mfaRequired: true as const \}/);
     assert.doesNotMatch(branch, /issueSession\(/);
@@ -173,18 +173,17 @@ describe("A6: reglas de sesión y rutas (fuente)", () => {
   it("authenticate: rechaza tokens con propósito, versión vieja o sesión sin factor si hay MFA", () => {
     assert.match(plugin, /if \(!claims\.sub \|\| claims\.purpose\) throw unauthorized\(\)/);
     assert.match(plugin, /user\.sessionVersion !== sv/);
-    assert.match(plugin, /\(user\.mfaEnabledAt && mfaSec === null\)/);
+    assert.match(plugin, /mfaApplies\(user\) && mfaSec === null/);
   });
-  it("SUPERADMIN sin MFA: solo rutas marcadas mfaEnrollment", () => {
-    assert.match(plugin, /mfaEnrollmentRequired\(user\) && !req\.routeOptions\.config\?\.mfaEnrollment/);
-    assert.match(plugin, /"MFA_ENROLLMENT_REQUIRED"/);
-    const marked = [...mfa.matchAll(/mfaEnrollment: true/g)].length + [...auth.matchAll(/mfaEnrollment: true/g)].length;
-    assert.equal(marked, 3); // enroll/start, enroll/confirm, /me
-  });
+  it("SUPERADMIN no requiere enrolamiento MFA obligatorio", () => {
+  assert.match(auth, /if \(mfaApplies\(user\)\)/);
+  assert.match(plugin, /mfaApplies\(user\) && mfaSec === null/);
+  assert.doesNotMatch(plugin, /mfaEnrollmentRequired|MFA_ENROLLMENT_REQUIRED/);
+});
   it("refresh: rotación condicional y conserva mfaAt; con MFA exige sesión con factor", () => {
     assert.match(auth, /refreshToken\.updateMany\(\{\s*where: \{\s*id: token\.id,\s*revokedAt: null,/);
     assert.match(auth, /\{ mfaAt: token\.mfaAt \}/);
-    assert.match(auth, /\(token\.user\.mfaEnabledAt && !token\.mfaAt\)/);
+    assert.match(auth, /\(mfaApplies\(token\.user\) && !token\.mfaAt\)/);
   });
   it("verificación: anti-replay condicional, código de recuperación de un solo uso, bloqueo por cuenta", () => {
     assert.match(flow, /OR: \[\{ mfaLastStep: null \}, \{ mfaLastStep: \{ lt: step \} \}\]/);
@@ -201,9 +200,9 @@ describe("A6: reglas de sesión y rutas (fuente)", () => {
     assert.match(mfa, /"\/recovery-codes",\s*\{ preHandler: \[app\.authenticate, app\.requireRecentMfa\]/);
     assert.match(mfa, /"\/disable",\s*\{ preHandler: \[app\.authenticate, app\.requireRecentMfa\]/);
   });
-  it("un SUPERADMIN no puede desactivar su MFA", () => {
-    assert.match(mfa, /"MFA_REQUIRED_FOR_ROLE"/);
-  });
+  it("un SUPERADMIN no puede usar las rutas MFA", () => {
+  assert.match(mfa, /"MFA_NOT_FOR_ROLE"/);
+});
   it("cambiar el MFA cierra las demás sesiones", () => {
     assert.match(mfa, /data: \{ sessionVersion: \{ increment: 1 \} \}/);
     assert.match(mfa, /await rotateSessions\(req, reply, now\)/);

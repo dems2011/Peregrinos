@@ -517,9 +517,8 @@ export interface MeResponse {
 
 /* =====================  A6: MFA DEL PERSONAL  ===================== */
 export interface MfaStatus {
+  /** Se exige segundo factor a esta cuenta (nunca al SUPERADMIN, que entra con usuario y contraseña). */
   enabled: boolean;
-  /** SUPERADMIN sin MFA: la sesión solo permite enrolarse (la API responde 403 MFA_ENROLLMENT_REQUIRED). */
-  enrollmentRequired: boolean;
   /** Hasta cuándo vale el último segundo factor de esta sesión para acciones sensibles (ISO) o null. */
   stepUpValidUntil: string | null;
   recoveryCodesRemaining: number;

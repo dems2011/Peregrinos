@@ -42,7 +42,7 @@ Excluir: `apps/web/next.config.ts` (`output: "export"`; manda `next.config.mjs` 
    npx.cmd prisma migrate status   # "Database schema is up to date!"
    ```
 3. **Publicar el código** inmediatamente después: commit del conjunto de arriba y push a `main` (Render despliega API y web).
-4. **Variables de Render (API)**: definir `MFA_ENCRYPTION_KEY` (base64 de 32 bytes) antes de que alguien active MFA; sin ella se deriva de `JWT_SECRET` y rotar ese secreto invalidaría los MFA. `MFA_ENFORCE_SUPERADMIN` queda en `true`.
+4. **Variables de Render (API)**: definir `MFA_ENCRYPTION_KEY` (base64 de 32 bytes) antes de que alguien active MFA; sin ella se deriva de `JWT_SECRET` y rotar ese secreto invalidaría los MFA. `MFA_ENFORCE_SUPERADMIN` ya no existe (2026-10-12): el SUPERADMIN entra con usuario y contraseña, sin segundo factor; puede borrarse de Render.
 5. **Verificar**: `/api/health`; ingreso del personal (el SUPERADMIN debe enrolar MFA al entrar); `/solicitud-parroquia`; el enlace de inscripción del evento abierto; `/p` con un código.
 
 ## Rollback

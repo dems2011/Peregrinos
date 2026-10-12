@@ -20,6 +20,7 @@ import {
   verifyPassword,
 } from "../lib/password";
 import { newOpaqueToken, sha256 } from "../lib/tokens";
+import { mfaApplies } from "../lib/mfa";
 import { PILGRIM_ACCOUNT_COOKIE, REFRESH_COOKIE } from "../plugins/auth";
 import {
   buildMe,
@@ -360,7 +361,8 @@ export default async function authRoutes(app: FastifyInstance) {
       }
 
       // A6: con MFA activo, la contraseña sola no abre sesión: se emite el desafío del segundo paso (/api/auth/mfa/verify).
-      if (user.mfaEnabledAt) {
+      // El SUPERADMIN entra con usuario y contraseña (mfaApplies).
+      if (mfaApplies(user)) {
         issueMfaChallenge(app, reply, user);
         await audit(req, {
           action: "LOGIN_PASSWORD_OK_MFA_PENDING",
@@ -447,8 +449,8 @@ export default async function authRoutes(app: FastifyInstance) {
         token.expiresAt < new Date() ||
         !token.user.isActive ||
         token.user.accountType !== "STAFF" ||
-        // A6: con MFA activo, solo se refresca una sesión que nació de un segundo factor.
-        (token.user.mfaEnabledAt && !token.mfaAt)
+        // A6: con MFA activo (salvo SUPERADMIN), solo se refresca una sesión que nació de un segundo factor.
+        (mfaApplies(token.user) && !token.mfaAt)
       ) {
         clearSession(reply);
         throw unauthorized();
@@ -563,8 +565,6 @@ export default async function authRoutes(app: FastifyInstance) {
     "/me",
     {
       preHandler: app.authenticate,
-      // A6: un SUPERADMIN sin MFA necesita /me para saber que debe enrolarse.
-      config: { mfaEnrollment: true },
     },
     async (req) => {
       return buildMe(req.auth.id, req.auth.mfaAt);

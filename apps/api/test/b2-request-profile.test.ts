@@ -145,7 +145,7 @@ describe("B2: API", () => {
 
 describe("B2: web", () => {
   it("las subidas a rutas PUT usan PUT (logo/imagen de la parroquia, fondo de credencial, foto de la solicitud)", () => {
-    assert.match(readWeb("src/app/(app)/configuracion/parroquia/page.tsx"), /upload\(`\/organization\/media\/\$\{kind\}`, form, "PUT"\)/);
+    assert.match(readWeb("src/components/ParishProfileEditor.tsx"), /upload\(`\/organization\/media\/\$\{kind\}`, form, "PUT"\)/);
     assert.match(readWeb("src/app/(app)/evento/credencial/page.tsx"), /upload\(`\/events\/\$\{eid\}\/credentials\/background`, form, "PUT"\)/);
     assert.match(readWeb("src/app/solicitud-parroquia/page.tsx"), /"\/organization-requests\/photo", form, "PUT", \{ "X-Request-Token": token \}/);
   });

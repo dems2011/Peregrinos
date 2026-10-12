@@ -13,7 +13,7 @@ import { prisma } from "../lib/prisma";
 import { AppError, forbidden, unauthorized } from "../lib/errors";
 import { sha256 } from "../lib/tokens";
 import { assertOrgCan } from "../lib/orgLifecycle";
-import { isRecentMfa, mfaEnrollmentRequired } from "../lib/mfa";
+import { isRecentMfa, mfaApplies } from "../lib/mfa";
 
 export const ACCESS_COOKIE = "pg_at";
 export const REFRESH_COOKIE = "pg_rt";
@@ -32,7 +32,7 @@ export interface AuthUser {
   /** A3: estado del ciclo de vida de la organización, leído de la BD en cada petición. */
   organizationStatus: OrganizationStatus;
   extraPermissions: string[];
-  /** A6: la cuenta tiene MFA activo. */
+  /** A6: se le exige segundo factor (MFA activo y no SUPERADMIN, ver mfaApplies). */
   mfaEnabled: boolean;
   /** A6: último segundo factor verificado en esta sesión (claim `mfa` del access token) o null. */
   mfaAt: Date | null;
@@ -62,11 +62,6 @@ declare module "fastify" {
     pilgrim: PilgrimAuth;
     pilgrimAccount: { id: string };
     platform: PlatformAuth;
-  }
-
-  interface FastifyContextConfig {
-    /** A6: la ruta queda disponible para un SUPERADMIN que todavía debe enrolar MFA (me, logout, enrolamiento). */
-    mfaEnrollment?: boolean;
   }
 
   interface FastifyInstance {
@@ -170,8 +165,8 @@ export default fp(async (app) => {
         !user.organization ||
         // A6: activar/desactivar MFA o regenerar códigos invalida las sesiones emitidas antes.
         user.sessionVersion !== sv ||
-        // A6: con MFA activo, toda sesión válida nació de un segundo factor.
-        (user.mfaEnabledAt && mfaSec === null)
+        // A6: con MFA activo (salvo SUPERADMIN, ver mfaApplies), toda sesión válida nació de un segundo factor.
+        (mfaApplies(user) && mfaSec === null)
       ) {
         throw unauthorized();
       }
@@ -185,14 +180,9 @@ export default fp(async (app) => {
         organizationId: user.organizationId,
         organizationStatus: user.organization.status,
         extraPermissions: user.extraPermissions,
-        mfaEnabled: !!user.mfaEnabledAt,
+        mfaEnabled: mfaApplies(user),
         mfaAt: mfaSec !== null ? new Date(mfaSec * 1000) : null,
       };
-
-      // A6 (§8.1): sin MFA activo, el rol SUPERADMIN no se ejerce; solo quedan las rutas de enrolamiento.
-      if (mfaEnrollmentRequired(user) && !req.routeOptions.config?.mfaEnrollment) {
-        throw new AppError(403, "MFA_ENROLLMENT_REQUIRED", "Activa la verificación en dos pasos para continuar.");
-      }
     }
   );
 
