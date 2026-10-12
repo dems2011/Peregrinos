@@ -1,6 +1,8 @@
 /**
  * Genera la identidad de Peregrinos (iglesia) para Web/PWA y Android a partir del icono Church de Lucide
- * (lucide-react 0.460, rejilla de 24 unidades): iglesia blanca con la puerta azul sobre el azul marino de la marca.
+ * (lucide-react 0.460, rejilla de 24 unidades): iglesia blanca sobre el azul marino de la marca. La puerta es solo el
+ * contorno blanco, sin relleno: deja ver el fondo, así que tiene exactamente su color (también en el icono adaptativo de
+ * Android, cuyo primer plano es transparente sobre el mismo azul marino).
  *
  * Uso (desde la raíz del repo):  node scripts/generate-church-icons.cjs
  *  - Web/PWA: apps/web/src/app/icon.svg (favicon), apps/web/src/app/apple-icon.png, apps/web/public/icon.svg,
@@ -15,7 +17,6 @@ const sharp = require("sharp");
 
 const root = path.resolve(__dirname, "..");
 const NAVY = "#0B3158";
-const BLUE = "#1677FF";
 const WHITE = "#FFFFFF";
 
 /** Trazos de Lucide Church con separadores explícitos (también los usa el vector de Android). */
@@ -25,11 +26,11 @@ const CHURCH = [
   "M18,22 V5.618 a1,1 0 0,0 -0.553,-0.894 l-4.553,-2.277 a2,2 0 0,0 -1.788,0 L6.553,4.724 A1,1 0 0,0 6,5.618 V22",
   "M18,7 l3.447,1.724 a1,1 0 0,1 0.553,0.894 V20 a2,2 0 0,1 -2,2 H4 a2,2 0 0,1 -2,-2 V9.618 a1,1 0 0,1 0.553,-0.894 L6,7",
 ];
-/** Puerta (cerrada para rellenarla de azul). */
+/** Puerta (cerrada; sin relleno muestra el color del fondo). */
 const DOOR = "M14,22 v-4 a2,2 0 0,0 -4,0 v4 z";
 
-/** Iglesia centrada en (cx, cy) con lado `size` (px). */
-function church(cx, cy, size, { stroke = WHITE, door = BLUE, width = 2 } = {}) {
+/** Iglesia centrada en (cx, cy) con lado `size` (px). `door`: color de relleno opcional; por defecto, el del fondo. */
+function church(cx, cy, size, { stroke = WHITE, door = null, width = 2 } = {}) {
   const s = size / 24;
   return `<g transform="translate(${cx - size / 2} ${cy - size / 2}) scale(${s})" fill="none" stroke="${stroke}" stroke-width="${width}" stroke-linecap="round" stroke-linejoin="round">`
     + (door ? `<path d="${DOOR}" fill="${door}" stroke="${stroke}"/>` : `<path d="${DOOR}"/>`)
