@@ -11,6 +11,9 @@ datasource db {
 model Organization {
   id   String @id @default(uuid())
   name String
+  /// B4: código institucional único y permanente («PAR-» + 6 dígitos). Lo asigna la base (gen_parish_code()); un
+  /// CHECK valida el formato y un trigger impide cambiarlo (migración 20261016000000_parish_code). Público, sin permisos.
+  code String @unique @default(dbgenerated("gen_parish_code()"))
 
   // Perfil público de la parroquia
   description String?
@@ -683,11 +686,14 @@ model Registration {
   @@index([personId])
 }
 
-/// Comprobante de pago. El archivo vive fuera de la base (ver lib/storage.ts); aquí solo su referencia y huella.
+/// Comprobante de pago: referencia, huella y (desde la migración 20261017000000_payment_proof_data) el archivo.
 model PaymentProof {
   id             String       @id @default(uuid())
   registrationId String
+  /// Nombre aleatorio del archivo («uuid.ext»). Los comprobantes anteriores a `data` siguen en UPLOAD_DIR con este nombre.
   storageKey     String       @unique
+  /// Archivo del comprobante (validado por su firma). NULL solo en comprobantes anteriores, guardados en disco.
+  data           Bytes?
   mimeType       String
   sizeBytes      Int
   /// Huella SHA-256: detecta el mismo comprobante usado en dos inscripciones.

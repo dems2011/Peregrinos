@@ -28,6 +28,7 @@ export function ParishProfileView({ parish, events, action, preview = false, hig
           <div className="parish-title">
             <h1>{parish.name}</h1>
             <span className="muted small"><Users size={14} style={{ verticalAlign: "-2px" }} /> {parish.followerCount} {parish.followerCount === 1 ? "seguidor" : "seguidores"}</span>
+            <span className="muted small" title="Código de la parroquia"> · Código <strong>{parish.code}</strong></span>
           </div>
         </div>
         {action && <div style={{ marginTop: 12 }}>{action}</div>}

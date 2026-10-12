@@ -12,7 +12,7 @@ import { AppError, unauthorized } from "../lib/errors";
 import { newOpaqueToken, sha256 } from "../lib/tokens";
 import { hashAccess, normalizeCode } from "../lib/pilgrim";
 import { cookieBase } from "../lib/session";
-import { saveProof } from "../lib/storage";
+import { prepareProof } from "../lib/storage";
 import { assertEventCapability } from "../lib/eventLifecycle";
 import { PILGRIM_COOKIE } from "../plugins/auth";
 
@@ -147,8 +147,8 @@ export default async function pilgrimRoutes(app: FastifyInstance) {
     if (!file || file.length === 0) throw new AppError(400, "NO_FILE", "Adjunta la foto o el PDF del comprobante.");
     const data = proofFieldsSchema.parse(fields);
 
-    const saved = await saveProof(file);
-    if (await prisma.paymentProof.findFirst({ where: { registrationId: regId, sha256: saved.sha256 } })) {
+    const saved = prepareProof(file);
+    if (await prisma.paymentProof.findFirst({ where: { registrationId: regId, sha256: saved.sha256 }, select: { id: true } })) {
       throw new AppError(409, "DUPLICATE_FILE", "Ya enviaste este mismo archivo.");
     }
     await prisma.$transaction(async (tx) => {
@@ -159,7 +159,8 @@ export default async function pilgrimRoutes(app: FastifyInstance) {
       });
       if (claimed.count !== 1) throw new AppError(409, "NOT_APPLICABLE", "No se pueden enviar comprobantes en este estado.");
       await tx.paymentProof.create({
-        data: { registrationId: regId, storageKey: saved.key, mimeType: saved.mime, sizeBytes: saved.size, sha256: saved.sha256, amount: data.amount, reference: data.reference, paidAt: data.paidAt, note: data.note },
+        data: { registrationId: regId, storageKey: saved.key, data: new Uint8Array(file), mimeType: saved.mime, sizeBytes: saved.size, sha256: saved.sha256, amount: data.amount, reference: data.reference, paidAt: data.paidAt, note: data.note },
+        select: { id: true },
       });
     });
     await audit(req, { action: "PAYMENT_PROOF_SUBMITTED", entityType: "Registration", entityId: regId, eventId: reg.eventId, organizationId: reg.event.organizationId, metadata: { mime: saved.mime, bytes: saved.size } });

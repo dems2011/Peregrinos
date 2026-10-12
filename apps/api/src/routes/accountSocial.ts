@@ -36,7 +36,7 @@ export default async function accountSocialRoutes(app: FastifyInstance) {
   app.get("/follows", auth, async (req) => {
     const rows = await prisma.parishFollower.findMany({
       where: { userId: req.pilgrimAccount.id, organization: { status: "APPROVED" } },
-      select: { createdAt: true, organization: { select: { id: true, name: true, address: true } } },
+      select: { createdAt: true, organization: { select: { id: true, code: true, name: true, address: true } } },
       orderBy: { createdAt: "desc" },
     });
     return { items: await Promise.all(rows.map(async (r) => ({ ...r.organization, since: r.createdAt, ...(await parishMediaUrls(r.organization.id)) }))) };

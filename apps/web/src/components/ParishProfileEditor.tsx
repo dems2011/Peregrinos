@@ -1,12 +1,12 @@
 "use client";
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { Trash2, Upload } from "lucide-react";
-import { PARISH_IMAGE_SPEC } from "@peregrinos/shared";
-import { ApiError, api, del, patch, upload } from "@/lib/api";
+import { Copy, Download, Trash2, Upload } from "lucide-react";
+import { PARISH_IMAGE_SPEC, PARISH_POSTER_SIZES, type ParishPosterSize } from "@peregrinos/shared";
+import { ApiError, api, del, download, patch, upload } from "@/lib/api";
 import { useLoad } from "@/lib/hooks";
 import { useApp } from "@/components/AppContext";
 import { ParishProfileView } from "@/components/ParishProfileView";
-import { ErrorBox, Loading, Page } from "@/components/ui";
+import { copyText, ErrorBox, Loading, Page } from "@/components/ui";
 import type { ParishProfile, PublicEvent } from "@/lib/types";
 
 /**
@@ -63,6 +63,9 @@ export function ParishProfileEditor({ back }: { back?: string }) {
           <ParishProfileView preview parish={p} events={pub.data?.events ?? []} action={<span className="btn btn-primary" aria-disabled="true">Seguir</span>} />
         </section>
 
+        <PosterCard code={p.code} id={p.id} approved={p.status === "APPROVED"} busy={busy}
+          onDownload={(size) => void run(() => download(`/organization/poster.pdf?size=${size}`, `cartel-${p.code}-${size}.pdf`), `Cartel ${size} descargado.`)} />
+
         <h2 style={{ margin: "16px 0 0" }}>Editar el perfil</h2>
         <form className="card" onSubmit={save} noValidate>
           <h2>Información pública</h2>
@@ -79,6 +82,27 @@ export function ParishProfileEditor({ back }: { back?: string }) {
           hint={`Horizontal (recomendado 1600 × 900 px, proporción ${PARISH_IMAGE_SPEC.cover.minRatio}–${PARISH_IMAGE_SPEC.cover.maxRatio}), mínimo ${PARISH_IMAGE_SPEC.cover.minWidth} × ${PARISH_IMAGE_SPEC.cover.minHeight} px, PNG/JPEG/WEBP, hasta 2 MB.`} />
       </>}
     </Page>
+  );
+}
+
+/**
+ * B4 — Código institucional (permanente, lo asigna el sistema) y cartel imprimible con el QR del perfil de la parroquia.
+ * El QR abre /parroquias?codigo=…, que lleva al perfil exacto. Solo con la parroquia aprobada (antes el perfil no es público).
+ */
+function PosterCard({ code, id, approved, busy, onDownload }: { code: string; id: string; approved: boolean; busy: boolean; onDownload: (size: ParishPosterSize) => void }) {
+  return (
+    <section className="card stack-sm">
+      <h2>Código y cartel de la parroquia</h2>
+      <p style={{ margin: 0 }}>Código: <strong style={{ fontSize: 20, letterSpacing: 1 }}>{code}</strong> <button type="button" className="btn btn-sm" onClick={() => copyText(code)}><Copy size={16} /> Copiar</button></p>
+      <p className="muted small" style={{ margin: 0 }}>Es único y no cambia aunque cambies el nombre, el logo o la dirección. Los fieles lo escriben en «Buscar mi parroquia» para encontrarla sin confundirla con otra. No da ningún permiso.</p>
+      {approved ? <>
+        <img src={`/api/public/parishes/${id}/qr.svg`} alt={`Código QR de la parroquia ${code}`} width={160} height={160} style={{ background: "#fff", padding: 8, borderRadius: 8 }} />
+        <p className="muted small" style={{ margin: 0 }}>Cartel listo para imprimir con el logo, el nombre, este código y el QR que abre el perfil de la parroquia.</p>
+        <div className="btn-row">
+          {PARISH_POSTER_SIZES.map((s) => <button key={s} type="button" className="btn" disabled={busy} onClick={() => onDownload(s)}><Download size={18} /> Cartel {s} (PDF)</button>)}
+        </div>
+      </> : <p className="muted small" style={{ margin: 0 }}>El QR y el cartel estarán disponibles cuando la parroquia esté aprobada.</p>}
+    </section>
   );
 }
 

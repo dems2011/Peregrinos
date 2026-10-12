@@ -319,6 +319,24 @@ export const PARISH_IMAGE_SPEC = {
   cover: { mimes: ["image/png", "image/jpeg", "image/webp"] as const, maxBytes: 2 * 1024 * 1024, minWidth: 1200, minHeight: 600, maxPx: 6000, minRatio: 1.5, maxRatio: 2.2 },
 } as const;
 
+/* =====================  B4: CÓDIGO INSTITUCIONAL DE LA PARROQUIA  ===================== */
+/**
+ * Código único y permanente de cada parroquia: «PAR-» + 6 dígitos (p. ej. PAR-482193). Lo asigna la base al crear la
+ * organización (función gen_parish_code(), índice único); no cambia con el nombre, el logo ni la dirección. Es público:
+ * sirve para buscar y enlazar la parroquia, nunca como contraseña ni para dar permisos.
+ */
+export const PARISH_CODE_PATTERN = /^PAR-\d{6}$/;
+
+/** Acepta lo que alguien dicta o escribe («par 482193», «482193», «PAR-482193») y devuelve el código o null. */
+export function normalizeParishCode(input: string): string | null {
+  const digits = input.toUpperCase().replace(/[^A-Z0-9]/g, "").replace(/^PAR/, "");
+  return /^\d{6}$/.test(digits) ? `PAR-${digits}` : null;
+}
+
+/** Tamaños del cartel institucional imprimible. */
+export const PARISH_POSTER_SIZES = ["A4", "A3"] as const;
+export type ParishPosterSize = (typeof PARISH_POSTER_SIZES)[number];
+
 export const organizationProfileSchema = z.object({
   name: z.string().trim().min(3).max(160).optional(),
   description: z.string().trim().max(2000).nullable().optional(),

@@ -437,6 +437,17 @@ export declare const PARISH_IMAGE_SPEC: {
         readonly maxRatio: 2.2;
     };
 };
+/**
+ * Código único y permanente de cada parroquia: «PAR-» + 6 dígitos (p. ej. PAR-482193). Lo asigna la base al crear la
+ * organización (función gen_parish_code(), índice único); no cambia con el nombre, el logo ni la dirección. Es público:
+ * sirve para buscar y enlazar la parroquia, nunca como contraseña ni para dar permisos.
+ */
+export declare const PARISH_CODE_PATTERN: RegExp;
+/** Acepta lo que alguien dicta o escribe («par 482193», «482193», «PAR-482193») y devuelve el código o null. */
+export declare function normalizeParishCode(input: string): string | null;
+/** Tamaños del cartel institucional imprimible. */
+export declare const PARISH_POSTER_SIZES: readonly ["A4", "A3"];
+export type ParishPosterSize = (typeof PARISH_POSTER_SIZES)[number];
 export declare const organizationProfileSchema: z.ZodObject<{
     name: z.ZodOptional<z.ZodString>;
     description: z.ZodOptional<z.ZodNullable<z.ZodString>>;

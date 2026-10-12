@@ -5,7 +5,7 @@ import { api } from "@/lib/api";
 import { useLoad } from "@/lib/hooks";
 
 /** B1 — Parroquias que sigue la cuenta (y acceso al buscador). */
-interface Followed { id: string; name: string; address: string | null; logoUrl: string | null }
+interface Followed { id: string; code: string; name: string; address: string | null; logoUrl: string | null }
 
 export default function MisParroquias() {
   const list = useLoad(() => api<{ items: Followed[] }>("/auth/account/follows"), []);
@@ -18,7 +18,7 @@ export default function MisParroquias() {
         {list.data?.items.map((p) => (
           <Link key={p.id} href={`/parroquias/${p.id}`} className="list-item">
             {p.logoUrl ? <img className="parish-logo" style={{ width: 44, height: 44, flexBasis: 44 }} src={p.logoUrl} alt="" /> : <span className="parish-logo placeholder" style={{ width: 44, height: 44, flexBasis: 44, fontSize: 18 }} aria-hidden="true">{p.name.charAt(0)}</span>}
-            <span className="grow"><span className="t">{p.name}</span>{p.address && <><br /><span className="s">{p.address}</span></>}</span>
+            <span className="grow"><span className="t">{p.name}</span><br /><span className="s">{[p.code, p.address].filter(Boolean).join(" · ")}</span></span>
           </Link>
         ))}
       </section>

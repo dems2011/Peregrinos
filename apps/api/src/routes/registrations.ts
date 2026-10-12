@@ -96,7 +96,7 @@ export default async function registrationAdminRoutes(app: FastifyInstance) {
     await loadEvent(req, eventId);
     const proof = await prisma.paymentProof.findFirst({ where: { id: proofId, registrationId: id, registration: { eventId } } });
     if (!proof) throw notFound("Comprobante no encontrado.");
-    const stream = await openProof(proof.storageKey);
+    const stream = await openProof(proof);
     reply.header("Content-Type", proof.mimeType);
     reply.header("Content-Disposition", `inline; filename="comprobante-${proof.id.slice(0, 8)}.${proof.storageKey.split(".").pop()}"`);
     reply.header("X-Content-Type-Options", "nosniff");

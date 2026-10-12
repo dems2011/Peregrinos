@@ -27,7 +27,7 @@ export interface ChatMessage {
 }
 /** B1: perfil público de una parroquia. */
 export interface ParishProfile {
-  id: string; name: string; description: string | null; address: string | null; phone: string | null; email: string | null;
+  id: string; code: string; name: string; description: string | null; address: string | null; phone: string | null; email: string | null;
   website: string | null; instagram: string | null; facebook: string | null; youtube: string | null; tiktok: string | null;
   followerCount: number; logoUrl: string | null; coverUrl: string | null;
 }

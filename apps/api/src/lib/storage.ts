@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { createReadStream } from "node:fs";
-import { mkdir, stat, writeFile } from "node:fs/promises";
+import { stat } from "node:fs/promises";
 import path from "node:path";
 import { cfg } from "../config";
 import { AppError, notFound } from "./errors";
@@ -17,19 +17,21 @@ export function sniff(b: Buffer): { ext: "jpg" | "png" | "webp" | "pdf"; mime: s
   return null;
 }
 
-/** Guarda el comprobante con un nombre aleatorio, fuera de cualquier carpeta pública y con permisos restringidos. */
-export async function saveProof(buf: Buffer) {
+/**
+ * Valida el comprobante y prepara su registro: nombre aleatorio, tipo real, tamaño y huella. El archivo se guarda en la
+ * base (PaymentProof.data), no en el disco del servidor: en Render y en Cloud Run el disco se pierde en cada despliegue.
+ */
+export function prepareProof(buf: Buffer) {
   const kind = sniff(buf);
   if (!kind) throw new AppError(400, "INVALID_FILE", "Sube una foto (JPG, PNG o WEBP) o un PDF.");
-  const key = `${randomUUID()}.${kind.ext}`;
-  await mkdir(root, { recursive: true, mode: 0o700 });
-  await writeFile(path.join(root, key), buf, { flag: "wx", mode: 0o600 });
-  return { key, mime: kind.mime, size: buf.length, sha256: createHash("sha256").update(buf).digest("hex") };
+  return { key: `${randomUUID()}.${kind.ext}`, mime: kind.mime, size: buf.length, sha256: createHash("sha256").update(buf).digest("hex") };
 }
 
-export async function openProof(key: string) {
-  if (!KEY.test(key)) throw notFound("Archivo no encontrado.");
-  const file = path.join(root, key);
+/** Archivo del comprobante: desde la base; los anteriores a la columna `data`, desde UPLOAD_DIR si todavía existen. */
+export async function openProof(proof: { storageKey: string; data: Uint8Array | null }) {
+  if (proof.data) return Buffer.from(proof.data);
+  if (!KEY.test(proof.storageKey)) throw notFound("Archivo no encontrado.");
+  const file = path.join(root, proof.storageKey);
   try { await stat(file); } catch { throw notFound("El archivo ya no está disponible."); }
   return createReadStream(file);
 }

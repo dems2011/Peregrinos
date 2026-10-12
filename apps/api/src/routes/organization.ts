@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
-import { PARISH_IMAGE_SPEC, organizationProfileSchema, sendNotificationSchema, submitOrganizationReviewSchema } from "@peregrinos/shared";
+import { PARISH_IMAGE_SPEC, PARISH_POSTER_SIZES, organizationProfileSchema, sendNotificationSchema, submitOrganizationReviewSchema } from "@peregrinos/shared";
 import { prisma } from "../lib/prisma";
 import { audit, auditTx } from "../lib/audit";
 import { AppError, forbidden } from "../lib/errors";
@@ -8,14 +8,16 @@ import { assertOrgCan, assertOrgTransition } from "../lib/orgLifecycle";
 import { recordStatusChange } from "../lib/orgStatus";
 import { readSingleFile, validateImage } from "../lib/image";
 import { notifyFollowers, pushNotification } from "../lib/notifications";
+import { buildParishPosterPdf } from "../lib/parishPoster";
 import { parishMediaUrls } from "./public";
 
 /** B1: el perfil público, sus imágenes y los avisos a seguidores los gestiona solo el SUPERADMIN de la parroquia. */
 const requireSuperadmin = async (req: FastifyRequest) => { if (req.auth.role !== "SUPERADMIN") throw forbidden("Solo el superadministrador de la parroquia puede hacerlo."); };
 const mediaKind = z.object({ kind: z.enum(["logo", "cover"]) });
+const posterQuery = z.object({ size: z.enum(PARISH_POSTER_SIZES).default("A4") });
 const KIND = { logo: "PARISH_LOGO", cover: "PARISH_COVER" } as const;
 const PROFILE_SELECT = {
-  id: true, name: true, status: true, description: true, address: true, phone: true, email: true, website: true,
+  id: true, code: true, name: true, status: true, description: true, address: true, phone: true, email: true, website: true,
   instagram: true, facebook: true, youtube: true, tiktok: true, updatedAt: true,
 } as const;
 
@@ -25,7 +27,7 @@ export default async function organizationRoutes(app: FastifyInstance) {
     const org = await prisma.organization.findUniqueOrThrow({
       where: { id: req.auth.organizationId },
       select: {
-        id: true, name: true, status: true,
+        id: true, code: true, name: true, status: true,
         statusChanges: { orderBy: { createdAt: "desc" }, take: 1, select: { fromStatus: true, toStatus: true, reason: true, createdAt: true } },
       },
     });
@@ -93,6 +95,22 @@ export default async function organizationRoutes(app: FastifyInstance) {
     await prisma.mediaAsset.deleteMany({ where: { organizationId: req.auth.organizationId, kind: KIND[kind], eventId: null } });
     await audit(req, { action: "ORGANIZATION_MEDIA_REMOVED", entityType: "Organization", entityId: req.auth.organizationId, metadata: { kind } });
     return profileView(req.auth.organizationId);
+  });
+
+  /* ---------- B4: cartel institucional imprimible (A4/A3) ---------- */
+  app.get("/poster.pdf", { preHandler: [app.authenticate, requireSuperadmin], config: { rateLimit: { max: 20, timeWindow: "15 minutes" } } }, async (req, reply) => {
+    const { size } = posterQuery.parse(req.query);
+    const org = await prisma.organization.findUniqueOrThrow({ where: { id: req.auth.organizationId }, select: { name: true, code: true, address: true, status: true } });
+    // El QR lleva al perfil público: sin aprobación ese perfil no existe y el cartel quedaría con un enlace roto.
+    if (org.status !== "APPROVED") throw new AppError(409, "ORGANIZATION_NOT_PUBLIC", "El cartel estará disponible cuando la parroquia esté aprobada y su perfil sea público.");
+    const logo = await prisma.mediaAsset.findFirst({ where: { organizationId: req.auth.organizationId, kind: "PARISH_LOGO", eventId: null }, select: { data: true, mime: true } });
+    const pdf = await buildParishPosterPdf({ name: org.name, code: org.code, address: org.address, logo: logo ? { data: Buffer.from(logo.data), mime: logo.mime } : null }, size);
+    await audit(req, { action: "ORGANIZATION_POSTER_EXPORTED", entityType: "Organization", entityId: req.auth.organizationId, metadata: { size } });
+    return reply
+      .header("Content-Type", "application/pdf")
+      .header("Content-Disposition", `attachment; filename="cartel-${org.code}-${size}.pdf"`)
+      .header("Cache-Control", "no-store")
+      .send(pdf);
   });
 
   /* ---------- B1: avisos a los seguidores ---------- */
