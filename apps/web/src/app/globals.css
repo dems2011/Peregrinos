@@ -207,6 +207,41 @@ a { color: inherit; text-decoration: none; }
 .login-link-card a { color: #fff; font-weight: 800; text-decoration: underline; text-underline-offset: 3px; }
 @media (min-width: 640px) { .splash.login { justify-content: center; } }
 
+/* Fase 6: fotografía de fondo en las pantallas de acceso (componente SplashBackground). La foto es vertical (1664×2530):
+   - Vertical (celular, tableta): cabecera fotográfica arriba (46 % del alto), a lo ancho de la pantalla, que muestra al
+     peregrino y la cruz; la marca va sobre el pasto oscurecido y el formulario debajo, sobre el azul, sin tapar la foto.
+   - Horizontal desde 700 px (escritorio, tableta o celular girado): la foto ocupa la mitad izquierda (como máximo su
+     ancho original, para no ampliarla) y el formulario queda a la derecha, sobre el azul de la marca.
+   Mientras carga se ve el azul de la marca. Nunca se deforma (object-fit: cover). */
+.splash.photo { --hero-h: clamp(280px, 46dvh, 640px); position: relative; isolation: isolate; justify-content: flex-start; padding-top: 0; background: var(--navy); }
+.splash-bg { position: absolute; inset: 0 0 auto 0; height: var(--hero-h); z-index: -1; overflow: hidden; background: var(--navy); }
+.splash-bg img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: 42% 40%; }
+.splash-bg::after { content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(180deg, rgba(11, 49, 88, .35) 0%, rgba(11, 49, 88, 0) 22%, rgba(11, 49, 88, 0) 52%, rgba(11, 49, 88, .8) 86%, var(--navy) 100%); }
+.splash.photo .brand { min-height: var(--hero-h); margin-bottom: 18px; display: flex; flex-direction: column; justify-content: flex-end; align-items: center;
+  text-shadow: 0 2px 10px rgba(3, 18, 38, .75); }
+.splash.photo .brand p { color: #fff; }
+.splash.photo .brand h1 { font-size: 30px; margin-top: 10px; }
+.splash.photo .brand > svg { width: 48px; height: 48px; }
+.splash.photo .login-mark { width: 60px; height: 60px; border-radius: 18px; background: rgba(11, 49, 88, .55); }
+.splash.photo .login-mark svg { width: 36px; height: 36px; }
+@media (min-width: 700px) and (orientation: landscape) {
+  .splash.photo { --photo-w: min(50vw, 1664px); justify-content: center; padding: max(env(safe-area-inset-top), 24px) clamp(20px, 3vw, 40px) 24px calc(var(--photo-w) + clamp(20px, 3vw, 40px)); }
+  .splash-bg { position: fixed; inset: 0 auto 0 0; width: var(--photo-w); height: auto; }
+  .splash-bg img { object-position: 40% 52%; }
+  .splash-bg::after { background: linear-gradient(90deg, rgba(11, 49, 88, 0) 75%, rgba(11, 49, 88, .55) 100%); }
+  .splash.photo .brand { min-height: 0; margin-bottom: 24px; text-shadow: none; }
+  .splash.photo .brand h1 { font-size: 34px; margin-top: 14px; }
+  .splash.photo .brand > svg { width: 64px; height: 64px; }
+  .splash.photo .login-mark { width: 88px; height: 88px; border-radius: 26px; background: rgba(255, 255, 255, .08); }
+  .splash.photo .login-mark svg { width: 52px; height: 52px; }
+}
+
+/* Mis parroquias (cuenta del peregrino): la parroquia y, debajo, su preferencia del boletín por correo. */
+.follow-item { border-bottom: 1px solid var(--line); }
+.follow-item .list-item { border-bottom: 0; }
+.follow-pref { padding: 0 16px 12px 74px; font-weight: 500; font-size: 14.5px; color: var(--muted); }
+
 /* Arranque en frío del API: aviso global mientras se reintenta una lectura. */
 .conn-status { position: fixed; z-index: 1000; left: 50%; transform: translateX(-50%); top: max(env(safe-area-inset-top), 12px);
   width: min(560px, calc(100% - 24px)); display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-radius: 16px;
@@ -293,3 +328,23 @@ img, svg, video { max-width: 100%; }
 .form-section { margin: 6px 0 14px; padding-top: 14px; border-top: 1px solid var(--line); }
 .form-section h2 { font-size: 16px; margin: 0 0 4px; }
 .form-section .hint { display: block; color: var(--muted); font-size: 13px; }
+/* B5: permisos por grupos (invitar y «Permisos» del colaborador). */
+.perm-group { border: 1px solid var(--line); border-radius: 12px; padding: 8px 12px 4px; margin: 0; }
+.perm-group legend { font-weight: 800; font-size: 13px; color: var(--navy); padding: 0 6px; }
+.field > summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; gap: 6px; }
+/* B5: perfil público — en vivo, publicaciones, donaciones y agenda. */
+.live-badge { display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 800; letter-spacing: .4px; background: #EEF1F5; color: #4A5563; }
+.live-badge.on { background: #D94343; color: #fff; }
+.live-badge.on svg { animation: live-pulse 1.4s ease-in-out infinite; }
+@keyframes live-pulse { 50% { opacity: .35; } }
+@media (prefers-reduced-motion: reduce) { .live-badge.on svg { animation: none; } }
+.video-frame { position: relative; width: 100%; aspect-ratio: 16 / 9; border-radius: 12px; overflow: hidden; background: #000; }
+.video-frame iframe, .chat-frame iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+.chat-frame { position: relative; width: 100%; height: 420px; margin-top: 8px; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+.post-img { display: block; width: 100%; object-fit: cover; border-radius: 12px; margin-bottom: 8px; background: #E8EEF5; }
+.event-post.finished { opacity: .8; }
+.donation-card { display: flex; flex-direction: column; gap: 6px; padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: #fff; }
+.donation-card .btn { align-self: flex-start; }
+.schedule-day ul { margin: 4px 0 8px; padding-left: 18px; }
+.schedule-day li { margin: 2px 0; }
+.sched-time { font-weight: 700; font-variant-numeric: tabular-nums; color: var(--navy); }

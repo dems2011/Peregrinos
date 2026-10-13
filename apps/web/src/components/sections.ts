@@ -1,4 +1,7 @@
-import { BarChart3, CalendarCog, CalendarDays, ClipboardList, Clock, HandHeart, History, IdCard, KeyRound, MapPin, MessagesSquare, Phone, ScanLine, ShieldCheck, Users, Wallet } from "lucide-react";
+import {
+  BarChart3, Boxes, CalendarClock, CalendarCog, CalendarDays, Church, ClipboardList, Clock, FileBadge, HandHeart, HeartHandshake, History, IdCard,
+  KeyRound, MapPin, Megaphone, MessagesSquare, Newspaper, Phone, Radio, ScanLine, ShieldCheck, Users, UsersRound, Wallet,
+} from "lucide-react";
 import { hasEventCapability, type EventCapability, type Permission } from "@peregrinos/shared";
 
 /**
@@ -26,13 +29,27 @@ export const EVENT_SECTIONS: Section[] = [
   { href: "/configuracion/evento", label: "Datos del evento", sub: "Tipo, fechas, lugar, trayecto, inscripción y certificado", icon: CalendarCog, color: "#1677FF", perm: "event:update" },
 ];
 
-/** Configuración y administración que no dependen del evento activo. */
-export const ADMIN_SECTIONS: Section[] = [
-  { href: "/configuracion/eventos", label: "Eventos", sub: "Todos los eventos por tipo y estado; elegir con cuál trabajar", icon: CalendarDays, color: "#0E9AA7", perm: "event:update" },
-  { href: "/configuracion/usuarios", label: "Usuarios e invitaciones", sub: "Equipo, invitaciones y puntos asignados", icon: Users, color: "#7B3FE4", perm: ["user:manage", "invitation:manage", "assignment:manage"] },
-  { href: "/configuracion/auditoria", label: "Auditoría", sub: "Quién hizo cada acción", icon: History, color: "#4A5563", perm: "audit:read" },
+/**
+ * Configuración y administración que no dependen del evento activo. B5: agrupadas por categoría; cada una aparece solo
+ * si la persona tiene su permiso (la API lo exige igual).
+ */
+export const ADMIN_GROUPS = ["Perfil y publicaciones", "Eventos y seguimiento", "Agenda y vida parroquial", "Donaciones", "Administración parroquial", "Acceso y permisos"] as const;
+export type AdminGroup = (typeof ADMIN_GROUPS)[number];
+export const ADMIN_SECTIONS: (Section & { group: AdminGroup })[] = [
+  { group: "Perfil y publicaciones", href: "/configuracion/parroquia", label: "Perfil de la parroquia", sub: "Datos públicos, logo, código y cartel", icon: Church, color: "#0B3158", perm: "parish:profile" },
+  { group: "Perfil y publicaciones", href: "/avisos", label: "Avisos", sub: "Avisos a los seguidores", icon: Megaphone, color: "#F29B18", perm: "notice:send" },
+  { group: "Perfil y publicaciones", href: "/configuracion/boletin", label: "Boletín parroquial", sub: "Boletín semanal para los seguidores", icon: Newspaper, color: "#0E9AA7", perm: "notice:send" },
+  { group: "Perfil y publicaciones", href: "/configuracion/transmisiones", label: "Transmisiones en vivo", sub: "Misas y celebraciones por YouTube", icon: Radio, color: "#D94343", perm: "stream:manage" },
+  { group: "Eventos y seguimiento", href: "/configuracion/eventos", label: "Eventos", sub: "Todos los eventos por tipo y estado; elegir con cuál trabajar", icon: CalendarDays, color: "#0E9AA7", perm: "event:update" },
+  { group: "Agenda y vida parroquial", href: "/configuracion/agenda", label: "Agenda pastoral", sub: "Misas, confesiones, adoración y actividades", icon: CalendarClock, color: "#18A957", perm: "agenda:manage" },
+  { group: "Agenda y vida parroquial", href: "/configuracion/grupos", label: "Grupos pastorales", sub: "Grupos, miembros y asistencia", icon: UsersRound, color: "#7B3FE4", perm: "group:manage" },
+  { group: "Donaciones", href: "/configuracion/donaciones", label: "Donaciones", sub: "Campañas con enlace de Mercado Pago", icon: HeartHandshake, color: "#D9467A", perm: "donation:manage" },
+  { group: "Administración parroquial", href: "/configuracion/certificados", label: "Certificados", sub: "Solicitudes de partidas sacramentales", icon: FileBadge, color: "#1677FF", perm: "certificate:manage" },
+  { group: "Administración parroquial", href: "/configuracion/inventario", label: "Inventario", sub: "Bienes y recursos de la parroquia", icon: Boxes, color: "#4A5563", perm: "inventory:manage" },
+  { group: "Acceso y permisos", href: "/configuracion/usuarios", label: "Usuarios e invitaciones", sub: "Equipo, invitaciones, permisos y puntos asignados", icon: Users, color: "#7B3FE4", perm: ["user:manage", "invitation:manage", "assignment:manage"] },
+  { group: "Acceso y permisos", href: "/configuracion/auditoria", label: "Auditoría", sub: "Quién hizo cada acción", icon: History, color: "#4A5563", perm: "audit:read" },
   // Disponible para todo el personal: cada cuenta cambia su propia contraseña.
-  { href: "/configuracion/seguridad", label: "Seguridad de la cuenta", sub: "Cambiar contraseña", icon: ShieldCheck, color: "#0F766E" },
+  { group: "Acceso y permisos", href: "/configuracion/seguridad", label: "Seguridad de la cuenta", sub: "Cambiar contraseña", icon: ShieldCheck, color: "#0F766E" },
 ];
 
 type EventLike = Parameters<typeof hasEventCapability>[0];

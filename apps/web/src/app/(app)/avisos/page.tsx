@@ -5,12 +5,12 @@ import { useApp } from "@/components/AppContext";
 import { ParishNotifications } from "@/components/ParishNotifications";
 import { ErrorBox, Loading, Page } from "@/components/ui";
 
-/** Acceso directo «Aviso» del superadministrador: enviar avisos a los seguidores de la parroquia. */
+/** «Aviso»: enviar avisos a los seguidores de la parroquia (B5: permiso notice:send). */
 export default function Aviso() {
-  const { me } = useApp();
-  const sa = me.user.role === "SUPERADMIN";
+  const { me, can } = useApp();
+  const sa = can("notice:send");
   const prof = useLoad(() => (sa ? api<{ profile: { followerCount: number } }>("/organization/profile") : Promise.resolve(null)), [sa]);
-  if (!sa) return <Page title="Aviso"><div className="alert warn">Solo el superadministrador puede enviar avisos a los seguidores.</div></Page>;
+  if (!sa) return <Page title="Aviso"><div className="alert warn">No tienes permiso para enviar avisos a los seguidores.</div></Page>;
   return (
     <Page title="Aviso">
       <ErrorBox msg={prof.error} />

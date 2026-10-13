@@ -10,6 +10,8 @@ export interface EventItem {
   startsAt: string; endsAt: string | null; timezone: string; parishName: string | null;
   locationName: string | null; address: string | null; latitude: number | null; longitude: number | null;
   capacity: number | null; visibility: EventVisibility;
+  /** B5: seguimiento GPS en vivo activado por la parroquia (opt-in de cada participante). */
+  trackingEnabled?: boolean;
   registrationOpen: boolean; registrationOpensAt: string | null; registrationClosesAt: string | null;
   registrationFee: string | null; paymentInstructions: string | null;
   certificateEnabled: boolean; certificatePhrase: string | null; settings: Record<string, unknown>;
@@ -35,7 +37,21 @@ export interface PublicEvent {
   id: string; name: string; description: string | null; type: EventType; status: EventStatus; startsAt: string; endsAt: string | null;
   timezone: string; locationName: string | null; address: string | null; capacity: number | null; spotsLeft: number | null;
   registrationFee: string | null; registrationState: RegistrationState; registrationPath: string | null;
+  /** B5: portada (variantes WebP) y etapa de la publicación. */
+  cover?: ImageSet | null;
+  phase?: "UPCOMING" | "IN_PROGRESS" | "FINISHED";
 }
+
+/* B5 — contenido del perfil público además de los eventos. */
+export interface ImageSet { large: string | null; medium: string | null; small: string | null }
+export interface PublicLivestream {
+  id: string; title: string; videoId: string; watchUrl: string; status: "SCHEDULED" | "LIVE" | "ENDED"; verified: boolean;
+  scheduledAt: string | null; startedAt: string | null;
+}
+export interface PublicScheduleItem { id: string; kind: string; title: string; weekday: number | null; date: string | null; startTime: string; endTime: string | null; location: string | null; notes: string | null }
+export interface PublicCampaign { id: string; title: string; purpose: string; description: string | null; beneficiary: string; url: string; image: ImageSet | null }
+export interface PublicBulletin { id: string; title: string; weekOf: string; body: string; publishedAt: string }
+export interface ParishExtras { livestream: PublicLivestream | null; schedule: PublicScheduleItem[]; campaigns: PublicCampaign[]; bulletins: PublicBulletin[] }
 export interface Person {
   id: string; personId?: string; number: number; firstName: string; lastName: string; documentNumber: string; status: "ACTIVE" | "CANCELLED";
   phone?: string; documentType?: string; notes?: string | null; createdAt?: string;

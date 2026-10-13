@@ -12,7 +12,7 @@ import { PublicShell } from "@/components/PublicShell";
  * B1 — Buscador público de parroquias (solo las aprobadas), por nombre, ciudad o código institucional.
  * B4 — Con ?codigo=PAR-482193 (QR o enlace del cartel) abre directamente el perfil de ESA parroquia.
  */
-interface Item { id: string; code: string; name: string; address: string | null; description: string | null; followerCount: number; publicEvents: number; logoUrl: string | null }
+interface Item { id: string; code: string; name: string; address: string | null; description: string | null; followerCount: number; publicEvents: number; logoUrl: string | null; live?: boolean }
 
 export default function Parroquias() {
   const router = useRouter();
@@ -52,7 +52,7 @@ export default function Parroquias() {
           {list.data?.items.map((p) => (
             <Link key={p.id} href={`/parroquias/${p.id}`} className="list-item">
               {p.logoUrl ? <img className="parish-logo" style={{ width: 48, height: 48, flexBasis: 48 }} src={p.logoUrl} alt="" /> : <span className="parish-logo placeholder" style={{ width: 48, height: 48, flexBasis: 48, fontSize: 20 }} aria-hidden="true">{p.name.charAt(0)}</span>}
-              <span className="grow"><span className="t">{p.name}</span><br />
+              <span className="grow"><span className="t">{p.name}</span>{p.live && <> <span className="live-badge on">EN VIVO</span></>}<br />
                 <span className="s">{[p.address, p.code, `${p.publicEvents} ${p.publicEvents === 1 ? "evento" : "eventos"}`, `${p.followerCount} ${p.followerCount === 1 ? "seguidor" : "seguidores"}`].filter(Boolean).join(" · ")}</span></span>
             </Link>
           ))}

@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
-import { MailPlus, RefreshCw, Trash2, UserCog } from "lucide-react";
-import { ACCESS_LEVELS, canGrantRole, canInviteRole } from "@peregrinos/shared";
+import { KeyRound, MailPlus, RefreshCw, Trash2, UserCog } from "lucide-react";
+import { ACCESS_LEVELS, PERMISSION_CATALOG, ROLE_PERMISSIONS, canGrantRole, canInviteRole, type Permission } from "@peregrinos/shared";
 import { api, ApiError, del, patch, post, put } from "@/lib/api";
 import { useLoad } from "@/lib/hooks";
 import { fmtDate } from "@/lib/format";
@@ -10,9 +10,46 @@ import { useApp } from "@/components/AppContext";
 import { copyText, ErrorBox, Loading, Modal, Page, StatusPill } from "@/components/ui";
 
 interface U { id: string; name: string; email: string; role: "SUPERADMIN" | "ADMIN" | "OPERATOR"; extraPermissions: string[]; isActive: boolean; mfaEnabledAt: string | null }
-interface Inv { id: string; email: string; role: string; extraPermissions: string[]; status: "PENDING" | "ACCEPTED" | "REVOKED" | "EXPIRED"; expiresAt: string; invitedBy: string | null }
+interface Inv { id: string; email: string; role: string; extraPermissions: string[]; status: "PENDING" | "ACCEPTED" | "REVOKED" | "EXPIRED" | "DECLINED"; expiresAt: string; invitedBy: string | null }
 const levelOf = (role: string, extras: string[]) => ACCESS_LEVELS.find((l) => l.role === role && l.extraPermissions.every((p) => extras.includes(p)) && (role !== "OPERATOR" || (l.extraPermissions.length > 0) === extras.includes("participant:create")));
-const INV: Record<string, [string, string]> ={ PENDING: ["Pendiente", "warn"], ACCEPTED: ["Aceptada", "ok"], REVOKED: ["Revocada", "gray"], EXPIRED: ["Vencida", "err"] };
+const INV: Record<string, [string, string]> ={ PENDING: ["Pendiente", "warn"], ACCEPTED: ["Aceptada", "ok"], REVOKED: ["Revocada", "gray"], EXPIRED: ["Vencida", "err"], DECLINED: ["Rechazada", "gray"] };
+/** B5: permisos extra que no vienen con el nivel (para mostrarlos y contarlos). */
+const extrasLabel = (extras: string[]) => {
+  const n = extras.filter((p) => !["participant:create"].includes(p)).length;
+  return n ? ` · ${n} permiso${n === 1 ? "" : "s"} extra` : "";
+};
+
+/**
+ * B5 — Casillas de permisos del catálogo, agrupadas. Solo se ofrecen los que quien otorga tiene (la API lo exige igual).
+ * `base` = permisos que ya vienen con el nivel elegido: se muestran marcados y bloqueados.
+ */
+function PermissionPicker({ value, onChange, base = [] }: { value: string[]; onChange: (v: string[]) => void; base?: readonly string[] }) {
+  const { can } = useApp();
+  const groups = [...new Set(PERMISSION_CATALOG.map((p) => p.group))];
+  return (
+    <div className="stack-sm">
+      {groups.map((g) => {
+        const items = PERMISSION_CATALOG.filter((p) => p.group === g && can(p.id as Permission));
+        if (!items.length) return null;
+        return (
+          <fieldset key={g} className="perm-group">
+            <legend>{g}</legend>
+            {items.map((p) => {
+              const fixed = base.includes(p.id);
+              return (
+                <label key={p.id} className="check" style={{ alignItems: "flex-start" }}>
+                  <input type="checkbox" disabled={fixed} checked={fixed || value.includes(p.id)}
+                    onChange={(e) => onChange(e.target.checked ? [...value, p.id] : value.filter((x) => x !== p.id))} />
+                  <span>{p.label}{fixed && <span className="muted small"> (incluido en el nivel)</span>}<br /><span className="muted small" style={{ fontWeight: 400 }}>{p.description}</span></span>
+                </label>
+              );
+            })}
+          </fieldset>
+        );
+      })}
+    </div>
+  );
+}
 
 export default function Usuarios() {
   const { me, event, can } = useApp();
@@ -22,6 +59,7 @@ export default function Usuarios() {
   const cps = useLoad(() => (eid ? api<{ items: Checkpoint[] }>(`/events/${eid}/checkpoints`) : Promise.resolve(null)), [eid]);
   const [inviting, setInviting] = useState(false);
   const [assign, setAssign] = useState<U | null>(null);
+  const [perms, setPerms] = useState<U | null>(null);
   const [shown, setShown] = useState<{ url: string; emailSent: boolean; email: string } | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const run = async (fn: () => Promise<void>) => {
@@ -42,7 +80,7 @@ export default function Usuarios() {
         <div className="card flat">
           {!invs.data.items.length ? <div className="empty">Aún no enviaste invitaciones.</div> : invs.data.items.map((i) => (
             <div className="list-item" key={i.id} style={{ cursor: "default" }}>
-              <span className="grow"><span className="t">{i.email}</span><br /><span className="s">{levelOf(i.role, i.extraPermissions)?.label ?? i.role} · vence {fmtDate(i.expiresAt)}{i.invitedBy ? ` · ${i.invitedBy}` : ""}</span></span>
+              <span className="grow"><span className="t">{i.email}</span><br /><span className="s">{levelOf(i.role, i.extraPermissions)?.label ?? i.role}{extrasLabel(i.extraPermissions)} · vence {fmtDate(i.expiresAt)}{i.invitedBy ? ` · ${i.invitedBy}` : ""}</span></span>
               <span className={`pill ${INV[i.status][1]}`}>{INV[i.status][0]}</span>
               {(i.status === "PENDING" || i.status === "EXPIRED") && canGrantRole(me.user.role, i.role as "OPERATOR") && <>
                 <button className="btn btn-sm" aria-label="Reenviar" onClick={() => run(async () => { const r = await post<{ inviteUrl: string; emailSent: boolean }>(`/invitations/${i.id}/resend`); setShown({ url: r.inviteUrl, emailSent: r.emailSent, email: i.email }); invs.reload(); })}><RefreshCw size={16} /></button>
@@ -58,7 +96,8 @@ export default function Usuarios() {
         <div className="card flat">
           {users.data.items.map((u) => (
             <div className="list-item" key={u.id} style={{ cursor: "default", opacity: u.isActive ? 1 : .55 }}>
-              <span className="grow"><span className="t">{u.name}</span> {!u.isActive && <StatusPill s="INACTIVE" />}<br /><span className="s">{u.email} · {levelOf(u.role, u.extraPermissions)?.label ?? u.role}{u.mfaEnabledAt ? " · 2 pasos" : ""}</span></span>
+              <span className="grow"><span className="t">{u.name}</span> {!u.isActive && <StatusPill s="INACTIVE" />}<br /><span className="s">{u.email} · {levelOf(u.role, u.extraPermissions)?.label ?? u.role}{u.role !== "SUPERADMIN" ? extrasLabel(u.extraPermissions) : ""}{u.mfaEnabledAt ? " · 2 pasos" : ""}</span></span>
+              {can("user:manage") && u.id !== me.user.id && u.role !== "SUPERADMIN" && u.isActive && <button className="btn btn-sm" aria-label={`Permisos de ${u.name}`} onClick={() => setPerms(u)}><KeyRound size={16} /> Permisos</button>}
               {u.mfaEnabledAt && u.id !== me.user.id && can("user:manage") && (u.role !== "SUPERADMIN" || me.user.role === "SUPERADMIN") && (
                 <button className="btn btn-sm" onClick={() => run(async () => { if (!confirm(`¿Restablecer la verificación en dos pasos de ${u.name}? Deberá activarla de nuevo y se cerrarán sus sesiones.`)) return; await post(`/users/${u.id}/mfa/reset`); users.reload(); })}>Restablecer 2 pasos</button>
               )}
@@ -71,6 +110,7 @@ export default function Usuarios() {
 
       {inviting && <InviteModal cps={cps.data?.items ?? []} onClose={() => setInviting(false)} onSent={(r) => { setInviting(false); setShown(r); invs.reload(); }} />}
       {assign && <AssignModal u={assign} cps={cps.data?.items ?? []} onClose={() => setAssign(null)} />}
+      {perms && <PermissionsModal u={perms} onClose={() => setPerms(null)} onSaved={() => { setPerms(null); users.reload(); }} />}
       {shown && (
         <Modal title="Invitación creada" onClose={() => setShown(null)}>
           <div className={`alert ${shown.emailSent ? "ok" : "warn"}`}>{shown.emailSent ? `Enviamos el correo a ${shown.email}.` : "El correo no está configurado o no salió: copia el enlace y envíalo tú (por WhatsApp, por ejemplo)."}</div>
@@ -87,7 +127,10 @@ function InviteModal({ cps, onClose, onSent }: { cps: Checkpoint[]; onClose: () 
   const { me } = useApp();
   const levels = ACCESS_LEVELS.filter((l) => canInviteRole(me.user.role, l.role));
   const [email, setEmail] = useState(""); const [lv, setLv] = useState(levels[0].id); const [sel, setSel] = useState<string[]>([]); const [err, setErr] = useState<string | null>(null); const [busy, setBusy] = useState(false);
+  const [extra, setExtra] = useState<string[]>([]);
   const level = levels.find((l) => l.id === lv)!;
+  // Lo que ya trae el nivel elegido (no hace falta otorgarlo aparte).
+  const base: string[] = [...ROLE_PERMISSIONS[level.role], ...level.extraPermissions];
   return (
     <Modal title="Invitar por correo" onClose={onClose}>
       <ErrorBox msg={err} />
@@ -95,6 +138,11 @@ function InviteModal({ cps, onClose, onSent }: { cps: Checkpoint[]; onClose: () 
       <div className="field"><label>Nivel de acceso</label>
         {levels.map((l) => (<label key={l.id} className="check" style={{ alignItems: "flex-start" }}><input type="radio" name="lv" checked={lv === l.id} onChange={() => setLv(l.id)} /><span>{l.label}<br /><span className="muted small" style={{ fontWeight: 400 }}>{l.description}</span></span></label>))}
       </div>
+      <details className="field">
+        <summary><b>Permisos adicionales (opcional)</b> <span className="muted small">— {extra.filter((p) => !base.includes(p)).length} elegidos</span></summary>
+        <p className="muted small">Se aplican cuando la persona acepte la invitación. Después puedes cambiarlos o quitarlos desde «Permisos».</p>
+        <PermissionPicker value={extra} onChange={setExtra} base={base} />
+      </details>
       {level.role === "OPERATOR" && cps.length > 0 && (
         <div className="field"><label>Puntos de control que atenderá</label>
           {cps.map((c) => (<label key={c.id} className="check"><input type="checkbox" checked={sel.includes(c.id)} onChange={(e) => setSel(e.target.checked ? [...sel, c.id] : sel.filter((x) => x !== c.id))} /> {c.order}. {c.name}</label>))}
@@ -102,9 +150,35 @@ function InviteModal({ cps, onClose, onSent }: { cps: Checkpoint[]; onClose: () 
       )}
       <button className="btn btn-primary" disabled={busy || !/\S+@\S+\.\S+/.test(email)} onClick={async () => {
         setBusy(true); setErr(null);
-        try { const r = await post<{ inviteUrl: string; emailSent: boolean }>("/invitations", { email, role: level.role, extraPermissions: level.extraPermissions, checkpointIds: level.role === "OPERATOR" ? sel : [] }); onSent({ url: r.inviteUrl, emailSent: r.emailSent, email }); }
+        try {
+          const extraPermissions = [...new Set([...level.extraPermissions, ...extra.filter((p) => !base.includes(p))])];
+          const r = await post<{ inviteUrl: string; emailSent: boolean }>("/invitations", { email, role: level.role, extraPermissions, checkpointIds: level.role === "OPERATOR" ? sel : [] });
+          onSent({ url: r.inviteUrl, emailSent: r.emailSent, email });
+        }
         catch (e) { setErr(e instanceof ApiError ? (e.details?.map((d) => d.message).join(". ") || e.message) : "No se pudo invitar."); } finally { setBusy(false); }
       }}>{busy ? "Enviando…" : "Enviar invitación"}</button>
+    </Modal>
+  );
+}
+
+/**
+ * B5 — Permisos de un colaborador: el SUPERADMIN los asigna, cambia o revoca. Se guardan juntos (reemplazo de la lista)
+ * y la persona debe volver a ingresar para que rijan (la API cierra sus sesiones). Se registra en la auditoría.
+ */
+function PermissionsModal({ u, onClose, onSaved }: { u: U; onClose: () => void; onSaved: () => void }) {
+  const base: string[] = [...ROLE_PERMISSIONS[u.role]];
+  const [value, setValue] = useState<string[]>(u.extraPermissions);
+  const [err, setErr] = useState<string | null>(null); const [busy, setBusy] = useState(false);
+  return (
+    <Modal title={`Permisos de ${u.name}`} onClose={onClose}>
+      <ErrorBox msg={err} />
+      <p className="muted small">Nivel: {levelOf(u.role, u.extraPermissions)?.label ?? u.role}. Marca lo que esta persona puede hacer además de su nivel. Al guardar se cierran sus sesiones y los cambios rigen al volver a ingresar.</p>
+      <PermissionPicker value={value} onChange={setValue} base={base} />
+      <button className="btn btn-primary" disabled={busy} onClick={async () => {
+        setBusy(true); setErr(null);
+        try { await put(`/users/${u.id}/permissions`, { extraPermissions: [...new Set(value.filter((p) => !base.includes(p)))] }); onSaved(); }
+        catch (e) { setErr(e instanceof ApiError ? e.message : "No se pudieron guardar los permisos."); } finally { setBusy(false); }
+      }}>{busy ? "Guardando…" : "Guardar permisos"}</button>
     </Modal>
   );
 }

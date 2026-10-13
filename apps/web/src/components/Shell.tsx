@@ -6,7 +6,7 @@ import { hasEventCapability, type EventCapability, type Permission } from "@pere
 import { logout } from "@/lib/api";
 import { BrandMark } from "./BrandMark";
 import { useApp } from "./AppContext";
-import { EVENT_SECTIONS } from "./sections";
+import { ADMIN_SECTIONS, EVENT_SECTIONS, sectionAllowed } from "./sections";
 
 export interface NavItem { href: string; label: string; icon: typeof Home; perm: Permission | "config" }
 export const NAV: NavItem[] = [
@@ -62,7 +62,8 @@ export function useNav() {
     return can(reg.perm as Permission) && visible(reg) ? [SA_NAV[0], SA_NAV[1], label(reg), SA_NAV[2], SA_NAV[3]] : SA_NAV;
   }
   // Mismos permisos que las secciones de /configuracion (y que exige la API en cada una).
-  const canConfig = can("event:update") || can("invitation:manage") || can("user:manage") || can("contact:manage") || can("participant:manage") || can("audit:read");
+  // B5: hay «Configuración» si alguna herramienta con permiso está habilitada (mismas secciones y permisos que la API).
+  const canConfig = can("contact:manage") || can("participant:manage") || ADMIN_SECTIONS.some((s) => !!s.perm && sectionAllowed(s, can, event));
   return NAV
     .filter((n) => (n.perm === "config" ? canConfig : can(n.perm)))
     .filter(visible)

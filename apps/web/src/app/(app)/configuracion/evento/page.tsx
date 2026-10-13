@@ -9,6 +9,7 @@ import {
 import { ApiError, patch } from "@/lib/api";
 import { useApp } from "@/components/AppContext";
 import { NewEventModal } from "@/components/NewEventModal";
+import { EventPublicationCard } from "@/components/EventPublicationCard";
 import { ErrorBox, Page } from "@/components/ui";
 import type { EventItem, EventRoute } from "@/lib/types";
 
@@ -196,6 +197,7 @@ export default function EventoConfig() {
           <button className="btn btn-primary" onClick={save} disabled={busy || !f.name.trim()}>{busy ? "Guardando…" : "Guardar cambios"}</button>
         </div>
       )}
+      {event && <EventPublicationCard key={event.id} event={event} onChanged={reloadEvents} />}
       {creating && <NewEventModal onClose={() => setCreating(false)} onCreated={async (id) => { await reloadEvents(); setEventId(id); setCreating(false); }} />}
     </Page>
   );

@@ -6,6 +6,7 @@ import { ApiError, api, post, upload } from "@/lib/api";
 import { errorText } from "@/components/account/AccountContext";
 import { PublicShell } from "@/components/PublicShell";
 import { EventChat } from "@/components/EventChat";
+import { ShareLocation } from "@/components/ShareLocation";
 import { fmtDateMedium, fmtDateTimeMedium, fmtTime, money, pad } from "@/lib/format";
 
 /**
@@ -64,6 +65,7 @@ export default function AppPeregrino() {
   else body = (
     <>
       {me.stage === "OFFICIAL" ? <Official me={me} /> : <RegistrationView me={me} onChange={setMe} onRefresh={load} />}
+      {me.stage === "OFFICIAL" && <ShareLocation />}
       {(me.stage === "OFFICIAL" || me.registration.status !== "CANCELLED") && <ChatToggle timezone={me.stage === "OFFICIAL" ? me.event.timezone : null}
         viewerId={me.stage === "OFFICIAL" ? `${me.event.id}:n${me.participant.number}` : `${me.event.id}:r${me.registration.documentMasked}`} />}
       <Contacts contacts={me.contacts} />

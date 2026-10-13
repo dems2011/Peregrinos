@@ -7,12 +7,12 @@ import { ApiError, api, del, post } from "@/lib/api";
 import { useLoad } from "@/lib/hooks";
 import { PublicShell } from "@/components/PublicShell";
 import { ParishProfileView } from "@/components/ParishProfileView";
-import type { ParishProfile, PublicEvent } from "@/lib/types";
+import type { ParishExtras, ParishProfile, PublicEvent } from "@/lib/types";
 
 /** B1 — Perfil público de una parroquia: datos, eventos públicos («Inscribirme») y «Seguir» (con cuenta de peregrino). */
 export default function PerfilPublico() {
   const { id } = useParams<{ id: string }>();
-  const data = useLoad(() => api<{ parish: ParishProfile; events: PublicEvent[] }>(`/public/parishes/${id}`), [id]);
+  const data = useLoad(() => api<{ parish: ParishProfile; events: PublicEvent[] } & ParishExtras>(`/public/parishes/${id}`), [id]);
   // null = sin sesión de cuenta; boolean = sigue o no.
   const [following, setFollowing] = useState<boolean | null | undefined>(undefined);
   const [err, setErr] = useState<string | null>(null);
@@ -49,7 +49,7 @@ export default function PerfilPublico() {
       {err && <div className="alert err" role="alert">{err}</div>}
       {data.error && <section className="card stack-sm"><div className="alert err" role="alert">{data.error}</div><Link className="btn" href="/parroquias">Buscar parroquias</Link></section>}
       {!data.data && !data.error && <div className="acct-loading" role="status">Cargando…</div>}
-      {data.data && <ParishProfileView parish={data.data.parish} events={data.data.events} action={action} highlightEventId={highlight} />}
+      {data.data && <ParishProfileView parish={data.data.parish} events={data.data.events} extras={data.data} action={action} highlightEventId={highlight} />}
       <p className="muted small" style={{ textAlign: "center" }}><Link href="/parroquias">← Todas las parroquias</Link></p>
     </PublicShell>
   );

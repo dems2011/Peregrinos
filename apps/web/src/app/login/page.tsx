@@ -7,6 +7,7 @@ import { isMfaChallenge } from "@peregrinos/shared";
 import { ApiError, cancelMfaLogin, login, verifyMfaLogin, warmUpApi } from "@/lib/api";
 import { ArrowRight } from "lucide-react";
 import { BrandMark } from "@/components/BrandMark";
+import { SplashBackground } from "@/components/SplashBackground";
 
 /**
  * Ingreso único: el mismo formulario sirve al personal (con MFA si lo tiene activo) y a las cuentas de peregrino
@@ -76,7 +77,8 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="splash login">
+    <main className="splash login photo">
+      <SplashBackground />
       <div className="brand">
         <span className="login-mark"><BrandMark size={52} /></span>
         <h1>Peregrinos</h1>

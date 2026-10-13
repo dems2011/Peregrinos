@@ -9,6 +9,7 @@ import { useLoad } from "@/lib/hooks";
 import { avatarColor } from "@/lib/format";
 import type { Checkpoint } from "@/lib/types";
 import type { MapPoint } from "@/components/MapView";
+import { ago, useLiveTracking } from "@/components/LiveTracking";
 import { useApp, useLive } from "@/components/AppContext";
 import { ErrorBox, Loading, Page, StatusPill } from "@/components/ui";
 
@@ -28,6 +29,9 @@ export default function Recorrido() {
   useLive((t) => { if (t.startsWith("checkin.") && hasPoints) list.reload(); });
   const items = list.data?.items ?? [];
   const route = hasRoute ? event?.route ?? null : null;
+  // B5: seguimiento en vivo (solo con permiso y con el seguimiento activado en el evento).
+  const tracking = can("tracking:read") && !!event?.trackingEnabled;
+  const live = useLiveTracking(eid, tracking);
 
   const points = useMemo(() => {
     const cps: MapPoint[] = items.filter((c) => c.latitude !== null && c.longitude !== null && c.status === "ACTIVE")
@@ -47,11 +51,12 @@ export default function Recorrido() {
   }
 
   if (!event) return <Page title="Mapa y recorrido" back="/evento"><div className="empty">No hay un evento seleccionado.</div></Page>;
-  if (!hasPoints && !hasRoute) return <Page title="Mapa y recorrido" back="/evento"><div className="alert info">Este evento no usa trayecto ni puntos de control. Actívalos en Evento → Datos del evento.</div></Page>;
+  if (!hasPoints && !hasRoute && !tracking) return <Page title="Mapa y recorrido" back="/evento"><div className="alert info">Este evento no usa trayecto ni puntos de control. Actívalos en Evento → Datos del evento.</div></Page>;
 
   return (
     <Page title="Mapa y recorrido" back="/evento" action={manage ? <Link href="/recorrido/nuevo" className="ic" aria-label="Agregar punto"><Plus size={24} /></Link> : undefined}>
-      {points.length > 0 ? <MapView points={points} /> : <div className="alert info">{hasPoints ? "Agrega coordenadas a los puntos o al trayecto para verlos en el mapa." : "Agrega las coordenadas del origen y del destino en Evento → Datos del evento para ver el trayecto en el mapa."}</div>}
+      {points.length > 0 || live.people.length > 0 ? <MapView points={points} people={live.people} /> : <div className="alert info">{hasPoints ? "Agrega coordenadas a los puntos o al trayecto para verlos en el mapa." : hasRoute ? "Agrega las coordenadas del origen y del destino en Evento → Datos del evento para ver el trayecto en el mapa." : "Todavía nadie comparte su ubicación."}</div>}
+      {tracking && <LivePanel live={live} />}
       {route && (route.originName || route.destinationName || route.distanceKm) && (
         <div className="card stack-sm">
           <div className="row" style={{ justifyContent: "flex-start", gap: 10 }}><span className="pin" style={{ background: "#18A957", flex: "none" }}>O</span><span><b>Origen:</b> {route.originName ?? "—"}{route.originAddress ? ` · ${route.originAddress}` : ""}</span></div>
@@ -80,5 +85,26 @@ export default function Recorrido() {
         </div>
       )}
     </Page>
+  );
+}
+
+/** B5: resumen del seguimiento en vivo (quién comparte, hace cuánto llegó su posición, sin señal). */
+function LivePanel({ live }: { live: ReturnType<typeof useLiveTracking> }) {
+  const d = live.data;
+  if (live.error) return <div className="alert err" role="alert">{live.error}</div>;
+  if (!d) return <Loading />;
+  const withSignal = d.items.filter((i) => !i.stale).length;
+  return (
+    <section className="card stack-sm" aria-live="polite">
+      <h2 style={{ margin: 0 }}>En vivo <span className="pill ok">{withSignal} con señal</span> {d.items.length - withSignal > 0 && <span className="pill gray">{d.items.length - withSignal} sin señal</span>}</h2>
+      {d.eventStatus !== "IN_PROGRESS" && <div className="alert warn">El seguimiento funciona solo con el evento en curso.</div>}
+      <p className="muted small" style={{ margin: 0 }}>{d.sharing} {d.sharing === 1 ? "persona autorizó" : "personas autorizaron"} compartir su ubicación. Se actualiza cada 20 segundos; «sin señal» = sin posición en los últimos {Math.round(d.staleAfterMs / 60000)} minutos.</p>
+      {d.items.map((p) => (
+        <div key={p.participantId} className="row" style={{ justifyContent: "flex-start", gap: 10, opacity: p.stale ? .6 : 1 }}>
+          <span className="pin" style={{ background: p.stale ? "#8A97A6" : "#7B3FE4", flex: "none" }}>{p.number}</span>
+          <span className="grow">{p.firstName} {p.lastName}<br /><span className="muted small">{p.stale ? "Sin señal · " : ""}{ago(p.receivedAt, d.serverTime)}</span></span>
+        </div>
+      ))}
+    </section>
   );
 }

@@ -7,7 +7,7 @@ import { useLoad } from "@/lib/hooks";
 import { useApp } from "@/components/AppContext";
 import { ParishProfileView } from "@/components/ParishProfileView";
 import { copyText, ErrorBox, Loading, Page } from "@/components/ui";
-import type { ParishProfile, PublicEvent } from "@/lib/types";
+import type { ParishExtras, ParishProfile, PublicEvent } from "@/lib/types";
 
 /**
  * B1 — Perfil público de la parroquia (solo el superadministrador): primero la vista EXACTA de lo que ve un peregrino y
@@ -22,10 +22,12 @@ const FIELDS = [
 type Key = (typeof FIELDS)[number][0] | "description";
 
 export function ParishProfileEditor({ back }: { back?: string }) {
-  const { me } = useApp();
-  const sa = me.user.role === "SUPERADMIN";
+  const { me, can } = useApp();
+  // B5: perfil de la parroquia = permiso parish:profile (SUPERADMIN o colaborador autorizado).
+  const sa = can("parish:profile");
   const prof = useLoad(() => api<{ profile: Profile }>("/organization/profile"), []);
-  const pub = useLoad(() => api<{ events: PublicEvent[] }>(`/public/parishes/${me.user.organizationId}`).catch(() => ({ events: [] as PublicEvent[] })), []);
+  const pub = useLoad(() => api<{ events: PublicEvent[] } & ParishExtras>(`/public/parishes/${me.user.organizationId}`)
+    .catch(() => ({ events: [] as PublicEvent[], livestream: null, schedule: [], campaigns: [], bulletins: [] } as { events: PublicEvent[] } & ParishExtras)), []);
   const [f, setF] = useState<Record<Key, string>>({} as Record<Key, string>);
   const [err, setErr] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
@@ -33,7 +35,7 @@ export function ParishProfileEditor({ back }: { back?: string }) {
   const p = prof.data?.profile;
   useEffect(() => { if (p) setF(Object.fromEntries([...FIELDS.map(([k]) => [k, (p[k] as string | null) ?? ""]), ["description", p.description ?? ""]]) as Record<Key, string>); }, [p]);
 
-  if (!sa) return <Page title="Perfil de la parroquia" back={back}><div className="alert warn">Solo el superadministrador puede editar el perfil de la parroquia.</div></Page>;
+  if (!sa) return <Page title="Perfil de la parroquia" back={back}><div className="alert warn">No tienes permiso para editar el perfil de la parroquia.</div></Page>;
   const run = async (fn: () => Promise<unknown>, done: string) => {
     setBusy(true); setErr(null); setOk(null);
     try { await fn(); setOk(done); await prof.reload(); await pub.reload(); }
@@ -60,7 +62,7 @@ export function ParishProfileEditor({ back }: { back?: string }) {
         {p.status !== "APPROVED" && <div className="alert warn">La parroquia todavía no está aprobada: su perfil no es público hasta que la plataforma la apruebe.</div>}
         <section className="stack-sm">
           <h2 style={{ margin: "8px 0 0" }}>Así ve tu parroquia un peregrino</h2>
-          <ParishProfileView preview parish={p} events={pub.data?.events ?? []} action={<span className="btn btn-primary" aria-disabled="true">Seguir</span>} />
+          <ParishProfileView preview parish={p} events={pub.data?.events ?? []} extras={pub.data ?? null} action={<span className="btn btn-primary" aria-disabled="true">Seguir</span>} />
         </section>
 
         <PosterCard code={p.code} id={p.id} approved={p.status === "APPROVED"} busy={busy}
