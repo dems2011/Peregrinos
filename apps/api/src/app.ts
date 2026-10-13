@@ -41,6 +41,16 @@ import publicRoutes from "./routes/public";
 import accountSocialRoutes from "./routes/accountSocial";
 import chatRoutes from "./routes/chat";
 import reportRoutes from "./routes/report";
+import livestreamRoutes from "./routes/livestreams";
+import trackingRoutes from "./routes/tracking";
+import pilgrimTrackingRoutes from "./routes/pilgrimTracking";
+import eventCoverRoutes from "./routes/eventCover";
+import agendaRoutes from "./routes/agenda";
+import donationRoutes from "./routes/donations";
+import bulletinRoutes from "./routes/bulletins";
+import certificateRoutes, { certificatePublicRoutes } from "./routes/certificates";
+import inventoryRoutes from "./routes/inventory";
+import groupRoutes from "./routes/groups";
 
 export async function buildApp() {
   const app = Fastify({
@@ -146,6 +156,18 @@ export async function buildApp() {
   await app.register(accountSocialRoutes, { prefix: "/api/auth/account" });
   await app.register(chatRoutes, { prefix: "/api/events/:eventId/chat" });
   await app.register(reportRoutes, { prefix: "/api/events/:eventId/report" });
+  // B5: herramientas parroquiales (cada una con su permiso; todo acotado a la organización de la sesión).
+  await app.register(livestreamRoutes, { prefix: "/api/organization/livestreams" });
+  await app.register(trackingRoutes, { prefix: "/api/events/:eventId/tracking" });
+  await app.register(pilgrimTrackingRoutes, { prefix: "/api/pilgrim/tracking" });
+  await app.register(eventCoverRoutes, { prefix: "/api/events/:eventId/cover" });
+  await app.register(agendaRoutes, { prefix: "/api/organization/agenda" });
+  await app.register(donationRoutes, { prefix: "/api/organization/donations" });
+  await app.register(bulletinRoutes, { prefix: "/api/organization/bulletins" });
+  await app.register(certificateRoutes, { prefix: "/api/organization/certificates" });
+  await app.register(certificatePublicRoutes, { prefix: "/api/public" });
+  await app.register(inventoryRoutes, { prefix: "/api/organization/inventory" });
+  await app.register(groupRoutes, { prefix: "/api/organization/groups" });
 
   return app;
 }

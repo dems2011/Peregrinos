@@ -35,11 +35,13 @@ describe("sec-audit: historial de la organización", () => {
 describe("sec-audit: invitaciones (un solo uso, sin carreras, sin enumeración entre organizaciones)", () => {
   const s = read("src/routes/invitations.ts");
   it("aceptar exige el token vigente en el reclamo condicional (un reenvío invalida el enlace viejo)", () => {
-    assert.match(s, /where: \{ id: inv\.id, tokenHash: sha256\(body\.token\), acceptedAt: null, revokedAt: null, expiresAt: \{ gt: new Date\(\) \} \}/);
+    assert.match(s, /where: \{ id: inv\.id, tokenHash: sha256\(body\.token\), \.\.\.OPEN, expiresAt: \{ gt: new Date\(\) \} \}/);
+    // B5: «pendiente» excluye también las rechazadas.
+    assert.match(s, /const OPEN = \{ acceptedAt: null, revokedAt: null, declinedAt: null \} as const;/);
   });
   it("reenviar y revocar son condicionales", () => {
-    assert.match(s, /invitation\.updateMany\(\{\s*where: \{ id, organizationId: req\.auth\.organizationId, acceptedAt: null, revokedAt: null \}/);
-    assert.match(s, /invitation\.updateMany\(\{ where: \{ id, organizationId: req\.auth\.organizationId, acceptedAt: null \}, data: \{ revokedAt/);
+    assert.match(s, /invitation\.updateMany\(\{\s*where: \{ id, organizationId: req\.auth\.organizationId, \.\.\.OPEN \}/);
+    assert.match(s, /invitation\.updateMany\(\{ where: \{ id, organizationId: req\.auth\.organizationId, acceptedAt: null, declinedAt: null \}, data: \{ revokedAt/);
     assert.doesNotMatch(s, /invitation\.update\(\{ where: \{ id \}, data: \{ revokedAt/);
   });
   it("puntos de la invitación siempre acotados a la organización", () => {

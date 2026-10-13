@@ -222,3 +222,38 @@ export function sendRegistrationNotCompleted(p: { to: string; name: string; logi
 </div>`;
   return sendMail(p.to, subject, text, html);
 }
+
+/** B5: boletín parroquial a un seguidor que pidió recibirlo por correo (texto plano, sin seguimiento ni imágenes remotas). */
+export function sendBulletinEmail(p: { to: string; parish: string; title: string; text: string; url: string; preferencesUrl: string }) {
+  const subject = `${p.parish}: ${p.title}`;
+  const text = `${p.title}\n${p.parish}\n\n${p.text}\n\nVer en Peregrinos: ${p.url}\n\nRecibes este correo porque lo pediste al seguir a ${p.parish}. Para dejar de recibirlo: ${p.preferencesUrl}`;
+  const html = `
+<div style="font-family:Inter,Arial,sans-serif;max-width:560px;margin:auto;color:#17324D">
+  <p style="color:#6D7D8E;margin:0">${esc(p.parish)}</p>
+  <h2 style="color:#0B3158;margin-top:4px">${esc(p.title)}</h2>
+  <div style="white-space:pre-wrap;line-height:1.5">${esc(p.text)}</div>
+  <p><a href="${esc(p.url)}" style="display:inline-block;background:#1677FF;color:#fff;padding:12px 20px;border-radius:10px;text-decoration:none;font-weight:700">Ver en Peregrinos</a></p>
+  <p style="color:#6D7D8E;font-size:13px">Recibes este correo porque lo pediste al seguir a ${esc(p.parish)}. <a href="${esc(p.preferencesUrl)}">Dejar de recibirlo</a>.</p>
+</div>`;
+  return sendMail(p.to, subject, text, html);
+}
+
+/** B5: novedades de una solicitud de certificado (sin datos personales en el correo: solo código, estado y mensaje). */
+export function sendCertificateUpdate(p: { to: string; parish: string; code: string; statusLabel: string; message: string | null; url: string; created?: boolean }) {
+  const subject = p.created ? `Recibimos tu solicitud ${p.code} — ${p.parish}` : `Tu solicitud ${p.code}: ${p.statusLabel}`;
+  const text =
+    `${p.parish}\n\n` +
+    (p.created ? `Recibimos tu solicitud de certificado. Tu código de seguimiento es ${p.code}.\n` : `Tu solicitud ${p.code} cambió de estado: ${p.statusLabel}.\n`) +
+    (p.message ? `\nMensaje de la parroquia: ${p.message}\n` : "") +
+    `\nConsulta el estado con tu código y este correo en: ${p.url}\n\nLa entrega del certificado requiere verificar tu identidad en la parroquia.`;
+  const html = `
+<div style="font-family:Inter,Arial,sans-serif;max-width:520px;margin:auto;color:#17324D">
+  <p style="color:#6D7D8E;margin:0">${esc(p.parish)}</p>
+  <h2 style="color:#0B3158;margin-top:4px">${p.created ? "Recibimos tu solicitud" : esc(p.statusLabel)}</h2>
+  <p>Código de seguimiento: <b style="letter-spacing:1px">${esc(p.code)}</b></p>
+  ${p.message ? `<p>Mensaje de la parroquia:<br>${esc(p.message)}</p>` : ""}
+  <p><a href="${esc(p.url)}" style="display:inline-block;background:#1677FF;color:#fff;padding:12px 20px;border-radius:10px;text-decoration:none;font-weight:700">Consultar el estado</a></p>
+  <p style="color:#6D7D8E;font-size:13px">La entrega del certificado requiere verificar tu identidad en la parroquia.</p>
+</div>`;
+  return sendMail(p.to, subject, text, html);
+}

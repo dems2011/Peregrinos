@@ -1,4 +1,4 @@
-import type { FastifyInstance, FastifyRequest } from "fastify";
+import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { PARISH_IMAGE_SPEC, PARISH_POSTER_SIZES, organizationProfileSchema, sendNotificationSchema, submitOrganizationReviewSchema } from "@peregrinos/shared";
 import { prisma } from "../lib/prisma";
@@ -11,8 +11,6 @@ import { notifyFollowers, pushNotification } from "../lib/notifications";
 import { buildParishPosterPdf } from "../lib/parishPoster";
 import { parishMediaUrls } from "./public";
 
-/** B1: el perfil público, sus imágenes y los avisos a seguidores los gestiona solo el SUPERADMIN de la parroquia. */
-const requireSuperadmin = async (req: FastifyRequest) => { if (req.auth.role !== "SUPERADMIN") throw forbidden("Solo el superadministrador de la parroquia puede hacerlo."); };
 const mediaKind = z.object({ kind: z.enum(["logo", "cover"]) });
 const posterQuery = z.object({ size: z.enum(PARISH_POSTER_SIZES).default("A4") });
 const KIND = { logo: "PARISH_LOGO", cover: "PARISH_COVER" } as const;
@@ -23,6 +21,12 @@ const PROFILE_SELECT = {
 
 /** A3 — Estado de la propia organización para su personal, y presentación a revisión por su SUPERADMIN. */
 export default async function organizationRoutes(app: FastifyInstance) {
+  /**
+   * B1/B5: el perfil público y sus imágenes exigen parish:profile; los avisos a seguidores, notice:send. El SUPERADMIN
+   * tiene ambos; a un colaborador se le otorgan por separado (PERMISSION_CATALOG).
+   */
+  const profileManager = app.requirePermission("parish:profile");
+  const noticeSender = app.requirePermission("notice:send");
   app.get("/", { preHandler: app.authenticate }, async (req) => {
     const org = await prisma.organization.findUniqueOrThrow({
       where: { id: req.auth.organizationId },
@@ -65,7 +69,7 @@ export default async function organizationRoutes(app: FastifyInstance) {
 
   app.get("/profile", { preHandler: app.authenticate }, async (req) => profileView(req.auth.organizationId));
 
-  app.patch("/profile", { preHandler: [app.authenticate, requireSuperadmin] }, async (req) => {
+  app.patch("/profile", { preHandler: profileManager }, async (req) => {
     const body = organizationProfileSchema.parse(req.body);
     await prisma.organization.update({ where: { id: req.auth.organizationId }, data: body });
     await audit(req, { action: "ORGANIZATION_PROFILE_UPDATED", entityType: "Organization", entityId: req.auth.organizationId, metadata: { fields: Object.keys(body) } });
@@ -73,7 +77,7 @@ export default async function organizationRoutes(app: FastifyInstance) {
   });
 
   /** Logo (cuadrado) o imagen de la parroquia (horizontal). Reemplaza la anterior; validación estricta de tipo, peso y medidas. */
-  app.put("/media/:kind", { preHandler: [app.authenticate, requireSuperadmin], config: { rateLimit: { max: 20, timeWindow: "15 minutes" } } }, async (req) => {
+  app.put("/media/:kind", { preHandler: profileManager, config: { rateLimit: { max: 20, timeWindow: "15 minutes" } } }, async (req) => {
     const { kind } = mediaKind.parse(req.params);
     const buf = await readSingleFile(req);
     const s = PARISH_IMAGE_SPEC[kind];
@@ -90,7 +94,7 @@ export default async function organizationRoutes(app: FastifyInstance) {
     return profileView(req.auth.organizationId);
   });
 
-  app.delete("/media/:kind", { preHandler: [app.authenticate, requireSuperadmin] }, async (req) => {
+  app.delete("/media/:kind", { preHandler: profileManager }, async (req) => {
     const { kind } = mediaKind.parse(req.params);
     await prisma.mediaAsset.deleteMany({ where: { organizationId: req.auth.organizationId, kind: KIND[kind], eventId: null } });
     await audit(req, { action: "ORGANIZATION_MEDIA_REMOVED", entityType: "Organization", entityId: req.auth.organizationId, metadata: { kind } });
@@ -98,7 +102,7 @@ export default async function organizationRoutes(app: FastifyInstance) {
   });
 
   /* ---------- B4: cartel institucional imprimible (A4/A3) ---------- */
-  app.get("/poster.pdf", { preHandler: [app.authenticate, requireSuperadmin], config: { rateLimit: { max: 20, timeWindow: "15 minutes" } } }, async (req, reply) => {
+  app.get("/poster.pdf", { preHandler: profileManager, config: { rateLimit: { max: 20, timeWindow: "15 minutes" } } }, async (req, reply) => {
     const { size } = posterQuery.parse(req.query);
     const org = await prisma.organization.findUniqueOrThrow({ where: { id: req.auth.organizationId }, select: { name: true, code: true, address: true, status: true } });
     // El QR lleva al perfil público: sin aprobación ese perfil no existe y el cartel quedaría con un enlace roto.
@@ -114,7 +118,7 @@ export default async function organizationRoutes(app: FastifyInstance) {
   });
 
   /* ---------- B1: avisos a los seguidores ---------- */
-  app.get("/notifications", { preHandler: [app.authenticate, requireSuperadmin] }, async (req) => {
+  app.get("/notifications", { preHandler: noticeSender }, async (req) => {
     const items = await prisma.notification.findMany({
       where: { organizationId: req.auth.organizationId }, orderBy: { createdAt: "desc" }, take: 50,
       select: { id: true, kind: true, title: true, body: true, recipientCount: true, createdAt: true, event: { select: { id: true, name: true } }, _count: { select: { recipients: { where: { readAt: { not: null } } } } } },
@@ -123,7 +127,7 @@ export default async function organizationRoutes(app: FastifyInstance) {
   });
 
   /** Aviso manual a TODOS los seguidores de esta parroquia (y solo de esta). */
-  app.post("/notifications", { preHandler: [app.authenticate, requireSuperadmin], config: { rateLimit: { max: 10, timeWindow: "1 hour" } } }, async (req, reply) => {
+  app.post("/notifications", { preHandler: noticeSender, config: { rateLimit: { max: 10, timeWindow: "1 hour" } } }, async (req, reply) => {
     const body = sendNotificationSchema.parse(req.body);
     assertOrgCan(req.auth.organizationStatus, "PUBLISH_EVENT");
     const n = await prisma.$transaction(async (tx) => {

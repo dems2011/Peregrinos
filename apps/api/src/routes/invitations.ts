@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { Prisma, type Invitation } from "@prisma/client";
-import { acceptInvitationSchema, canGrantRole, canInviteRole, createInvitationSchema } from "@peregrinos/shared";
+import { acceptInvitationSchema, canGrantRole, canInviteRole, createInvitationSchema, declineInvitationSchema, permissionsNotGrantableBy } from "@peregrinos/shared";
 import { assertInvitationAcceptable, assertNotSuperadminGrant } from "../lib/roles";
 import { assertOrgCan } from "../lib/orgLifecycle";
 import { cfg } from "../config";
@@ -15,8 +15,10 @@ import { buildMe, issueSession } from "../lib/session";
 
 const idParam = z.object({ id: z.string().uuid() });
 const inviteUrl = (raw: string) => `${cfg.WEB_ORIGIN}/invitacion?token=${raw}`;
-const statusOf = (i: Pick<Invitation, "acceptedAt" | "revokedAt" | "expiresAt">) =>
-  i.acceptedAt ? "ACCEPTED" : i.revokedAt ? "REVOKED" : i.expiresAt < new Date() ? "EXPIRED" : "PENDING";
+const statusOf = (i: Pick<Invitation, "acceptedAt" | "revokedAt" | "declinedAt" | "expiresAt">) =>
+  i.acceptedAt ? "ACCEPTED" : i.declinedAt ? "DECLINED" : i.revokedAt ? "REVOKED" : i.expiresAt < new Date() ? "EXPIRED" : "PENDING";
+/** Pendiente = ni aceptada, ni rechazada, ni revocada, ni vencida (condición de toda transición). */
+const OPEN = { acceptedAt: null, revokedAt: null, declinedAt: null } as const;
 const publicView = (i: Invitation & { invitedBy?: { name: string } }) => ({
   id: i.id, email: i.email, role: i.role, extraPermissions: i.extraPermissions, checkpointIds: i.checkpointIds,
   status: statusOf(i), expiresAt: i.expiresAt, createdAt: i.createdAt, lastSentAt: i.lastSentAt, sendCount: i.sendCount,
@@ -52,6 +54,9 @@ export default async function invitationRoutes(app: FastifyInstance) {
     const body = createInvitationSchema.parse(req.body);
     assertNotSuperadminGrant(body.role, "INVITATION");
     if (!canInviteRole(req.auth.role, body.role)) throw forbidden("No puedes invitar a un nivel superior al tuyo.");
+    // B5: mínimo privilegio — solo se otorgan permisos del catálogo que quien invita también tiene.
+    const denied = permissionsNotGrantableBy(req.auth, body.extraPermissions);
+    if (denied.length) throw new AppError(403, "PERMISSION_NOT_GRANTABLE", "No puedes otorgar permisos que no tienes.", { permissions: denied });
     assertOrgCan(req.auth.organizationStatus, "INVITE_STAFF");
 
     // Solo se informa si el correo ya es personal de ESTA organización: no se revela si existe una cuenta en otra
@@ -61,7 +66,7 @@ export default async function invitationRoutes(app: FastifyInstance) {
       throw new AppError(409, "USER_EXISTS", "Ya existe un usuario con ese correo.");
     }
     const pending = await prisma.invitation.findFirst({
-      where: { organizationId: req.auth.organizationId, email: body.email, acceptedAt: null, revokedAt: null, expiresAt: { gt: new Date() } },
+      where: { organizationId: req.auth.organizationId, email: body.email, ...OPEN, expiresAt: { gt: new Date() } },
     });
     if (pending) throw new AppError(409, "INVITATION_PENDING", "Ya hay una invitación pendiente para ese correo. Puedes reenviarla.");
 
@@ -75,7 +80,7 @@ export default async function invitationRoutes(app: FastifyInstance) {
     const inv = await prisma.invitation.create({
       data: {
         organizationId: req.auth.organizationId, email: body.email, role: body.role,
-        extraPermissions: body.role === "OPERATOR" ? body.extraPermissions : [], checkpointIds,
+        extraPermissions: body.extraPermissions, checkpointIds,
         tokenHash: hash, expiresAt: new Date(Date.now() + cfg.INVITE_TTL_DAYS * 86_400_000), invitedById: req.auth.id,
       },
     });
@@ -88,17 +93,19 @@ export default async function invitationRoutes(app: FastifyInstance) {
     const { id } = idParam.parse(req.params);
     const inv = await prisma.invitation.findFirst({ where: { id, organizationId: req.auth.organizationId } });
     if (!inv) throw notFound("Invitación no encontrada.");
-    if (inv.acceptedAt || inv.revokedAt) throw new AppError(409, "NOT_PENDING", "Esta invitación ya fue aceptada o revocada.");
+    if (inv.acceptedAt || inv.revokedAt || inv.declinedAt) throw new AppError(409, "NOT_PENDING", "Esta invitación ya fue aceptada, rechazada o revocada.");
     if (!canGrantRole(req.auth.role, inv.role)) throw forbidden();
     assertNotSuperadminGrant(inv.role, "INVITATION");
+    // B5: reenviar no puede servir para otorgar permisos que quien reenvía no tiene.
+    if (permissionsNotGrantableBy(req.auth, inv.extraPermissions).length) throw forbidden("La invitación incluye permisos que no tienes.");
     assertOrgCan(req.auth.organizationStatus, "INVITE_STAFF");
     const { raw, hash } = newOpaqueToken();
-    // Condicional: si entre tanto se aceptó o revocó, no se renueva un enlace de una invitación ya cerrada.
+    // Condicional: si entre tanto se aceptó, rechazó o revocó, no se renueva un enlace de una invitación ya cerrada.
     const r = await prisma.invitation.updateMany({
-      where: { id, organizationId: req.auth.organizationId, acceptedAt: null, revokedAt: null },
+      where: { id, organizationId: req.auth.organizationId, ...OPEN },
       data: { tokenHash: hash, expiresAt: new Date(Date.now() + cfg.INVITE_TTL_DAYS * 86_400_000) },
     });
-    if (r.count !== 1) throw new AppError(409, "NOT_PENDING", "Esta invitación ya fue aceptada o revocada.");
+    if (r.count !== 1) throw new AppError(409, "NOT_PENDING", "Esta invitación ya fue aceptada, rechazada o revocada.");
     const renewed = await prisma.invitation.findUniqueOrThrow({ where: { id } });
     await audit(req, { action: "INVITATION_RESENT", entityType: "Invitation", entityId: id, metadata: { email: inv.email } });
     return deliver(renewed, raw, req.auth.name);
@@ -110,9 +117,10 @@ export default async function invitationRoutes(app: FastifyInstance) {
     if (!inv) throw notFound("Invitación no encontrada.");
     if (!canGrantRole(req.auth.role, inv.role)) throw forbidden();
     if (inv.acceptedAt) throw new AppError(409, "ALREADY_ACCEPTED", "Esta invitación ya fue aceptada.");
-    // Condicional: una aceptación simultánea gana; nunca queda "revocada" una invitación ya aceptada.
-    const r = await prisma.invitation.updateMany({ where: { id, organizationId: req.auth.organizationId, acceptedAt: null }, data: { revokedAt: new Date() } });
-    if (r.count !== 1) throw new AppError(409, "ALREADY_ACCEPTED", "Esta invitación ya fue aceptada.");
+    if (inv.declinedAt) throw new AppError(409, "ALREADY_DECLINED", "La persona ya rechazó esta invitación.");
+    // Condicional: una aceptación o un rechazo simultáneos ganan; nunca queda "revocada" una invitación ya cerrada.
+    const r = await prisma.invitation.updateMany({ where: { id, organizationId: req.auth.organizationId, acceptedAt: null, declinedAt: null }, data: { revokedAt: new Date() } });
+    if (r.count !== 1) throw new AppError(409, "ALREADY_ACCEPTED", "Esta invitación ya fue aceptada o rechazada.");
     await audit(req, { action: "INVITATION_REVOKED", entityType: "Invitation", entityId: id, metadata: { email: inv.email } });
     return reply.status(204).send();
   });
@@ -124,6 +132,7 @@ export default async function invitationRoutes(app: FastifyInstance) {
     if (!inv) throw notFound("Esta invitación no es válida.");
     const st = statusOf(inv);
     if (st === "ACCEPTED") throw new AppError(410, "INVITATION_USED", "Esta invitación ya fue utilizada.");
+    if (st === "DECLINED") throw new AppError(410, "INVITATION_DECLINED", "Esta invitación fue rechazada.");
     if (st === "REVOKED") throw new AppError(410, "INVITATION_REVOKED", "Esta invitación fue cancelada.");
     if (st === "EXPIRED") throw new AppError(410, "INVITATION_EXPIRED", "Esta invitación venció. Pide que te la reenvíen.");
     return inv;
@@ -138,7 +147,21 @@ export default async function invitationRoutes(app: FastifyInstance) {
     return {
       email: inv.email, role: inv.role, organization: inv.organization.name, invitedBy: inv.invitedBy.name, expiresAt: inv.expiresAt,
       checkpoints: cps.map((c) => ({ name: c.name, eventName: c.event.name })),
+      // B5: qué podrá hacer (etiquetas del catálogo), para decidir antes de aceptar.
+      permissions: inv.extraPermissions,
     };
+  });
+
+  /** B5: rechazar la invitación. No crea cuenta ni concede nada; el enlace deja de servir. Se audita y se avisa a quien invitó. */
+  app.post("/decline", { config: strict }, async (req, reply) => {
+    const { token } = declineInvitationSchema.parse(req.body);
+    const inv = await findByToken(token);
+    const r = await prisma.invitation.updateMany({
+      where: { id: inv.id, tokenHash: sha256(token), ...OPEN, expiresAt: { gt: new Date() } }, data: { declinedAt: new Date() },
+    });
+    if (r.count !== 1) throw new AppError(410, "INVITATION_USED", "Esta invitación ya no está pendiente.");
+    await audit(req, { action: "INVITATION_DECLINED", entityType: "Invitation", entityId: inv.id, organizationId: inv.organizationId, metadata: { email: inv.email } });
+    return reply.status(204).send();
   });
 
   /** Acepta la invitación: crea la cuenta con el nivel definido, asigna sus puntos e inicia sesión. */
@@ -153,7 +176,7 @@ export default async function invitationRoutes(app: FastifyInstance) {
         // Reclamo atómico: si dos personas abren el mismo enlace a la vez, solo una lo consigue.
         const claimed = await tx.invitation.updateMany({
           // tokenHash en la condición: si se reenvió (enlace nuevo) entre la lectura y el reclamo, el enlace viejo ya no sirve.
-          where: { id: inv.id, tokenHash: sha256(body.token), acceptedAt: null, revokedAt: null, expiresAt: { gt: new Date() } }, data: { acceptedAt: new Date() },
+          where: { id: inv.id, tokenHash: sha256(body.token), ...OPEN, expiresAt: { gt: new Date() } }, data: { acceptedAt: new Date() },
         });
         if (claimed.count !== 1) throw new AppError(410, "INVITATION_USED", "Esta invitación ya fue utilizada.");
         const u = await tx.user.create({

@@ -56,6 +56,17 @@ model Organization {
   notifications Notification[]
   /// B2: suscripción de la parroquia (estructura preparada; todavía sin lógica de cobro ni de acceso).
   subscription  OrganizationSubscription?
+  /// B5: zona horaria de la agenda pastoral (horarios de misa, etc.).
+  timezone      String                   @default("America/Argentina/Buenos_Aires")
+  /// B5: herramientas parroquiales.
+  livestreams         ParishLivestream[]
+  images              ContentImage[]
+  scheduleItems       ScheduleItem[]
+  donationCampaigns   DonationCampaign[]
+  bulletins           Bulletin[]
+  certificateRequests CertificateRequest[]
+  inventoryItems      InventoryItem[]
+  pastoralGroups      PastoralGroup[]
 }
 
 /// A4a: identidad humana. Independiente de la cuenta (User), de la participación (Participant) y de la inscripción
@@ -201,6 +212,14 @@ model User {
   mediaUploaded            MediaAsset[]
   /// Push: dispositivos (tokens FCM) registrados por esta cuenta.
   deviceTokens             DeviceToken[]
+  /// B5: registros creados por esta cuenta del personal (autoría; SetNull si se borrara).
+  livestreamsCreated       ParishLivestream[]
+  imagesUploaded           ContentImage[]
+  campaignsCreated         DonationCampaign[]
+  bulletinsCreated         Bulletin[]
+  certificateEvents        CertificateRequestEvent[]
+  inventoryCreated         InventoryItem[]
+  meetingsCreated          PastoralGroupMeeting[]
 
   @@index([organizationId, role])
 }
@@ -321,6 +340,10 @@ model Event {
   chatMessages             EventChatMessage[]
   notifications            Notification[]
   media                    MediaAsset[]
+  /// B5: seguimiento GPS en vivo (opt-in de cada participante). Apagado por defecto.
+  trackingEnabled          Boolean                  @default(false)
+  locationShares           LocationShare[]
+  livestreams              ParishLivestream[]
 
   @@index([organizationId, status])
   @@index([organizationId, type])
@@ -437,6 +460,8 @@ model Participant {
   person                Person            @relation(fields: [personId], references: [id], onDelete: Restrict)
   pilgrimSessions       PilgrimSession[]
   registration          Registration?
+  /// B5: última ubicación compartida (solo con consentimiento).
+  locationShare         LocationShare?
 
   @@unique([eventId, number])
   @@unique([eventId, documentNumber])
@@ -591,6 +616,8 @@ model Invitation {
   expiresAt        DateTime
   acceptedAt       DateTime?
   revokedAt        DateTime?
+  /// B5: la persona invitada rechazó la invitación (el enlace deja de servir).
+  declinedAt       DateTime?
   acceptedUserId   String?
   invitedById      String
   lastSentAt       DateTime?
@@ -1300,6 +1327,10 @@ enum NotificationKind {
   MANUAL
   /// Automático: la parroquia publicó un evento público.
   EVENT_PUBLISHED
+  /// B5: invitación a ver una transmisión en vivo.
+  LIVESTREAM
+  /// B5: boletín parroquial publicado.
+  BULLETIN
 }
 
 /// B1 — Imagen subida por la parroquia, guardada en la base (el disco del servidor no es persistente). El tipo, las
@@ -1333,6 +1364,8 @@ model ParishFollower {
   organizationId String
   userId         String
   createdAt      DateTime     @default(now())
+  /// B5: además de los avisos, recibir el boletín por correo (opt-in explícito; apagado por defecto).
+  bulletinEmail  Boolean      @default(false)
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -1390,4 +1423,372 @@ model EventChatMessage {
   deletedBy      User?     @relation("ChatDeletedBy", fields: [deletedById], references: [id], onDelete: SetNull)
 
   @@index([eventId, createdAt])
+}
+
+/* =====================  B5: HERRAMIENTAS PARROQUIALES  ===================== */
+
+enum LivestreamStatus {
+  SCHEDULED
+  LIVE
+  ENDED
+}
+
+/// De dónde sale el estado: MANUAL = lo marcó el personal autorizado; YOUTUBE_API = verificado con YouTube Data API.
+enum LivestreamSource {
+  MANUAL
+  YOUTUBE_API
+}
+
+/// B5 — Transmisión de YouTube de la parroquia (opcionalmente de un evento). El video vive en YouTube; aquí solo su id.
+/// Nunca se declara EN VIVO por guardar una URL: LIVE lo marca el personal o lo confirma la API de YouTube.
+model ParishLivestream {
+  id             String           @id @default(uuid())
+  organizationId String
+  eventId        String?
+  title          String
+  youtubeVideoId String
+  status         LivestreamStatus @default(SCHEDULED)
+  statusSource   LivestreamSource @default(MANUAL)
+  scheduledAt    DateTime?
+  startedAt      DateTime?
+  endedAt        DateTime?
+  /// Última consulta a la API de YouTube (limita la cuota).
+  lastCheckedAt  DateTime?
+  /// Momento en que se invitó a los seguidores (una sola vez por transmisión).
+  announcedAt    DateTime?
+  createdById    String?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  event          Event?           @relation(fields: [eventId], references: [id], onDelete: Restrict)
+  createdBy      User?            @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, status])
+}
+
+/// B5 — Última ubicación compartida por un participante (seguimiento GPS opt-in). Una fila por participante: no se
+/// guarda historial. Se borra al dejar de compartir y al finalizar o cancelar el evento (retención mínima).
+model LocationShare {
+  id            String      @id @default(uuid())
+  eventId       String
+  participantId String      @unique
+  consentAt     DateTime    @default(now())
+  latitude      Float?
+  longitude     Float?
+  accuracyM     Float?
+  /// Hora del dispositivo al tomar la posición.
+  recordedAt    DateTime?
+  /// Hora en que llegó al servidor.
+  receivedAt    DateTime?
+  updatedAt     DateTime    @updatedAt
+  event         Event       @relation(fields: [eventId], references: [id], onDelete: Restrict)
+  participant   Participant @relation(fields: [participantId], references: [id], onDelete: Cascade)
+
+  @@index([eventId])
+}
+
+enum ContentImageOwner {
+  EVENT_COVER
+  DONATION_CAMPAIGN
+}
+
+/// ORIGINAL = el archivo subido (validado); LARGE/MEDIUM/SMALL = WebP para escritorio, tableta y móvil.
+enum ContentImageVariant {
+  ORIGINAL
+  LARGE
+  MEDIUM
+  SMALL
+}
+
+/// B5 — Imágenes de contenido (portada de evento, imagen de campaña) con sus variantes, guardadas en la base como
+/// MediaAsset (Render no tiene disco persistente). ownerId = id del evento o de la campaña (no es FK: polimórfico).
+model ContentImage {
+  id             String              @id @default(uuid())
+  organizationId String
+  ownerType      ContentImageOwner
+  ownerId        String
+  variant        ContentImageVariant
+  mime           String
+  width          Int
+  height         Int
+  sizeBytes      Int
+  sha256         String
+  data           Bytes
+  createdById    String?
+  createdAt      DateTime            @default(now())
+  organization   Organization        @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  createdBy      User?               @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@unique([ownerType, ownerId, variant])
+  @@index([organizationId])
+}
+
+enum ScheduleKind {
+  MASS
+  CONFESSION
+  ADORATION
+  CATECHESIS
+  MEETING
+  PATRONAL
+  OTHER
+}
+
+/// B5 — Agenda pastoral: actividades habituales (cada semana: weekday 0=domingo…6=sábado) o de un día (date). No son
+/// eventos (sin inscripción ni check-in); los eventos especiales y peregrinaciones siguen en Event.
+model ScheduleItem {
+  id             String       @id @default(uuid())
+  organizationId String
+  kind           ScheduleKind
+  title          String
+  weekday        Int?
+  date           DateTime?    @db.Date
+  /// "HH:MM" en la zona horaria de la parroquia.
+  startTime      String
+  endTime        String?
+  location       String?
+  notes          String?
+  active         Boolean      @default(true)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, active])
+}
+
+enum DonationPurpose {
+  MAINTENANCE
+  WORKS
+  CHARITY
+  SPECIAL
+  OTHER
+}
+
+/// B5 — Campaña de donación: enlace de pago EXTERNO (Mercado Pago) de la cuenta de la propia parroquia. Peregrinos no
+/// cobra, no guarda datos de tarjetas ni confirma pagos: solo muestra el botón que abre el enlace.
+model DonationCampaign {
+  id             String          @id @default(uuid())
+  organizationId String
+  title          String
+  purpose        DonationPurpose
+  description    String?
+  beneficiary    String
+  url            String
+  active         Boolean         @default(false)
+  sortOrder      Int             @default(0)
+  createdById    String?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  createdBy      User?           @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, active])
+}
+
+enum BulletinStatus {
+  DRAFT
+  PUBLISHED
+}
+
+/// B5 — Boletín parroquial (p. ej. semanal). Reúne texto propio con la agenda, eventos y campañas vigentes. Al
+/// publicarlo se avisa a los seguidores con el sistema de avisos existente y, a quien lo pidió, por correo.
+model Bulletin {
+  id               String         @id @default(uuid())
+  organizationId   String
+  title            String
+  weekOf           DateTime       @db.Date
+  body             String
+  includeSchedule  Boolean        @default(true)
+  includeEvents    Boolean        @default(true)
+  includeCampaigns Boolean        @default(false)
+  status           BulletinStatus @default(DRAFT)
+  publishedAt      DateTime?
+  emailedAt        DateTime?
+  emailCount       Int            @default(0)
+  notificationId   String?
+  createdById      String?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  organization     Organization   @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  createdBy        User?          @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, status, publishedAt])
+}
+
+enum CertificateType {
+  BAPTISM
+  CONFIRMATION
+  MARRIAGE
+}
+
+enum CertificateStatus {
+  RECEIVED
+  IN_REVIEW
+  NEEDS_INFO
+  READY
+  DELIVERED
+  REJECTED
+}
+
+/// B5 — Solicitud de certificado o partida sacramental. Gestiona el pedido; no reemplaza los libros oficiales ni valida
+/// documentos. Datos personales: solo el personal con certificate:manage de ESA parroquia; nunca en el perfil público.
+/// El solicitante consulta el estado con su código de seguimiento + su correo (accessTokenHash = sha256 de ambos).
+model CertificateRequest {
+  id                String                    @id @default(uuid())
+  organizationId    String
+  trackingCode      String                    @unique
+  type              CertificateType
+  status            CertificateStatus         @default(RECEIVED)
+  requesterName     String
+  requesterEmail    String
+  requesterPhone    String?
+  requesterDocument String?
+  subjectName       String
+  subjectBirthDate  DateTime?                 @db.Date
+  sacramentYear     Int?
+  sacramentPlace    String?
+  parentsNames      String?
+  spouseName        String?
+  purpose           String?
+  details           String?
+  /// Mensaje visible para el solicitante (p. ej. qué información falta o cuándo retirar).
+  publicMessage     String?
+  accessTokenHash   String                    @unique
+  closedAt          DateTime?
+  createdAt         DateTime                  @default(now())
+  updatedAt         DateTime                  @updatedAt
+  organization      Organization              @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  history           CertificateRequestEvent[]
+
+  @@index([organizationId, status, createdAt])
+}
+
+model CertificateRequestEvent {
+  id          String             @id @default(uuid())
+  requestId   String
+  status      CertificateStatus
+  /// Nota interna del personal (no la ve el solicitante).
+  note        String?
+  actorUserId String?
+  createdAt   DateTime           @default(now())
+  request     CertificateRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  actor       User?              @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([requestId, createdAt])
+}
+
+enum InventoryCategory {
+  FURNITURE
+  IT
+  SOUND
+  INSTRUMENT
+  CATECHESIS
+  LITURGICAL
+  OTHER
+}
+
+enum InventoryCondition {
+  NEW
+  GOOD
+  FAIR
+  POOR
+  BROKEN
+}
+
+/// B5 — Inventario de bienes de la parroquia (no es contabilidad). Dar de baja = archivedAt (no se borra).
+model InventoryItem {
+  id             String             @id @default(uuid())
+  organizationId String
+  name           String
+  category       InventoryCategory
+  description    String?
+  location       String?
+  condition      InventoryCondition @default(GOOD)
+  quantity       Int                @default(1)
+  acquiredAt     DateTime?          @db.Date
+  responsible    String?
+  notes          String?
+  archivedAt     DateTime?
+  createdById    String?
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+  organization   Organization       @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  createdBy      User?              @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, category])
+}
+
+enum PastoralGroupKind {
+  CATECHESIS
+  READERS
+  MINISTERS
+  VOLUNTEERS
+  YOUTH
+  LITURGY
+  CHOIR
+  OTHER
+}
+
+/// B5 — Grupo pastoral (catequesis, lectores, ministros…). Asistencia propia de sus encuentros: distinta de los check-in
+/// de eventos y del seguimiento GPS. Listados solo para el personal con group:manage; nunca públicos.
+model PastoralGroup {
+  id             String                 @id @default(uuid())
+  organizationId String
+  name           String
+  kind           PastoralGroupKind
+  description    String?
+  leaders        String?
+  active         Boolean                @default(true)
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+  organization   Organization           @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  members        PastoralGroupMember[]
+  meetings       PastoralGroupMeeting[]
+
+  @@index([organizationId, active])
+}
+
+/// Miembro de un grupo. Menores: se marca isMinor y se registra un adulto responsable. Baja = active false (conserva
+/// la asistencia histórica).
+model PastoralGroupMember {
+  id            String               @id @default(uuid())
+  groupId       String
+  name          String
+  phone         String?
+  email         String?
+  role          String?
+  isMinor       Boolean              @default(false)
+  guardianName  String?
+  guardianPhone String?
+  active        Boolean              @default(true)
+  createdAt     DateTime             @default(now())
+  group         PastoralGroup        @relation(fields: [groupId], references: [id], onDelete: Restrict)
+  attendance    PastoralAttendance[]
+
+  @@index([groupId, active])
+}
+
+model PastoralGroupMeeting {
+  id          String               @id @default(uuid())
+  groupId     String
+  date        DateTime             @db.Date
+  topic       String?
+  notes       String?
+  createdById String?
+  createdAt   DateTime             @default(now())
+  group       PastoralGroup        @relation(fields: [groupId], references: [id], onDelete: Restrict)
+  createdBy   User?                @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  attendance  PastoralAttendance[]
+
+  @@index([groupId, date])
+}
+
+model PastoralAttendance {
+  meetingId String
+  memberId  String
+  present   Boolean
+  meeting   PastoralGroupMeeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  member    PastoralGroupMember  @relation(fields: [memberId], references: [id], onDelete: Restrict)
+
+  @@id([meetingId, memberId])
+  @@index([memberId])
 }

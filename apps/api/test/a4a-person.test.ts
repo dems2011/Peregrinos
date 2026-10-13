@@ -125,7 +125,8 @@ describe("A4a: el código usa Person (no User) como identidad", () => {
     const s = read("src/routes/persons.ts");
     const perms = [...s.matchAll(/requirePermission\("([^"]+)"\)/g)].map((x) => x[1]);
     assert.deepEqual([...new Set(perms)].sort(), ["participant:create", "participant:manage", "participant:read"]);
-    assert.deepEqual([...GRANTABLE_PERMISSIONS], ["participant:create", "checkin:read", "report:read"]);
+    // B5: lo concedible es el catálogo de colaboradores; nunca los propios del SUPERADMIN ni la gestión de Person.
+    for (const p of ["user:manage", "backup:run", "audit:read", "participant:manage"]) assert.ok(!(GRANTABLE_PERMISSIONS as readonly string[]).includes(p), p);
   });
   it("canje (A5.0): une el registro de UNA organización a la identidad global; atómico, un solo uso, nunca cambia User.personId", () => {
     const s = read("src/lib/persons.ts");

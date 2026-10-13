@@ -53,7 +53,9 @@ export type EventVisibility = (typeof EVENT_VISIBILITIES)[number];
 export declare const EVENT_VISIBILITY_LABEL: Record<EventVisibility, string>;
 export type Permission = "event:read" | "event:create" | "event:update" | "user:manage" | "assignment:manage" | "participant:read" | "participant:create" | "participant:manage" | "checkpoint:read" | "checkpoint:manage" | "checkin:create" | "checkin:read" | "checkin:correct" | "report:read" | "export:run" | "backup:run" | "audit:read" | "contact:manage" | "invitation:manage" | "payment:review" | "credential:export"
 /** A5.1: gestionar voluntarios, equipos, zonas, funciones, turnos y asignaciones de los eventos de la organización. */
- | "volunteer:manage";
+ | "volunteer:manage"
+/** B5: herramientas parroquiales. Por defecto solo las tiene el SUPERADMIN; se otorgan una a una (PERMISSION_CATALOG). */
+ | "parish:profile" | "notice:send" | "post:manage" | "stream:manage" | "chat:moderate" | "tracking:read" | "certificate:manage" | "agenda:manage" | "donation:manage" | "inventory:manage" | "group:manage";
 export declare const ROLE_PERMISSIONS: Record<Role, ReadonlySet<Permission>>;
 export declare function can(role: Role, permission: Permission): boolean;
 export declare const loginSchema: z.ZodObject<{
@@ -112,19 +114,19 @@ export declare const registerPilgrimSchema: z.ZodObject<{
     acceptTerms: z.ZodLiteral<true>;
 }, "strict", z.ZodTypeAny, {
     email: string;
+    phone: string;
     password: string;
     firstName: string;
     lastName: string;
     documentNumber: string;
-    phone: string;
     acceptTerms: true;
 }, {
     email: string;
+    phone: string;
     password: string;
     firstName: string;
     lastName: string;
     documentNumber: string;
-    phone: string;
     acceptTerms: true;
 }>;
 /** Alta manual por el personal. Si hay coincidencias, se pide confirmar (confirmNewPerson) o elegir la existente. */
@@ -140,18 +142,18 @@ export declare const createPersonSchema: z.ZodObject<{
 }, "strict", z.ZodTypeAny, {
     firstName: string;
     email?: string | undefined;
+    phone?: string | undefined;
     lastName?: string | undefined;
     documentNumber?: string | undefined;
-    phone?: string | undefined;
     confirmNewPerson?: true | undefined;
     documentType?: string | undefined;
     birthDate?: Date | undefined;
 }, {
     firstName: string;
     email?: string | undefined;
+    phone?: string | undefined;
     lastName?: string | undefined;
     documentNumber?: string | undefined;
-    phone?: string | undefined;
     confirmNewPerson?: true | undefined;
     documentType?: string | undefined;
     birthDate?: Date | undefined;
@@ -166,18 +168,18 @@ export declare const updatePersonSchema: z.ZodObject<{
     birthDate: z.ZodOptional<z.ZodOptional<z.ZodEffects<z.ZodDate, Date, Date>>>;
 }, "strict", z.ZodTypeAny, {
     email?: string | undefined;
+    phone?: string | undefined;
     firstName?: string | undefined;
     lastName?: string | undefined;
     documentNumber?: string | undefined;
-    phone?: string | undefined;
     documentType?: string | undefined;
     birthDate?: Date | undefined;
 }, {
     email?: string | undefined;
+    phone?: string | undefined;
     firstName?: string | undefined;
     lastName?: string | undefined;
     documentNumber?: string | undefined;
-    phone?: string | undefined;
     documentType?: string | undefined;
     birthDate?: Date | undefined;
 }>;
@@ -232,14 +234,14 @@ export declare const bootstrapSchema: z.ZodObject<{
     password: z.ZodString;
 }, "strict", z.ZodTypeAny, {
     email: string;
+    name: string;
     password: string;
     organizationName: string;
-    name: string;
 }, {
     email: string;
+    name: string;
     password: string;
     organizationName: string;
-    name: string;
 }>;
 /** Trayecto (origen → destino). Requiere la capacidad ROUTE. */
 export declare const eventRouteSchema: z.ZodObject<{
@@ -460,23 +462,23 @@ export declare const organizationProfileSchema: z.ZodObject<{
     youtube: z.ZodOptional<z.ZodNullable<z.ZodString>>;
     tiktok: z.ZodOptional<z.ZodNullable<z.ZodString>>;
 }, "strict", z.ZodTypeAny, {
-    email?: string | null | undefined;
-    phone?: string | null | undefined;
-    name?: string | undefined;
     description?: string | null | undefined;
-    address?: string | null | undefined;
     website?: string | null | undefined;
+    email?: string | null | undefined;
+    name?: string | undefined;
+    phone?: string | null | undefined;
+    address?: string | null | undefined;
     instagram?: string | null | undefined;
     facebook?: string | null | undefined;
     youtube?: string | null | undefined;
     tiktok?: string | null | undefined;
 }, {
-    email?: string | null | undefined;
-    phone?: string | null | undefined;
-    name?: string | undefined;
     description?: string | null | undefined;
-    address?: string | null | undefined;
     website?: string | null | undefined;
+    email?: string | null | undefined;
+    name?: string | undefined;
+    phone?: string | null | undefined;
+    address?: string | null | undefined;
     instagram?: string | null | undefined;
     facebook?: string | null | undefined;
     youtube?: string | null | undefined;
@@ -625,19 +627,19 @@ export declare const createEventSchema: z.ZodObject<{
     /** B1: diseño de la credencial (estándar o fondo propio subido). */
     credentialMode: z.ZodOptional<z.ZodEnum<["STANDARD", "CUSTOM"]>>;
 }, "strip", z.ZodTypeAny, {
-    type: "PILGRIMAGE" | "PROCESSION" | "PATRONAL_FEAST" | "LITURGICAL_CELEBRATION" | "ROSARY" | "RETREAT" | "GATHERING" | "COMMUNITY_ACTIVITY" | "CULTURAL_ACTIVITY" | "OTHER";
+    type: "OTHER" | "PILGRIMAGE" | "PROCESSION" | "PATRONAL_FEAST" | "LITURGICAL_CELEBRATION" | "ROSARY" | "RETREAT" | "GATHERING" | "COMMUNITY_ACTIVITY" | "CULTURAL_ACTIVITY";
     status: "DRAFT" | "SCHEDULED";
+    timezone: string;
     name: string;
     startsAt: Date;
-    timezone: string;
-    capabilities?: ("INFO" | "LOCATION" | "REGISTRATION" | "PARTICIPANTS" | "CHECKIN" | "ROUTE" | "POINTS" | "CONTACTS" | "CERTIFICATES" | "VOLUNTEERS" | "COMMUNICATIONS" | "DOCUMENTS")[] | undefined;
+    latitude?: number | null | undefined;
+    longitude?: number | null | undefined;
     description?: string | undefined;
+    capabilities?: ("VOLUNTEERS" | "INFO" | "LOCATION" | "REGISTRATION" | "PARTICIPANTS" | "CHECKIN" | "ROUTE" | "POINTS" | "CONTACTS" | "CERTIFICATES" | "COMMUNICATIONS" | "DOCUMENTS")[] | undefined;
     address?: string | null | undefined;
     endsAt?: Date | null | undefined;
     parishName?: string | null | undefined;
     locationName?: string | null | undefined;
-    latitude?: number | null | undefined;
-    longitude?: number | null | undefined;
     capacity?: number | null | undefined;
     visibility?: "PRIVATE" | "UNLISTED" | "PUBLIC" | undefined;
     registrationOpen?: boolean | undefined;
@@ -671,17 +673,17 @@ export declare const createEventSchema: z.ZodObject<{
 }, {
     name: string;
     startsAt: Date;
-    capabilities?: ("INFO" | "LOCATION" | "REGISTRATION" | "PARTICIPANTS" | "CHECKIN" | "ROUTE" | "POINTS" | "CONTACTS" | "CERTIFICATES" | "VOLUNTEERS" | "COMMUNICATIONS" | "DOCUMENTS")[] | undefined;
-    type?: "PILGRIMAGE" | "PROCESSION" | "PATRONAL_FEAST" | "LITURGICAL_CELEBRATION" | "ROSARY" | "RETREAT" | "GATHERING" | "COMMUNITY_ACTIVITY" | "CULTURAL_ACTIVITY" | "OTHER" | undefined;
+    type?: "OTHER" | "PILGRIMAGE" | "PROCESSION" | "PATRONAL_FEAST" | "LITURGICAL_CELEBRATION" | "ROSARY" | "RETREAT" | "GATHERING" | "COMMUNITY_ACTIVITY" | "CULTURAL_ACTIVITY" | undefined;
     status?: "DRAFT" | "SCHEDULED" | undefined;
-    description?: string | undefined;
-    address?: string | null | undefined;
-    endsAt?: Date | null | undefined;
-    timezone?: string | undefined;
-    parishName?: string | null | undefined;
-    locationName?: string | null | undefined;
     latitude?: number | null | undefined;
     longitude?: number | null | undefined;
+    timezone?: string | undefined;
+    description?: string | undefined;
+    capabilities?: ("VOLUNTEERS" | "INFO" | "LOCATION" | "REGISTRATION" | "PARTICIPANTS" | "CHECKIN" | "ROUTE" | "POINTS" | "CONTACTS" | "CERTIFICATES" | "COMMUNICATIONS" | "DOCUMENTS")[] | undefined;
+    address?: string | null | undefined;
+    endsAt?: Date | null | undefined;
+    parishName?: string | null | undefined;
+    locationName?: string | null | undefined;
     capacity?: number | null | undefined;
     visibility?: "PRIVATE" | "UNLISTED" | "PUBLIC" | undefined;
     registrationOpen?: boolean | undefined;
@@ -821,19 +823,19 @@ export declare const updateEventSchema: z.ZodObject<{
     }[]>>>;
     credentialMode: z.ZodOptional<z.ZodOptional<z.ZodEnum<["STANDARD", "CUSTOM"]>>>;
 }, "strip", z.ZodTypeAny, {
-    capabilities?: ("INFO" | "LOCATION" | "REGISTRATION" | "PARTICIPANTS" | "CHECKIN" | "ROUTE" | "POINTS" | "CONTACTS" | "CERTIFICATES" | "VOLUNTEERS" | "COMMUNICATIONS" | "DOCUMENTS")[] | undefined;
-    type?: "PILGRIMAGE" | "PROCESSION" | "PATRONAL_FEAST" | "LITURGICAL_CELEBRATION" | "ROSARY" | "RETREAT" | "GATHERING" | "COMMUNITY_ACTIVITY" | "CULTURAL_ACTIVITY" | "OTHER" | undefined;
+    type?: "OTHER" | "PILGRIMAGE" | "PROCESSION" | "PATRONAL_FEAST" | "LITURGICAL_CELEBRATION" | "ROSARY" | "RETREAT" | "GATHERING" | "COMMUNITY_ACTIVITY" | "CULTURAL_ACTIVITY" | undefined;
     status?: "DRAFT" | "SCHEDULED" | "IN_PROGRESS" | "FINISHED" | "CANCELLED" | undefined;
-    name?: string | undefined;
+    latitude?: number | null | undefined;
+    longitude?: number | null | undefined;
+    timezone?: string | undefined;
     description?: string | undefined;
+    name?: string | undefined;
+    capabilities?: ("VOLUNTEERS" | "INFO" | "LOCATION" | "REGISTRATION" | "PARTICIPANTS" | "CHECKIN" | "ROUTE" | "POINTS" | "CONTACTS" | "CERTIFICATES" | "COMMUNICATIONS" | "DOCUMENTS")[] | undefined;
     address?: string | null | undefined;
     startsAt?: Date | undefined;
     endsAt?: Date | null | undefined;
-    timezone?: string | undefined;
     parishName?: string | null | undefined;
     locationName?: string | null | undefined;
-    latitude?: number | null | undefined;
-    longitude?: number | null | undefined;
     capacity?: number | null | undefined;
     visibility?: "PRIVATE" | "UNLISTED" | "PUBLIC" | undefined;
     registrationOpen?: boolean | undefined;
@@ -865,19 +867,19 @@ export declare const updateEventSchema: z.ZodObject<{
     }[] | undefined;
     credentialMode?: "STANDARD" | "CUSTOM" | undefined;
 }, {
-    capabilities?: ("INFO" | "LOCATION" | "REGISTRATION" | "PARTICIPANTS" | "CHECKIN" | "ROUTE" | "POINTS" | "CONTACTS" | "CERTIFICATES" | "VOLUNTEERS" | "COMMUNICATIONS" | "DOCUMENTS")[] | undefined;
-    type?: "PILGRIMAGE" | "PROCESSION" | "PATRONAL_FEAST" | "LITURGICAL_CELEBRATION" | "ROSARY" | "RETREAT" | "GATHERING" | "COMMUNITY_ACTIVITY" | "CULTURAL_ACTIVITY" | "OTHER" | undefined;
+    type?: "OTHER" | "PILGRIMAGE" | "PROCESSION" | "PATRONAL_FEAST" | "LITURGICAL_CELEBRATION" | "ROSARY" | "RETREAT" | "GATHERING" | "COMMUNITY_ACTIVITY" | "CULTURAL_ACTIVITY" | undefined;
     status?: "DRAFT" | "SCHEDULED" | "IN_PROGRESS" | "FINISHED" | "CANCELLED" | undefined;
-    name?: string | undefined;
+    latitude?: number | null | undefined;
+    longitude?: number | null | undefined;
+    timezone?: string | undefined;
     description?: string | undefined;
+    name?: string | undefined;
+    capabilities?: ("VOLUNTEERS" | "INFO" | "LOCATION" | "REGISTRATION" | "PARTICIPANTS" | "CHECKIN" | "ROUTE" | "POINTS" | "CONTACTS" | "CERTIFICATES" | "COMMUNICATIONS" | "DOCUMENTS")[] | undefined;
     address?: string | null | undefined;
     startsAt?: Date | undefined;
     endsAt?: Date | null | undefined;
-    timezone?: string | undefined;
     parishName?: string | null | undefined;
     locationName?: string | null | undefined;
-    latitude?: number | null | undefined;
-    longitude?: number | null | undefined;
     capacity?: number | null | undefined;
     visibility?: "PRIVATE" | "UNLISTED" | "PUBLIC" | undefined;
     registrationOpen?: boolean | undefined;
@@ -914,10 +916,10 @@ export declare const eventListQuerySchema: z.ZodObject<{
     type: z.ZodOptional<z.ZodEnum<["PILGRIMAGE", "PROCESSION", "PATRONAL_FEAST", "LITURGICAL_CELEBRATION", "ROSARY", "RETREAT", "GATHERING", "COMMUNITY_ACTIVITY", "CULTURAL_ACTIVITY", "OTHER"]>>;
     status: z.ZodOptional<z.ZodEnum<["DRAFT", "SCHEDULED", "IN_PROGRESS", "FINISHED", "CANCELLED"]>>;
 }, "strip", z.ZodTypeAny, {
-    type?: "PILGRIMAGE" | "PROCESSION" | "PATRONAL_FEAST" | "LITURGICAL_CELEBRATION" | "ROSARY" | "RETREAT" | "GATHERING" | "COMMUNITY_ACTIVITY" | "CULTURAL_ACTIVITY" | "OTHER" | undefined;
+    type?: "OTHER" | "PILGRIMAGE" | "PROCESSION" | "PATRONAL_FEAST" | "LITURGICAL_CELEBRATION" | "ROSARY" | "RETREAT" | "GATHERING" | "COMMUNITY_ACTIVITY" | "CULTURAL_ACTIVITY" | undefined;
     status?: "DRAFT" | "SCHEDULED" | "IN_PROGRESS" | "FINISHED" | "CANCELLED" | undefined;
 }, {
-    type?: "PILGRIMAGE" | "PROCESSION" | "PATRONAL_FEAST" | "LITURGICAL_CELEBRATION" | "ROSARY" | "RETREAT" | "GATHERING" | "COMMUNITY_ACTIVITY" | "CULTURAL_ACTIVITY" | "OTHER" | undefined;
+    type?: "OTHER" | "PILGRIMAGE" | "PROCESSION" | "PATRONAL_FEAST" | "LITURGICAL_CELEBRATION" | "ROSARY" | "RETREAT" | "GATHERING" | "COMMUNITY_ACTIVITY" | "CULTURAL_ACTIVITY" | undefined;
     status?: "DRAFT" | "SCHEDULED" | "IN_PROGRESS" | "FINISHED" | "CANCELLED" | undefined;
 }>;
 /**
@@ -980,37 +982,37 @@ export declare const createUserSchema: z.ZodObject<{
     email: z.ZodString;
     password: z.ZodString;
     role: z.ZodEnum<["SUPERADMIN", "ADMIN", "OPERATOR"]>;
-    extraPermissions: z.ZodDefault<z.ZodArray<z.ZodEnum<["participant:create", "checkin:read", "report:read"]>, "many">>;
+    extraPermissions: z.ZodDefault<z.ZodEffects<z.ZodEffects<z.ZodArray<z.ZodString, "many">, ("event:create" | "event:update" | "participant:create" | "checkin:create" | "checkin:read" | "report:read" | "invitation:manage" | "payment:review" | "parish:profile" | "notice:send" | "post:manage" | "stream:manage" | "chat:moderate" | "tracking:read" | "certificate:manage" | "agenda:manage" | "donation:manage" | "inventory:manage" | "group:manage")[], string[]>, ("event:create" | "event:update" | "participant:create" | "checkin:create" | "checkin:read" | "report:read" | "invitation:manage" | "payment:review" | "parish:profile" | "notice:send" | "post:manage" | "stream:manage" | "chat:moderate" | "tracking:read" | "certificate:manage" | "agenda:manage" | "donation:manage" | "inventory:manage" | "group:manage")[], string[]>>;
 }, "strict", z.ZodTypeAny, {
     email: string;
-    password: string;
     name: string;
     role: "SUPERADMIN" | "ADMIN" | "OPERATOR";
-    extraPermissions: ("participant:create" | "checkin:read" | "report:read")[];
+    password: string;
+    extraPermissions: ("event:create" | "event:update" | "participant:create" | "checkin:create" | "checkin:read" | "report:read" | "invitation:manage" | "payment:review" | "parish:profile" | "notice:send" | "post:manage" | "stream:manage" | "chat:moderate" | "tracking:read" | "certificate:manage" | "agenda:manage" | "donation:manage" | "inventory:manage" | "group:manage")[];
 }, {
     email: string;
-    password: string;
     name: string;
     role: "SUPERADMIN" | "ADMIN" | "OPERATOR";
-    extraPermissions?: ("participant:create" | "checkin:read" | "report:read")[] | undefined;
+    password: string;
+    extraPermissions?: string[] | undefined;
 }>;
 export declare const updateUserSchema: z.ZodObject<{
     name: z.ZodOptional<z.ZodString>;
     role: z.ZodOptional<z.ZodEnum<["SUPERADMIN", "ADMIN", "OPERATOR"]>>;
     isActive: z.ZodOptional<z.ZodBoolean>;
     password: z.ZodOptional<z.ZodString>;
-    extraPermissions: z.ZodOptional<z.ZodArray<z.ZodEnum<["participant:create", "checkin:read", "report:read"]>, "many">>;
+    extraPermissions: z.ZodOptional<z.ZodEffects<z.ZodEffects<z.ZodArray<z.ZodString, "many">, ("event:create" | "event:update" | "participant:create" | "checkin:create" | "checkin:read" | "report:read" | "invitation:manage" | "payment:review" | "parish:profile" | "notice:send" | "post:manage" | "stream:manage" | "chat:moderate" | "tracking:read" | "certificate:manage" | "agenda:manage" | "donation:manage" | "inventory:manage" | "group:manage")[], string[]>, ("event:create" | "event:update" | "participant:create" | "checkin:create" | "checkin:read" | "report:read" | "invitation:manage" | "payment:review" | "parish:profile" | "notice:send" | "post:manage" | "stream:manage" | "chat:moderate" | "tracking:read" | "certificate:manage" | "agenda:manage" | "donation:manage" | "inventory:manage" | "group:manage")[], string[]>>;
 }, "strict", z.ZodTypeAny, {
-    password?: string | undefined;
     name?: string | undefined;
     role?: "SUPERADMIN" | "ADMIN" | "OPERATOR" | undefined;
-    extraPermissions?: ("participant:create" | "checkin:read" | "report:read")[] | undefined;
+    password?: string | undefined;
+    extraPermissions?: ("event:create" | "event:update" | "participant:create" | "checkin:create" | "checkin:read" | "report:read" | "invitation:manage" | "payment:review" | "parish:profile" | "notice:send" | "post:manage" | "stream:manage" | "chat:moderate" | "tracking:read" | "certificate:manage" | "agenda:manage" | "donation:manage" | "inventory:manage" | "group:manage")[] | undefined;
     isActive?: boolean | undefined;
 }, {
-    password?: string | undefined;
     name?: string | undefined;
     role?: "SUPERADMIN" | "ADMIN" | "OPERATOR" | undefined;
-    extraPermissions?: ("participant:create" | "checkin:read" | "report:read")[] | undefined;
+    password?: string | undefined;
+    extraPermissions?: string[] | undefined;
     isActive?: boolean | undefined;
 }>;
 export declare const assignmentsSchema: z.ZodObject<{
@@ -1129,25 +1131,25 @@ export declare const createParticipantSchema: z.ZodObject<{
     notes: z.ZodOptional<z.ZodString>;
     number: z.ZodOptional<z.ZodNumber>;
 }, "strip", z.ZodTypeAny, {
+    phone: string;
     firstName: string;
     lastName: string;
     documentNumber: string;
-    phone: string;
     documentType: string;
     number?: number | undefined;
+    notes?: string | undefined;
     confirmNewPerson?: true | undefined;
     personId?: string | undefined;
-    notes?: string | undefined;
 }, {
+    phone: string;
     firstName: string;
     lastName: string;
     documentNumber: string;
-    phone: string;
     number?: number | undefined;
+    notes?: string | undefined;
     confirmNewPerson?: true | undefined;
     documentType?: string | undefined;
     personId?: string | undefined;
-    notes?: string | undefined;
 }>;
 export declare const updateParticipantSchema: z.ZodObject<{
     firstName: z.ZodOptional<z.ZodString>;
@@ -1162,21 +1164,21 @@ export declare const updateParticipantSchema: z.ZodObject<{
 }, "strip", z.ZodTypeAny, {
     number?: number | undefined;
     status?: "CANCELLED" | "ACTIVE" | undefined;
+    notes?: string | undefined;
+    phone?: string | undefined;
     firstName?: string | undefined;
     lastName?: string | undefined;
     documentNumber?: string | undefined;
-    phone?: string | undefined;
     documentType?: string | undefined;
-    notes?: string | undefined;
 }, {
     number?: number | undefined;
     status?: "CANCELLED" | "ACTIVE" | undefined;
+    notes?: string | undefined;
+    phone?: string | undefined;
     firstName?: string | undefined;
     lastName?: string | undefined;
     documentNumber?: string | undefined;
-    phone?: string | undefined;
     documentType?: string | undefined;
-    notes?: string | undefined;
 }>;
 export declare const participantListSchema: z.ZodObject<{
     page: z.ZodDefault<z.ZodNumber>;
@@ -1207,19 +1209,19 @@ export declare const createCheckpointSchema: z.ZodObject<{
 }, "strip", z.ZodTypeAny, {
     status: "ACTIVE" | "INACTIVE";
     name: string;
-    description?: string | undefined;
-    address?: string | undefined;
     latitude?: number | null | undefined;
     longitude?: number | null | undefined;
+    description?: string | undefined;
+    address?: string | undefined;
     capacity?: number | null | undefined;
     reference?: string | undefined;
 }, {
     name: string;
     status?: "ACTIVE" | "INACTIVE" | undefined;
-    description?: string | undefined;
-    address?: string | undefined;
     latitude?: number | null | undefined;
     longitude?: number | null | undefined;
+    description?: string | undefined;
+    address?: string | undefined;
     capacity?: number | null | undefined;
     reference?: string | undefined;
 }>;
@@ -1234,20 +1236,20 @@ export declare const updateCheckpointSchema: z.ZodObject<{
     status: z.ZodOptional<z.ZodDefault<z.ZodEnum<["ACTIVE", "INACTIVE"]>>>;
 }, "strip", z.ZodTypeAny, {
     status?: "ACTIVE" | "INACTIVE" | undefined;
-    name?: string | undefined;
-    description?: string | undefined;
-    address?: string | undefined;
     latitude?: number | null | undefined;
     longitude?: number | null | undefined;
+    description?: string | undefined;
+    name?: string | undefined;
+    address?: string | undefined;
     capacity?: number | null | undefined;
     reference?: string | undefined;
 }, {
     status?: "ACTIVE" | "INACTIVE" | undefined;
-    name?: string | undefined;
-    description?: string | undefined;
-    address?: string | undefined;
     latitude?: number | null | undefined;
     longitude?: number | null | undefined;
+    description?: string | undefined;
+    name?: string | undefined;
+    address?: string | undefined;
     capacity?: number | null | undefined;
     reference?: string | undefined;
 }>;
@@ -1272,18 +1274,18 @@ export declare const createCheckinSchema: z.ZodObject<{
     participantId: string;
     checkpointId: string;
     method: "NUMBER" | "QR" | "SEARCH";
-    id?: string | undefined;
     latitude?: number | undefined;
     longitude?: number | undefined;
+    id?: string | undefined;
     timestamp?: Date | undefined;
     deviceId?: string | undefined;
 }, {
     participantId: string;
     checkpointId: string;
     method: "NUMBER" | "QR" | "SEARCH";
-    id?: string | undefined;
     latitude?: number | undefined;
     longitude?: number | undefined;
+    id?: string | undefined;
     timestamp?: Date | undefined;
     deviceId?: string | undefined;
 }>;
@@ -1357,11 +1359,121 @@ export declare const checkinListSchema: z.ZodObject<{
     from?: Date | undefined;
     to?: Date | undefined;
 }>;
-/** Permisos que un administrador puede activar individualmente a un operador. */
-export declare const GRANTABLE_PERMISSIONS: readonly ["participant:create", "checkin:read", "report:read"];
-export type GrantablePermission = (typeof GRANTABLE_PERMISSIONS)[number];
+/**
+ * B5 — Catálogo de permisos que se otorgan individualmente a un colaborador (además de los de su nivel). Agregar un
+ * permiso nuevo = sumarlo a `Permission`, al SUPERADMIN y a este catálogo: la API (requirePermission), el menú (can) y
+ * la pantalla de permisos lo toman de aquí. Nadie otorga un permiso que no tiene (assertCanGrantPermissions).
+ * Quedan fuera los propios del SUPERADMIN: user:manage (otorgar niveles), backup:run y audit:read.
+ */
+export declare const PERMISSION_CATALOG: readonly [{
+    readonly id: "parish:profile";
+    readonly group: "Perfil y publicaciones";
+    readonly label: "Perfil de la parroquia";
+    readonly description: "Ver y editar el perfil público, el logo y el cartel";
+}, {
+    readonly id: "post:manage";
+    readonly group: "Perfil y publicaciones";
+    readonly label: "Publicaciones y fotografías";
+    readonly description: "Portadas y fotos de los eventos publicados";
+}, {
+    readonly id: "notice:send";
+    readonly group: "Perfil y publicaciones";
+    readonly label: "Avisos y boletín";
+    readonly description: "Enviar avisos a los seguidores y publicar el boletín";
+}, {
+    readonly id: "stream:manage";
+    readonly group: "Perfil y publicaciones";
+    readonly label: "Transmisiones en vivo";
+    readonly description: "Cargar la transmisión de YouTube, iniciarla y finalizarla";
+}, {
+    readonly id: "event:create";
+    readonly group: "Eventos y seguimiento";
+    readonly label: "Crear eventos";
+    readonly description: "Dar de alta eventos nuevos";
+}, {
+    readonly id: "event:update";
+    readonly group: "Eventos y seguimiento";
+    readonly label: "Administrar eventos";
+    readonly description: "Editar datos, estado, inscripción y formulario";
+}, {
+    readonly id: "payment:review";
+    readonly group: "Eventos y seguimiento";
+    readonly label: "Inscripciones y pagos";
+    readonly description: "Ver inscripciones y revisar comprobantes";
+}, {
+    readonly id: "participant:create";
+    readonly group: "Eventos y seguimiento";
+    readonly label: "Agregar participantes";
+    readonly description: "Dar de alta personas en el evento";
+}, {
+    readonly id: "checkin:create";
+    readonly group: "Eventos y seguimiento";
+    readonly label: "Registrar llegadas";
+    readonly description: "Check-in con QR, número o búsqueda";
+}, {
+    readonly id: "checkin:read";
+    readonly group: "Eventos y seguimiento";
+    readonly label: "Historial de llegadas";
+    readonly description: "Ver el registro de llegadas";
+}, {
+    readonly id: "tracking:read";
+    readonly group: "Eventos y seguimiento";
+    readonly label: "Mapa y seguimiento en vivo";
+    readonly description: "Ver la ubicación de los peregrinos que la comparten";
+}, {
+    readonly id: "chat:moderate";
+    readonly group: "Eventos y seguimiento";
+    readonly label: "Moderar el chat";
+    readonly description: "Ocultar mensajes del chat del evento";
+}, {
+    readonly id: "report:read";
+    readonly group: "Eventos y seguimiento";
+    readonly label: "Estadísticas e informes";
+    readonly description: "Informe del evento y estadísticas";
+}, {
+    readonly id: "agenda:manage";
+    readonly group: "Agenda y vida parroquial";
+    readonly label: "Agenda pastoral";
+    readonly description: "Horarios de misa, confesiones, adoración y actividades";
+}, {
+    readonly id: "group:manage";
+    readonly group: "Agenda y vida parroquial";
+    readonly label: "Grupos pastorales";
+    readonly description: "Grupos, miembros, encuentros y asistencia";
+}, {
+    readonly id: "donation:manage";
+    readonly group: "Donaciones";
+    readonly label: "Donaciones";
+    readonly description: "Campañas y enlaces de pago de la parroquia";
+}, {
+    readonly id: "certificate:manage";
+    readonly group: "Administración parroquial";
+    readonly label: "Certificados sacramentales";
+    readonly description: "Atender solicitudes de partidas";
+}, {
+    readonly id: "inventory:manage";
+    readonly group: "Administración parroquial";
+    readonly label: "Inventario";
+    readonly description: "Bienes y recursos de la parroquia";
+}, {
+    readonly id: "invitation:manage";
+    readonly group: "Acceso y permisos";
+    readonly label: "Invitaciones";
+    readonly description: "Invitar colaboradores (solo con permisos que la persona tenga)";
+}];
+export declare const GRANTABLE_PERMISSIONS: readonly [GrantablePermission, ...GrantablePermission[]];
+export type GrantablePermission = (typeof PERMISSION_CATALOG)[number]["id"];
+export declare const isGrantablePermission: (p: string) => p is GrantablePermission;
 export declare function effectivePermissions(role: Role, extras?: readonly string[]): Permission[];
 export declare const hasPermission: (role: Role, extras: readonly string[], p: Permission) => boolean;
+/**
+ * B5 — Mínimo privilegio al otorgar: cada permiso extra debe estar en el catálogo y quien lo otorga debe tenerlo él
+ * mismo. Devuelve los que no puede otorgar (vacío = todo en orden). El servidor lo exige; la pantalla solo lo refleja.
+ */
+export declare function permissionsNotGrantableBy(granter: {
+    role: Role;
+    extraPermissions: readonly string[];
+}, requested: readonly string[]): string[];
 /** Nadie puede dar un nivel superior al suyo: el Superadmin da cualquiera; el Administrador solo nivel operador. */
 export declare const canGrantRole: (granter: Role, target: Role) => boolean;
 /**
@@ -1399,27 +1511,27 @@ export declare const ACCESS_LEVELS: readonly [{
 export declare const createInvitationSchema: z.ZodEffects<z.ZodObject<{
     email: z.ZodString;
     role: z.ZodEnum<["SUPERADMIN", "ADMIN", "OPERATOR"]>;
-    extraPermissions: z.ZodDefault<z.ZodArray<z.ZodEnum<["participant:create", "checkin:read", "report:read"]>, "many">>;
+    extraPermissions: z.ZodDefault<z.ZodEffects<z.ZodEffects<z.ZodArray<z.ZodString, "many">, ("event:create" | "event:update" | "participant:create" | "checkin:create" | "checkin:read" | "report:read" | "invitation:manage" | "payment:review" | "parish:profile" | "notice:send" | "post:manage" | "stream:manage" | "chat:moderate" | "tracking:read" | "certificate:manage" | "agenda:manage" | "donation:manage" | "inventory:manage" | "group:manage")[], string[]>, ("event:create" | "event:update" | "participant:create" | "checkin:create" | "checkin:read" | "report:read" | "invitation:manage" | "payment:review" | "parish:profile" | "notice:send" | "post:manage" | "stream:manage" | "chat:moderate" | "tracking:read" | "certificate:manage" | "agenda:manage" | "donation:manage" | "inventory:manage" | "group:manage")[], string[]>>;
     checkpointIds: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
 }, "strict", z.ZodTypeAny, {
     email: string;
     role: "SUPERADMIN" | "ADMIN" | "OPERATOR";
-    extraPermissions: ("participant:create" | "checkin:read" | "report:read")[];
+    extraPermissions: ("event:create" | "event:update" | "participant:create" | "checkin:create" | "checkin:read" | "report:read" | "invitation:manage" | "payment:review" | "parish:profile" | "notice:send" | "post:manage" | "stream:manage" | "chat:moderate" | "tracking:read" | "certificate:manage" | "agenda:manage" | "donation:manage" | "inventory:manage" | "group:manage")[];
     checkpointIds: string[];
 }, {
     email: string;
     role: "SUPERADMIN" | "ADMIN" | "OPERATOR";
-    extraPermissions?: ("participant:create" | "checkin:read" | "report:read")[] | undefined;
+    extraPermissions?: string[] | undefined;
     checkpointIds?: string[] | undefined;
 }>, {
     email: string;
     role: "SUPERADMIN" | "ADMIN" | "OPERATOR";
-    extraPermissions: ("participant:create" | "checkin:read" | "report:read")[];
+    extraPermissions: ("event:create" | "event:update" | "participant:create" | "checkin:create" | "checkin:read" | "report:read" | "invitation:manage" | "payment:review" | "parish:profile" | "notice:send" | "post:manage" | "stream:manage" | "chat:moderate" | "tracking:read" | "certificate:manage" | "agenda:manage" | "donation:manage" | "inventory:manage" | "group:manage")[];
     checkpointIds: string[];
 }, {
     email: string;
     role: "SUPERADMIN" | "ADMIN" | "OPERATOR";
-    extraPermissions?: ("participant:create" | "checkin:read" | "report:read")[] | undefined;
+    extraPermissions?: string[] | undefined;
     checkpointIds?: string[] | undefined;
 }>;
 export declare const acceptInvitationSchema: z.ZodObject<{
@@ -1427,13 +1539,29 @@ export declare const acceptInvitationSchema: z.ZodObject<{
     name: z.ZodString;
     password: z.ZodString;
 }, "strict", z.ZodTypeAny, {
+    name: string;
     password: string;
     token: string;
-    name: string;
 }, {
+    name: string;
     password: string;
     token: string;
-    name: string;
+}>;
+/** B5: rechazar la invitación desde su enlace (no crea cuenta ni concede nada). */
+export declare const declineInvitationSchema: z.ZodObject<{
+    token: z.ZodString;
+}, "strict", z.ZodTypeAny, {
+    token: string;
+}, {
+    token: string;
+}>;
+/** B5: permisos de un colaborador (reemplaza la lista completa de permisos extra). */
+export declare const userPermissionsSchema: z.ZodObject<{
+    extraPermissions: z.ZodEffects<z.ZodEffects<z.ZodArray<z.ZodString, "many">, ("event:create" | "event:update" | "participant:create" | "checkin:create" | "checkin:read" | "report:read" | "invitation:manage" | "payment:review" | "parish:profile" | "notice:send" | "post:manage" | "stream:manage" | "chat:moderate" | "tracking:read" | "certificate:manage" | "agenda:manage" | "donation:manage" | "inventory:manage" | "group:manage")[], string[]>, ("event:create" | "event:update" | "participant:create" | "checkin:create" | "checkin:read" | "report:read" | "invitation:manage" | "payment:review" | "parish:profile" | "notice:send" | "post:manage" | "stream:manage" | "chat:moderate" | "tracking:read" | "certificate:manage" | "agenda:manage" | "donation:manage" | "inventory:manage" | "group:manage")[], string[]>;
+}, "strict", z.ZodTypeAny, {
+    extraPermissions: ("event:create" | "event:update" | "participant:create" | "checkin:create" | "checkin:read" | "report:read" | "invitation:manage" | "payment:review" | "parish:profile" | "notice:send" | "post:manage" | "stream:manage" | "chat:moderate" | "tracking:read" | "certificate:manage" | "agenda:manage" | "donation:manage" | "inventory:manage" | "group:manage")[];
+}, {
+    extraPermissions: string[];
 }>;
 declare const SOCIAL_HOSTS: {
     readonly instagram: readonly ["instagram.com"];
@@ -1487,12 +1615,12 @@ export declare const organizationRequestSchema: z.ZodObject<{
     contactName: string;
     contactEmail: string;
     countryCode: string;
-    address?: string | undefined;
+    notes?: string | undefined;
     website?: string | undefined;
+    address?: string | undefined;
     instagram?: string | undefined;
     facebook?: string | undefined;
     youtube?: string | undefined;
-    notes?: string | undefined;
     contactPhone?: string | undefined;
     locality?: string | undefined;
 }, {
@@ -1501,12 +1629,12 @@ export declare const organizationRequestSchema: z.ZodObject<{
     contactName: string;
     contactEmail: string;
     countryCode: string;
-    address?: string | undefined;
+    notes?: string | undefined;
     website?: string | undefined;
+    address?: string | undefined;
     instagram?: string | undefined;
     facebook?: string | undefined;
     youtube?: string | undefined;
-    notes?: string | undefined;
     contactPhone?: string | undefined;
     locality?: string | undefined;
 }>;
@@ -1532,12 +1660,12 @@ export declare const resubmitOrganizationRequestSchema: z.ZodObject<{
     contactName: string;
     contactEmail: string;
     countryCode: string;
-    address?: string | undefined;
+    notes?: string | undefined;
     website?: string | undefined;
+    address?: string | undefined;
     instagram?: string | undefined;
     facebook?: string | undefined;
     youtube?: string | undefined;
-    notes?: string | undefined;
     contactPhone?: string | undefined;
     locality?: string | undefined;
 }, {
@@ -1546,12 +1674,12 @@ export declare const resubmitOrganizationRequestSchema: z.ZodObject<{
     contactName: string;
     contactEmail: string;
     countryCode: string;
-    address?: string | undefined;
+    notes?: string | undefined;
     website?: string | undefined;
+    address?: string | undefined;
     instagram?: string | undefined;
     facebook?: string | undefined;
     youtube?: string | undefined;
-    notes?: string | undefined;
     contactPhone?: string | undefined;
     locality?: string | undefined;
 }>;
@@ -1581,10 +1709,10 @@ export declare const organizationTransitionSchema: z.ZodObject<{
     to: z.ZodEnum<["DRAFT", "PENDING_REVIEW", "APPROVED", "REJECTED", "SUSPENDED", "ARCHIVED"]>;
     reason: z.ZodOptional<z.ZodString>;
 }, "strict", z.ZodTypeAny, {
-    to: "DRAFT" | "PENDING_REVIEW" | "APPROVED" | "REJECTED" | "SUSPENDED" | "ARCHIVED";
+    to: "REJECTED" | "DRAFT" | "PENDING_REVIEW" | "APPROVED" | "SUSPENDED" | "ARCHIVED";
     reason?: string | undefined;
 }, {
-    to: "DRAFT" | "PENDING_REVIEW" | "APPROVED" | "REJECTED" | "SUSPENDED" | "ARCHIVED";
+    to: "REJECTED" | "DRAFT" | "PENDING_REVIEW" | "APPROVED" | "SUSPENDED" | "ARCHIVED";
     reason?: string | undefined;
 }>;
 /** Presentación a revisión por el SUPERADMIN de la parroquia (DRAFT/REJECTED → PENDING_REVIEW). */
@@ -1632,23 +1760,23 @@ export declare const createContactSchema: z.ZodObject<{
     isEmergency: z.ZodDefault<z.ZodBoolean>;
     sortOrder: z.ZodDefault<z.ZodNumber>;
 }, "strip", z.ZodTypeAny, {
-    phone: string;
-    name: string;
-    isEmergency: boolean;
     sortOrder: number;
-    email?: string | undefined;
+    name: string;
+    phone: string;
+    isEmergency: boolean;
     notes?: string | undefined;
+    email?: string | undefined;
     checkpointId?: string | null | undefined;
     roleLabel?: string | undefined;
 }, {
-    phone: string;
     name: string;
-    email?: string | undefined;
+    phone: string;
     notes?: string | undefined;
+    sortOrder?: number | undefined;
+    email?: string | undefined;
     checkpointId?: string | null | undefined;
     roleLabel?: string | undefined;
     isEmergency?: boolean | undefined;
-    sortOrder?: number | undefined;
 }>;
 export declare const updateContactSchema: z.ZodObject<{
     name: z.ZodOptional<z.ZodString>;
@@ -1660,23 +1788,23 @@ export declare const updateContactSchema: z.ZodObject<{
     isEmergency: z.ZodOptional<z.ZodDefault<z.ZodBoolean>>;
     sortOrder: z.ZodOptional<z.ZodDefault<z.ZodNumber>>;
 }, "strip", z.ZodTypeAny, {
-    email?: string | undefined;
-    phone?: string | undefined;
-    name?: string | undefined;
     notes?: string | undefined;
+    sortOrder?: number | undefined;
+    email?: string | undefined;
+    name?: string | undefined;
+    phone?: string | undefined;
     checkpointId?: string | null | undefined;
     roleLabel?: string | undefined;
     isEmergency?: boolean | undefined;
-    sortOrder?: number | undefined;
 }, {
-    email?: string | undefined;
-    phone?: string | undefined;
-    name?: string | undefined;
     notes?: string | undefined;
+    sortOrder?: number | undefined;
+    email?: string | undefined;
+    name?: string | undefined;
+    phone?: string | undefined;
     checkpointId?: string | null | undefined;
     roleLabel?: string | undefined;
     isEmergency?: boolean | undefined;
-    sortOrder?: number | undefined;
 }>;
 export interface PilgrimMe {
     stage: "OFFICIAL";
@@ -1748,18 +1876,18 @@ export declare const createRegistrationSchema: z.ZodObject<{
     /** B1: respuestas a las preguntas extra del evento (se validan contra Event.registrationFields). */
     answers: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
 }, "strip", z.ZodTypeAny, {
+    phone: string;
     token: string;
     firstName: string;
     lastName: string;
     documentNumber: string;
-    phone: string;
     answers?: Record<string, unknown> | undefined;
 }, {
+    phone: string;
     token: string;
     firstName: string;
     lastName: string;
     documentNumber: string;
-    phone: string;
     answers?: Record<string, unknown> | undefined;
 }>;
 export declare const proofFieldsSchema: z.ZodObject<{
@@ -1768,13 +1896,13 @@ export declare const proofFieldsSchema: z.ZodObject<{
     paidAt: z.ZodEffects<z.ZodOptional<z.ZodDate>, Date | undefined, unknown>;
     note: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, unknown>;
 }, "strip", z.ZodTypeAny, {
-    reference?: string | undefined;
     note?: string | undefined;
+    reference?: string | undefined;
     amount?: number | undefined;
     paidAt?: Date | undefined;
 }, {
-    reference?: unknown;
     note?: unknown;
+    reference?: unknown;
     amount?: unknown;
     paidAt?: unknown;
 }>;
@@ -1787,10 +1915,10 @@ export declare const registrationListSchema: z.ZodObject<{
 }, "strip", z.ZodTypeAny, {
     page: number;
     pageSize: number;
-    status?: "APPROVED" | "REJECTED" | "CANCELLED" | "PENDING_PROOF" | "IN_REVIEW" | undefined;
+    status?: "IN_REVIEW" | "REJECTED" | "APPROVED" | "CANCELLED" | "PENDING_PROOF" | undefined;
     q?: string | undefined;
 }, {
-    status?: "APPROVED" | "REJECTED" | "CANCELLED" | "PENDING_PROOF" | "IN_REVIEW" | undefined;
+    status?: "IN_REVIEW" | "REJECTED" | "APPROVED" | "CANCELLED" | "PENDING_PROOF" | undefined;
     q?: string | undefined;
     page?: number | undefined;
     pageSize?: number | undefined;
@@ -1894,44 +2022,44 @@ export declare const createVolunteerSchema: z.ZodEffects<z.ZodObject<{
     notes: z.ZodOptional<z.ZodString>;
 }, "strict", z.ZodTypeAny, {
     status: "APPROVED" | "REQUESTED";
+    notes?: string | undefined;
     email?: string | undefined;
+    phone?: string | undefined;
     firstName?: string | undefined;
     lastName?: string | undefined;
     documentNumber?: string | undefined;
-    phone?: string | undefined;
     confirmNewPerson?: true | undefined;
     personId?: string | undefined;
-    notes?: string | undefined;
 }, {
-    email?: string | undefined;
     status?: "APPROVED" | "REQUESTED" | undefined;
+    notes?: string | undefined;
+    email?: string | undefined;
+    phone?: string | undefined;
     firstName?: string | undefined;
     lastName?: string | undefined;
     documentNumber?: string | undefined;
-    phone?: string | undefined;
     confirmNewPerson?: true | undefined;
     personId?: string | undefined;
-    notes?: string | undefined;
 }>, {
     status: "APPROVED" | "REQUESTED";
+    notes?: string | undefined;
     email?: string | undefined;
+    phone?: string | undefined;
     firstName?: string | undefined;
     lastName?: string | undefined;
     documentNumber?: string | undefined;
-    phone?: string | undefined;
     confirmNewPerson?: true | undefined;
     personId?: string | undefined;
-    notes?: string | undefined;
 }, {
-    email?: string | undefined;
     status?: "APPROVED" | "REQUESTED" | undefined;
+    notes?: string | undefined;
+    email?: string | undefined;
+    phone?: string | undefined;
     firstName?: string | undefined;
     lastName?: string | undefined;
     documentNumber?: string | undefined;
-    phone?: string | undefined;
     confirmNewPerson?: true | undefined;
     personId?: string | undefined;
-    notes?: string | undefined;
 }>;
 /**
  * A5.1: canje por la organización del código que la persona generó en su cuenta (para el evento de la ruta). Solo el
@@ -1954,10 +2082,10 @@ export declare const volunteerTransitionSchema: z.ZodObject<{
     to: z.ZodEnum<["REQUESTED", "UNDER_REVIEW", "APPROVED", "REJECTED", "WITHDRAWN", "REVOKED", "COMPLETED"]>;
     reason: z.ZodOptional<z.ZodString>;
 }, "strict", z.ZodTypeAny, {
-    to: "APPROVED" | "REJECTED" | "REQUESTED" | "UNDER_REVIEW" | "WITHDRAWN" | "REVOKED" | "COMPLETED";
+    to: "REJECTED" | "APPROVED" | "REQUESTED" | "UNDER_REVIEW" | "WITHDRAWN" | "REVOKED" | "COMPLETED";
     reason?: string | undefined;
 }, {
-    to: "APPROVED" | "REJECTED" | "REQUESTED" | "UNDER_REVIEW" | "WITHDRAWN" | "REVOKED" | "COMPLETED";
+    to: "REJECTED" | "APPROVED" | "REQUESTED" | "UNDER_REVIEW" | "WITHDRAWN" | "REVOKED" | "COMPLETED";
     reason?: string | undefined;
 }>;
 /** Equipos, zonas y funciones: nombres libres que define la organización (sin enums). */
@@ -1976,12 +2104,12 @@ export declare const catalogUpdateSchema: z.ZodObject<{
     description: z.ZodOptional<z.ZodNullable<z.ZodString>>;
     isActive: z.ZodOptional<z.ZodBoolean>;
 }, "strict", z.ZodTypeAny, {
-    name?: string | undefined;
     description?: string | null | undefined;
+    name?: string | undefined;
     isActive?: boolean | undefined;
 }, {
-    name?: string | undefined;
     description?: string | null | undefined;
+    name?: string | undefined;
     isActive?: boolean | undefined;
 }>;
 export declare const createShiftSchema: z.ZodEffects<z.ZodObject<{
@@ -2064,3 +2192,4 @@ export declare const revokeAssignmentSchema: z.ZodObject<{
     reason: string;
 }>;
 export * from "./locale";
+export * from "./parishTools";

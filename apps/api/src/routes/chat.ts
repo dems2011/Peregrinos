@@ -1,5 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
+import { hasPermission, type Role } from "@peregrinos/shared";
 import { eventParam, loadEvent } from "../lib/access";
 import { audit } from "../lib/audit";
 import { hideMessage, listMessages, postMessage, type ChatViewer } from "../lib/chat";
@@ -7,8 +8,9 @@ import { hideMessage, listMessages, postMessage, type ChatViewer } from "../lib/
 /** B1 — Chat del evento para el personal (prefijo /api/events/:eventId/chat). Acceso = acceso al evento (loadEvent). */
 export default async function chatRoutes(app: FastifyInstance) {
   const read = app.requirePermission("event:read");
-  const viewerOf = (req: { auth: { id: string; role: string } }): ChatViewer =>
-    ({ kind: "STAFF", userId: req.auth.id, canModerate: req.auth.role === "SUPERADMIN" || req.auth.role === "ADMIN" });
+  // B5: moderar es el permiso chat:moderate (ADMIN y SUPERADMIN lo tienen por nivel; a otros se les puede otorgar).
+  const viewerOf = (req: { auth: { id: string; role: Role; extraPermissions: string[] } }): ChatViewer =>
+    ({ kind: "STAFF", userId: req.auth.id, canModerate: hasPermission(req.auth.role, req.auth.extraPermissions, "chat:moderate") });
 
   app.get("/", { preHandler: read }, async (req) => {
     const { eventId } = eventParam.parse(req.params);

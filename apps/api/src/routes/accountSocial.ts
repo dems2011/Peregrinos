@@ -1,7 +1,7 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
 import QRCode from "qrcode";
-import { qrContent } from "@peregrinos/shared";
+import { followPreferencesSchema, qrContent } from "@peregrinos/shared";
 import { prisma } from "../lib/prisma";
 import { audit } from "../lib/audit";
 import { AppError, forbidden, notFound } from "../lib/errors";
@@ -36,10 +36,20 @@ export default async function accountSocialRoutes(app: FastifyInstance) {
   app.get("/follows", auth, async (req) => {
     const rows = await prisma.parishFollower.findMany({
       where: { userId: req.pilgrimAccount.id, organization: { status: "APPROVED" } },
-      select: { createdAt: true, organization: { select: { id: true, code: true, name: true, address: true } } },
+      select: { createdAt: true, bulletinEmail: true, organization: { select: { id: true, code: true, name: true, address: true } } },
       orderBy: { createdAt: "desc" },
     });
-    return { items: await Promise.all(rows.map(async (r) => ({ ...r.organization, since: r.createdAt, ...(await parishMediaUrls(r.organization.id)) }))) };
+    return { items: await Promise.all(rows.map(async (r) => ({ ...r.organization, since: r.createdAt, bulletinEmail: r.bulletinEmail, ...(await parishMediaUrls(r.organization.id)) }))) };
+  });
+
+  /** B5: preferencias por parroquia seguida (recibir el boletín también por correo). */
+  app.patch("/follows/:organizationId", limited(30), async (req) => {
+    const { organizationId } = orgParam.parse(req.params);
+    const { bulletinEmail } = followPreferencesSchema.parse(req.body);
+    const r = await prisma.parishFollower.updateMany({ where: { organizationId, userId: req.pilgrimAccount.id }, data: { bulletinEmail } });
+    if (r.count !== 1) throw notFound("No sigues a esta parroquia.");
+    await audit(req, { action: "PARISH_FOLLOW_PREFERENCES_CHANGED", entityType: "Organization", entityId: organizationId, userId: req.pilgrimAccount.id, organizationId, metadata: { bulletinEmail } });
+    return { bulletinEmail };
   });
 
   app.post("/follows", limited(30), async (req, reply) => {

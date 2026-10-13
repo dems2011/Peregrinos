@@ -76,7 +76,9 @@ describe("B4: API pública", () => {
 describe("B4: cartel", () => {
   it("solo el SUPERADMIN de la parroquia, con la parroquia aprobada, auditado", () => {
     const r = org.slice(org.indexOf('app.get("/poster.pdf"'), org.indexOf("/* ---------- B1: avisos"));
-    assert.match(r, /preHandler: \[app\.authenticate, requireSuperadmin\]/);
+    // B5: permiso parish:profile (el SUPERADMIN lo tiene; a un colaborador se le otorga).
+    assert.match(r, /preHandler: profileManager/);
+    assert.match(org, /const profileManager = app\.requirePermission\("parish:profile"\);/);
     assert.match(r, /org\.status !== "APPROVED"/);
     assert.match(r, /action: "ORGANIZATION_POSTER_EXPORTED"/);
     assert.match(r, /where: \{ id: req\.auth\.organizationId \}/);

@@ -15,8 +15,8 @@ var __exportStar = (this && this.__exportStar) || function(m, exports) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.createEventSchema = exports.chatListQuerySchema = exports.chatMessageSchema = exports.sendNotificationSchema = exports.organizationProfileSchema = exports.PARISH_POSTER_SIZES = exports.PARISH_CODE_PATTERN = exports.PARISH_IMAGE_SPEC = exports.CREDENTIAL_SPEC = exports.CREDENTIAL_MODES = exports.registrationFieldsSchema = exports.registrationFieldSchema = exports.MAX_REGISTRATION_FIELDS = exports.REGISTRATION_FIELD_TYPE_LABEL = exports.REGISTRATION_FIELD_TYPES = exports.eventSettingsSchemas = exports.eventRouteSchema = exports.bootstrapSchema = exports.unlinkAccountSchema = exports.claimPersonSchema = exports.mergePersonSchema = exports.personListSchema = exports.updatePersonSchema = exports.createPersonSchema = exports.registerPilgrimSchema = exports.changePasswordSchema = exports.passwordResetConfirmSchema = exports.accountEmailSchema = exports.loginSchema = exports.ROLE_PERMISSIONS = exports.EVENT_VISIBILITY_LABEL = exports.EVENT_VISIBILITIES = exports.EVENT_TYPE_INFO = exports.EVENT_TYPES = exports.isEventOperable = exports.hasEventCapability = exports.EVENT_CAPABILITY_REQUIRES = exports.EVENT_CAPABILITY_LABEL = exports.DEFAULT_EVENT_CAPABILITIES = exports.IMPLEMENTED_EVENT_CAPABILITIES = exports.RESERVED_EVENT_CAPABILITIES = exports.EVENT_CAPABILITIES = exports.canTransitionEvent = exports.EVENT_TRANSITIONS = exports.EVENT_INITIAL_STATUSES = exports.EVENT_STATUS_LABEL = exports.EVENT_STATUSES = exports.ORGANIZATION_STATUS_LABEL = exports.ORGANIZATION_STATUSES = exports.ROLES = void 0;
-exports.pilgrimLoginSchema = exports.submitOrganizationReviewSchema = exports.organizationTransitionSchema = exports.platformRejectSchema = exports.platformApproveSchema = exports.organizationRequestTokenSchema = exports.resubmitOrganizationRequestSchema = exports.organizationRequestSchema = exports.PARISH_REQUEST_PHOTO_SPEC = exports.SOCIAL_NETWORK_LABEL = exports.acceptInvitationSchema = exports.createInvitationSchema = exports.ACCESS_LEVELS = exports.canInviteRole = exports.canGrantRole = exports.hasPermission = exports.GRANTABLE_PERMISSIONS = exports.checkinListSchema = exports.resolveConflictSchema = exports.correctCheckinSchema = exports.cancelCheckinSchema = exports.createCheckinSchema = exports.reorderCheckpointsSchema = exports.updateCheckpointSchema = exports.createCheckpointSchema = exports.participantListSchema = exports.updateParticipantSchema = exports.createParticipantSchema = exports.digitsOnly = exports.normalizeDocument = exports.parseQrContent = exports.qrContent = exports.QR_PREFIX = exports.CHECKIN_METHODS = exports.PARTICIPANT_STATUSES = exports.formatParticipantNumber = exports.mfaPasswordSchema = exports.mfaConfirmSchema = exports.mfaVerifySchema = exports.isMfaChallenge = exports.paginationSchema = exports.assignmentsSchema = exports.updateUserSchema = exports.createUserSchema = exports.isRegistrationOpenNow = exports.REGISTRATION_STATE_LABEL = exports.isCapacityFull = exports.REGISTRATION_STATES = exports.eventListQuerySchema = exports.updateEventSchema = void 0;
-exports.revokeAssignmentSchema = exports.createAssignmentSchema = exports.updateShiftSchema = exports.createShiftSchema = exports.catalogUpdateSchema = exports.catalogItemSchema = exports.volunteerTransitionSchema = exports.VOLUNTEER_REQUEST_STATUS_LABEL = exports.VOLUNTEER_REQUEST_STATUSES = exports.VOLUNTEER_CONSENT_CODE_HOURS = exports.volunteerConsentRequestSchema = exports.createVolunteerSchema = exports.VOLUNTEER_REASON_REQUIRED = exports.canTransitionVolunteer = exports.VOLUNTEER_TRANSITIONS = exports.VOLUNTEER_INITIAL_STATUSES = exports.VOLUNTEER_STATUS_LABEL = exports.VOLUNTEER_STATUSES = exports.credentialQuerySchema = exports.reopenRegistrationSchema = exports.rejectRegistrationSchema = exports.approveRegistrationSchema = exports.registrationListSchema = exports.proofFieldsSchema = exports.createRegistrationSchema = exports.REGISTRATION_STATUSES = exports.qBool = exports.updateContactSchema = exports.createContactSchema = exports.issueAccessSchema = void 0;
+exports.platformApproveSchema = exports.organizationRequestTokenSchema = exports.resubmitOrganizationRequestSchema = exports.organizationRequestSchema = exports.PARISH_REQUEST_PHOTO_SPEC = exports.SOCIAL_NETWORK_LABEL = exports.userPermissionsSchema = exports.declineInvitationSchema = exports.acceptInvitationSchema = exports.createInvitationSchema = exports.ACCESS_LEVELS = exports.canInviteRole = exports.canGrantRole = exports.hasPermission = exports.isGrantablePermission = exports.GRANTABLE_PERMISSIONS = exports.PERMISSION_CATALOG = exports.checkinListSchema = exports.resolveConflictSchema = exports.correctCheckinSchema = exports.cancelCheckinSchema = exports.createCheckinSchema = exports.reorderCheckpointsSchema = exports.updateCheckpointSchema = exports.createCheckpointSchema = exports.participantListSchema = exports.updateParticipantSchema = exports.createParticipantSchema = exports.digitsOnly = exports.normalizeDocument = exports.parseQrContent = exports.qrContent = exports.QR_PREFIX = exports.CHECKIN_METHODS = exports.PARTICIPANT_STATUSES = exports.formatParticipantNumber = exports.mfaPasswordSchema = exports.mfaConfirmSchema = exports.mfaVerifySchema = exports.isMfaChallenge = exports.paginationSchema = exports.assignmentsSchema = exports.updateUserSchema = exports.createUserSchema = exports.isRegistrationOpenNow = exports.REGISTRATION_STATE_LABEL = exports.isCapacityFull = exports.REGISTRATION_STATES = exports.eventListQuerySchema = exports.updateEventSchema = void 0;
+exports.revokeAssignmentSchema = exports.createAssignmentSchema = exports.updateShiftSchema = exports.createShiftSchema = exports.catalogUpdateSchema = exports.catalogItemSchema = exports.volunteerTransitionSchema = exports.VOLUNTEER_REQUEST_STATUS_LABEL = exports.VOLUNTEER_REQUEST_STATUSES = exports.VOLUNTEER_CONSENT_CODE_HOURS = exports.volunteerConsentRequestSchema = exports.createVolunteerSchema = exports.VOLUNTEER_REASON_REQUIRED = exports.canTransitionVolunteer = exports.VOLUNTEER_TRANSITIONS = exports.VOLUNTEER_INITIAL_STATUSES = exports.VOLUNTEER_STATUS_LABEL = exports.VOLUNTEER_STATUSES = exports.credentialQuerySchema = exports.reopenRegistrationSchema = exports.rejectRegistrationSchema = exports.approveRegistrationSchema = exports.registrationListSchema = exports.proofFieldsSchema = exports.createRegistrationSchema = exports.REGISTRATION_STATUSES = exports.qBool = exports.updateContactSchema = exports.createContactSchema = exports.issueAccessSchema = exports.pilgrimLoginSchema = exports.submitOrganizationReviewSchema = exports.organizationTransitionSchema = exports.platformRejectSchema = void 0;
 exports.validateEventCapabilities = validateEventCapabilities;
 exports.can = can;
 exports.validateRegistrationAnswers = validateRegistrationAnswers;
@@ -25,6 +25,7 @@ exports.validateEventCoherence = validateEventCoherence;
 exports.deriveRegistrationState = deriveRegistrationState;
 exports.deriveAttendance = deriveAttendance;
 exports.effectivePermissions = effectivePermissions;
+exports.permissionsNotGrantableBy = permissionsNotGrantableBy;
 exports.normalizeSocial = normalizeSocial;
 exports.normalizeWebsite = normalizeWebsite;
 const zod_1 = require("zod");
@@ -132,8 +133,14 @@ const ADMIN = [
     ...OPERATOR, "participant:manage", "checkpoint:manage", "checkin:read", "checkin:correct",
     "report:read", "export:run", "assignment:manage", "participant:create", "contact:manage", "invitation:manage", "payment:review", "credential:export",
     "volunteer:manage",
+    // El administrador ya moderaba el chat del evento (antes por rol); ahora es un permiso con el mismo alcance.
+    "chat:moderate",
 ];
-const SUPERADMIN = [...ADMIN, "event:create", "event:update", "user:manage", "backup:run", "audit:read"];
+const SUPERADMIN = [
+    ...ADMIN, "event:create", "event:update", "user:manage", "backup:run", "audit:read",
+    "parish:profile", "notice:send", "post:manage", "stream:manage", "tracking:read",
+    "certificate:manage", "agenda:manage", "donation:manage", "inventory:manage", "group:manage",
+];
 exports.ROLE_PERMISSIONS = {
     SUPERADMIN: new Set(SUPERADMIN),
     ADMIN: new Set(ADMIN),
@@ -475,19 +482,23 @@ function deriveAttendance(p) {
         return "NO_SHOW";
     return null;
 }
+/** B5: permisos extra válidos = los del catálogo (PERMISSION_CATALOG, más abajo; la comprobación se hace al validar). */
+const extraPermissionsSchema = zod_1.z.array(zod_1.z.string().max(40)).max(40)
+    .refine((ps) => ps.every((p) => (0, exports.isGrantablePermission)(p)), { message: "Hay permisos que no existen" })
+    .transform((ps) => [...new Set(ps)]);
 exports.createUserSchema = zod_1.z.object({
     name: zod_1.z.string().trim().min(2).max(120),
     email,
     password,
     role: zod_1.z.enum(exports.ROLES),
-    extraPermissions: zod_1.z.array(zod_1.z.enum(["participant:create", "checkin:read", "report:read"])).default([]),
+    extraPermissions: extraPermissionsSchema.default([]),
 }).strict();
 exports.updateUserSchema = zod_1.z.object({
     name: zod_1.z.string().trim().min(2).max(120).optional(),
     role: zod_1.z.enum(exports.ROLES).optional(),
     isActive: zod_1.z.boolean().optional(),
     password: password.optional(),
-    extraPermissions: zod_1.z.array(zod_1.z.enum(["participant:create", "checkin:read", "report:read"])).optional(),
+    extraPermissions: extraPermissionsSchema.optional(),
 }).strict();
 exports.assignmentsSchema = zod_1.z.object({
     checkpointIds: zod_1.z.array(zod_1.z.string().uuid()).max(50),
@@ -601,12 +612,40 @@ exports.checkinListSchema = exports.paginationSchema.extend({
     to: zod_1.z.coerce.date().optional(),
 });
 /* =====================  FASE 3A  ===================== */
-/** Permisos que un administrador puede activar individualmente a un operador. */
-exports.GRANTABLE_PERMISSIONS = ["participant:create", "checkin:read", "report:read"];
+/**
+ * B5 — Catálogo de permisos que se otorgan individualmente a un colaborador (además de los de su nivel). Agregar un
+ * permiso nuevo = sumarlo a `Permission`, al SUPERADMIN y a este catálogo: la API (requirePermission), el menú (can) y
+ * la pantalla de permisos lo toman de aquí. Nadie otorga un permiso que no tiene (assertCanGrantPermissions).
+ * Quedan fuera los propios del SUPERADMIN: user:manage (otorgar niveles), backup:run y audit:read.
+ */
+exports.PERMISSION_CATALOG = [
+    { id: "parish:profile", group: "Perfil y publicaciones", label: "Perfil de la parroquia", description: "Ver y editar el perfil público, el logo y el cartel" },
+    { id: "post:manage", group: "Perfil y publicaciones", label: "Publicaciones y fotografías", description: "Portadas y fotos de los eventos publicados" },
+    { id: "notice:send", group: "Perfil y publicaciones", label: "Avisos y boletín", description: "Enviar avisos a los seguidores y publicar el boletín" },
+    { id: "stream:manage", group: "Perfil y publicaciones", label: "Transmisiones en vivo", description: "Cargar la transmisión de YouTube, iniciarla y finalizarla" },
+    { id: "event:create", group: "Eventos y seguimiento", label: "Crear eventos", description: "Dar de alta eventos nuevos" },
+    { id: "event:update", group: "Eventos y seguimiento", label: "Administrar eventos", description: "Editar datos, estado, inscripción y formulario" },
+    { id: "payment:review", group: "Eventos y seguimiento", label: "Inscripciones y pagos", description: "Ver inscripciones y revisar comprobantes" },
+    { id: "participant:create", group: "Eventos y seguimiento", label: "Agregar participantes", description: "Dar de alta personas en el evento" },
+    { id: "checkin:create", group: "Eventos y seguimiento", label: "Registrar llegadas", description: "Check-in con QR, número o búsqueda" },
+    { id: "checkin:read", group: "Eventos y seguimiento", label: "Historial de llegadas", description: "Ver el registro de llegadas" },
+    { id: "tracking:read", group: "Eventos y seguimiento", label: "Mapa y seguimiento en vivo", description: "Ver la ubicación de los peregrinos que la comparten" },
+    { id: "chat:moderate", group: "Eventos y seguimiento", label: "Moderar el chat", description: "Ocultar mensajes del chat del evento" },
+    { id: "report:read", group: "Eventos y seguimiento", label: "Estadísticas e informes", description: "Informe del evento y estadísticas" },
+    { id: "agenda:manage", group: "Agenda y vida parroquial", label: "Agenda pastoral", description: "Horarios de misa, confesiones, adoración y actividades" },
+    { id: "group:manage", group: "Agenda y vida parroquial", label: "Grupos pastorales", description: "Grupos, miembros, encuentros y asistencia" },
+    { id: "donation:manage", group: "Donaciones", label: "Donaciones", description: "Campañas y enlaces de pago de la parroquia" },
+    { id: "certificate:manage", group: "Administración parroquial", label: "Certificados sacramentales", description: "Atender solicitudes de partidas" },
+    { id: "inventory:manage", group: "Administración parroquial", label: "Inventario", description: "Bienes y recursos de la parroquia" },
+    { id: "invitation:manage", group: "Acceso y permisos", label: "Invitaciones", description: "Invitar colaboradores (solo con permisos que la persona tenga)" },
+];
+exports.GRANTABLE_PERMISSIONS = exports.PERMISSION_CATALOG.map((p) => p.id);
+const isGrantablePermission = (p) => exports.PERMISSION_CATALOG.some((c) => c.id === p);
+exports.isGrantablePermission = isGrantablePermission;
 function effectivePermissions(role, extras = []) {
     const set = new Set(exports.ROLE_PERMISSIONS[role]);
     for (const e of extras)
-        if (exports.GRANTABLE_PERMISSIONS.includes(e))
+        if ((0, exports.isGrantablePermission)(e))
             set.add(e);
     if (set.has("participant:manage"))
         set.add("participant:create");
@@ -614,6 +653,14 @@ function effectivePermissions(role, extras = []) {
 }
 const hasPermission = (role, extras, p) => effectivePermissions(role, extras).includes(p);
 exports.hasPermission = hasPermission;
+/**
+ * B5 — Mínimo privilegio al otorgar: cada permiso extra debe estar en el catálogo y quien lo otorga debe tenerlo él
+ * mismo. Devuelve los que no puede otorgar (vacío = todo en orden). El servidor lo exige; la pantalla solo lo refleja.
+ */
+function permissionsNotGrantableBy(granter, requested) {
+    const own = new Set(effectivePermissions(granter.role, granter.extraPermissions));
+    return requested.filter((p) => !(0, exports.isGrantablePermission)(p) || !own.has(p));
+}
 /** Nadie puede dar un nivel superior al suyo: el Superadmin da cualquiera; el Administrador solo nivel operador. */
 const canGrantRole = (granter, target) => granter === "SUPERADMIN" || (granter === "ADMIN" && target === "OPERATOR");
 exports.canGrantRole = canGrantRole;
@@ -634,7 +681,7 @@ exports.ACCESS_LEVELS = [
 exports.createInvitationSchema = zod_1.z.object({
     email,
     role: zod_1.z.enum(exports.ROLES),
-    extraPermissions: zod_1.z.array(zod_1.z.enum(exports.GRANTABLE_PERMISSIONS)).default([]),
+    extraPermissions: extraPermissionsSchema.default([]),
     checkpointIds: zod_1.z.array(zod_1.z.string().uuid()).max(50).default([]),
 }).strict().refine((v) => v.role === "OPERATOR" || v.checkpointIds.length === 0, {
     message: "Solo los operadores tienen puntos asignados", path: ["checkpointIds"],
@@ -644,6 +691,10 @@ exports.acceptInvitationSchema = zod_1.z.object({
     name: zod_1.z.string().trim().min(2).max(120),
     password,
 }).strict();
+/** B5: rechazar la invitación desde su enlace (no crea cuenta ni concede nada). */
+exports.declineInvitationSchema = zod_1.z.object({ token: zod_1.z.string().min(20).max(200) }).strict();
+/** B5: permisos de un colaborador (reemplaza la lista completa de permisos extra). */
+exports.userPermissionsSchema = zod_1.z.object({ extraPermissions: extraPermissionsSchema }).strict();
 /* =====================  A3: SOLICITUDES DE PARROQUIA Y PLATAFORMA  ===================== */
 const reqText = (min, max) => zod_1.z.string().trim().min(min).max(max);
 const optReqText = (max) => zod_1.z.string().trim().max(max).optional().transform((v) => (v ? v : undefined));
@@ -892,3 +943,4 @@ exports.createAssignmentSchema = zod_1.z.object({
 exports.revokeAssignmentSchema = zod_1.z.object({ reason: zod_1.z.string().trim().min(3).max(300) }).strict();
 /* =====================  Idiomas y formato  ===================== */
 __exportStar(require("./locale"), exports);
+__exportStar(require("./parishTools"), exports);

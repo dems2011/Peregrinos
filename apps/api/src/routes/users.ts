@@ -1,7 +1,8 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import type { Prisma } from "@prisma/client";
-import { assignmentsSchema, createUserSchema, updateUserSchema } from "@peregrinos/shared";
+import { assignmentsSchema, createUserSchema, permissionsNotGrantableBy, updateUserSchema, userPermissionsSchema } from "@peregrinos/shared";
+import type { AuthUser } from "../plugins/auth";
 import { prisma } from "../lib/prisma";
 import { audit } from "../lib/audit";
 import { hashPassword } from "../lib/password";
@@ -10,6 +11,17 @@ import { assertCanPromoteToSuperadmin, assertNotSuperadminGrant } from "../lib/r
 import { assertOrgCan } from "../lib/orgLifecycle";
 
 const idParam = z.object({ id: z.string().uuid() });
+
+/**
+ * B5: reglas para cambiar permisos extra — nunca los propios (nadie se concede privilegios), nunca los de un SUPERADMIN
+ * (ya tiene todos) y solo permisos del catálogo que quien los otorga tiene (mínimo privilegio).
+ */
+function assertPermissionChange(granter: AuthUser, target: { id: string; role: string | null }, requested: readonly string[]) {
+  if (target.id === granter.id) throw new AppError(403, "SELF_PERMISSIONS", "No puedes cambiar tus propios permisos.");
+  if (target.role === "SUPERADMIN") throw new AppError(409, "SUPERADMIN_HAS_ALL", "El superadministrador ya tiene todos los permisos.");
+  const denied = permissionsNotGrantableBy(granter, requested);
+  if (denied.length) throw new AppError(403, "PERMISSION_NOT_GRANTABLE", "No puedes otorgar permisos que no tienes.", { permissions: denied });
+}
 /** Solo cuentas del personal: las cuentas PILGRIM nunca se administran ni se asignan desde aquí. */
 const staffOf = (organizationId: string) => ({ organizationId, accountType: "STAFF" as const });
 const publicUser = { id: true, name: true, email: true, role: true, extraPermissions: true, isActive: true, createdAt: true, mfaEnabledAt: true } as const;
@@ -40,6 +52,8 @@ export default async function userRoutes(app: FastifyInstance) {
   app.post("/", { preHandler: sensitive }, async (req, reply) => {
     const body = createUserSchema.parse(req.body);
     assertNotSuperadminGrant(body.role, "USER_CREATE");
+    const denied = permissionsNotGrantableBy(req.auth, body.extraPermissions);
+    if (denied.length) throw new AppError(403, "PERMISSION_NOT_GRANTABLE", "No puedes otorgar permisos que no tienes.", { permissions: denied });
     assertOrgCan(req.auth.organizationStatus, "INVITE_STAFF");
     const user = await prisma.user.create({
       data: { organizationId: req.auth.organizationId, name: body.name, email: body.email, role: body.role, extraPermissions: body.extraPermissions, passwordHash: await hashPassword(body.password) },
@@ -54,6 +68,7 @@ export default async function userRoutes(app: FastifyInstance) {
     const body = updateUserSchema.parse(req.body);
     const target = await prisma.user.findFirst({ where: { id, ...staffOf(req.auth.organizationId) } });
     if (!target) throw notFound("Usuario no encontrado.");
+    if (body.extraPermissions) assertPermissionChange(req.auth, target, body.extraPermissions);
 
     const gainsSuperadmin = body.role === "SUPERADMIN" && target.role !== "SUPERADMIN";
     if (gainsSuperadmin) assertCanPromoteToSuperadmin(req.auth, target);
@@ -85,6 +100,28 @@ export default async function userRoutes(app: FastifyInstance) {
         entityType: "User", entityId: id, metadata: { from: target.role, to: body.role },
       });
     }
+    return user;
+  });
+
+  /**
+   * B5: permisos de un colaborador (reemplaza la lista de permisos extra). Solo con user:manage (SUPERADMIN), nunca los
+   * propios ni los de otro SUPERADMIN, y solo permisos que quien los otorga tiene. Cierra las sesiones del colaborador
+   * para que el cambio (sobre todo una revocación) rija de inmediato. Se audita el antes y el después.
+   */
+  app.put("/:id/permissions", { preHandler: sensitive }, async (req) => {
+    const { id } = idParam.parse(req.params);
+    const { extraPermissions } = userPermissionsSchema.parse(req.body);
+    const target = await prisma.user.findFirst({ where: { id, ...staffOf(req.auth.organizationId) } });
+    if (!target) throw notFound("Usuario no encontrado.");
+    assertPermissionChange(req.auth, target, extraPermissions);
+    const user = await prisma.$transaction(async (tx) => {
+      const u = await tx.user.update({ where: { id }, data: { extraPermissions, sessionVersion: { increment: 1 } }, select: publicUser });
+      await tx.refreshToken.updateMany({ where: { userId: id, revokedAt: null }, data: { revokedAt: new Date() } });
+      return u;
+    });
+    const added = extraPermissions.filter((p) => !target.extraPermissions.includes(p));
+    const removed = target.extraPermissions.filter((p) => !(extraPermissions as readonly string[]).includes(p));
+    await audit(req, { action: "USER_PERMISSIONS_CHANGED", entityType: "User", entityId: id, metadata: { email: target.email, from: target.extraPermissions, to: extraPermissions, added, removed } });
     return user;
   });
 

@@ -120,15 +120,24 @@ export type Permission =
   | "report:read" | "export:run" | "backup:run" | "audit:read"
   | "contact:manage" | "invitation:manage" | "payment:review" | "credential:export"
   /** A5.1: gestionar voluntarios, equipos, zonas, funciones, turnos y asignaciones de los eventos de la organización. */
-  | "volunteer:manage";
+  | "volunteer:manage"
+  /** B5: herramientas parroquiales. Por defecto solo las tiene el SUPERADMIN; se otorgan una a una (PERMISSION_CATALOG). */
+  | "parish:profile" | "notice:send" | "post:manage" | "stream:manage" | "chat:moderate" | "tracking:read"
+  | "certificate:manage" | "agenda:manage" | "donation:manage" | "inventory:manage" | "group:manage";
 
 const OPERATOR: Permission[] = ["event:read", "participant:read", "checkpoint:read", "checkin:create"];
 const ADMIN: Permission[] = [
   ...OPERATOR, "participant:manage", "checkpoint:manage", "checkin:read", "checkin:correct",
   "report:read", "export:run", "assignment:manage", "participant:create", "contact:manage", "invitation:manage", "payment:review", "credential:export",
   "volunteer:manage",
+  // El administrador ya moderaba el chat del evento (antes por rol); ahora es un permiso con el mismo alcance.
+  "chat:moderate",
 ];
-const SUPERADMIN: Permission[] = [...ADMIN, "event:create", "event:update", "user:manage", "backup:run", "audit:read"];
+const SUPERADMIN: Permission[] = [
+  ...ADMIN, "event:create", "event:update", "user:manage", "backup:run", "audit:read",
+  "parish:profile", "notice:send", "post:manage", "stream:manage", "tracking:read",
+  "certificate:manage", "agenda:manage", "donation:manage", "inventory:manage", "group:manage",
+];
 
 export const ROLE_PERMISSIONS: Record<Role, ReadonlySet<Permission>> = {
   SUPERADMIN: new Set(SUPERADMIN),
@@ -480,19 +489,24 @@ export function deriveAttendance(p: { eventStatus: EventStatus; participantStatu
   return null;
 }
 
+/** B5: permisos extra válidos = los del catálogo (PERMISSION_CATALOG, más abajo; la comprobación se hace al validar). */
+const extraPermissionsSchema = z.array(z.string().max(40)).max(40)
+  .refine((ps) => ps.every((p) => isGrantablePermission(p)), { message: "Hay permisos que no existen" })
+  .transform((ps) => [...new Set(ps)]);
+
 export const createUserSchema = z.object({
   name: z.string().trim().min(2).max(120),
   email,
   password,
   role: z.enum(ROLES),
-  extraPermissions: z.array(z.enum(["participant:create", "checkin:read", "report:read"])).default([]),
+  extraPermissions: extraPermissionsSchema.default([]),
 }).strict();
 export const updateUserSchema = z.object({
   name: z.string().trim().min(2).max(120).optional(),
   role: z.enum(ROLES).optional(),
   isActive: z.boolean().optional(),
   password: password.optional(),
-  extraPermissions: z.array(z.enum(["participant:create", "checkin:read", "report:read"])).optional(),
+  extraPermissions: extraPermissionsSchema.optional(),
 }).strict();
 
 export const assignmentsSchema = z.object({
@@ -658,18 +672,55 @@ export const checkinListSchema = paginationSchema.extend({
 
 
 /* =====================  FASE 3A  ===================== */
-/** Permisos que un administrador puede activar individualmente a un operador. */
-export const GRANTABLE_PERMISSIONS = ["participant:create", "checkin:read", "report:read"] as const;
-export type GrantablePermission = (typeof GRANTABLE_PERMISSIONS)[number];
+/**
+ * B5 — Catálogo de permisos que se otorgan individualmente a un colaborador (además de los de su nivel). Agregar un
+ * permiso nuevo = sumarlo a `Permission`, al SUPERADMIN y a este catálogo: la API (requirePermission), el menú (can) y
+ * la pantalla de permisos lo toman de aquí. Nadie otorga un permiso que no tiene (assertCanGrantPermissions).
+ * Quedan fuera los propios del SUPERADMIN: user:manage (otorgar niveles), backup:run y audit:read.
+ */
+export const PERMISSION_CATALOG = [
+  { id: "parish:profile", group: "Perfil y publicaciones", label: "Perfil de la parroquia", description: "Ver y editar el perfil público, el logo y el cartel" },
+  { id: "post:manage", group: "Perfil y publicaciones", label: "Publicaciones y fotografías", description: "Portadas y fotos de los eventos publicados" },
+  { id: "notice:send", group: "Perfil y publicaciones", label: "Avisos y boletín", description: "Enviar avisos a los seguidores y publicar el boletín" },
+  { id: "stream:manage", group: "Perfil y publicaciones", label: "Transmisiones en vivo", description: "Cargar la transmisión de YouTube, iniciarla y finalizarla" },
+  { id: "event:create", group: "Eventos y seguimiento", label: "Crear eventos", description: "Dar de alta eventos nuevos" },
+  { id: "event:update", group: "Eventos y seguimiento", label: "Administrar eventos", description: "Editar datos, estado, inscripción y formulario" },
+  { id: "payment:review", group: "Eventos y seguimiento", label: "Inscripciones y pagos", description: "Ver inscripciones y revisar comprobantes" },
+  { id: "participant:create", group: "Eventos y seguimiento", label: "Agregar participantes", description: "Dar de alta personas en el evento" },
+  { id: "checkin:create", group: "Eventos y seguimiento", label: "Registrar llegadas", description: "Check-in con QR, número o búsqueda" },
+  { id: "checkin:read", group: "Eventos y seguimiento", label: "Historial de llegadas", description: "Ver el registro de llegadas" },
+  { id: "tracking:read", group: "Eventos y seguimiento", label: "Mapa y seguimiento en vivo", description: "Ver la ubicación de los peregrinos que la comparten" },
+  { id: "chat:moderate", group: "Eventos y seguimiento", label: "Moderar el chat", description: "Ocultar mensajes del chat del evento" },
+  { id: "report:read", group: "Eventos y seguimiento", label: "Estadísticas e informes", description: "Informe del evento y estadísticas" },
+  { id: "agenda:manage", group: "Agenda y vida parroquial", label: "Agenda pastoral", description: "Horarios de misa, confesiones, adoración y actividades" },
+  { id: "group:manage", group: "Agenda y vida parroquial", label: "Grupos pastorales", description: "Grupos, miembros, encuentros y asistencia" },
+  { id: "donation:manage", group: "Donaciones", label: "Donaciones", description: "Campañas y enlaces de pago de la parroquia" },
+  { id: "certificate:manage", group: "Administración parroquial", label: "Certificados sacramentales", description: "Atender solicitudes de partidas" },
+  { id: "inventory:manage", group: "Administración parroquial", label: "Inventario", description: "Bienes y recursos de la parroquia" },
+  { id: "invitation:manage", group: "Acceso y permisos", label: "Invitaciones", description: "Invitar colaboradores (solo con permisos que la persona tenga)" },
+] as const satisfies readonly { id: Permission; group: string; label: string; description: string }[];
+
+export const GRANTABLE_PERMISSIONS = PERMISSION_CATALOG.map((p) => p.id) as unknown as readonly [GrantablePermission, ...GrantablePermission[]];
+export type GrantablePermission = (typeof PERMISSION_CATALOG)[number]["id"];
+export const isGrantablePermission = (p: string): p is GrantablePermission => PERMISSION_CATALOG.some((c) => c.id === p);
 
 export function effectivePermissions(role: Role, extras: readonly string[] = []): Permission[] {
   const set = new Set<Permission>(ROLE_PERMISSIONS[role]);
-  for (const e of extras) if ((GRANTABLE_PERMISSIONS as readonly string[]).includes(e)) set.add(e as Permission);
+  for (const e of extras) if (isGrantablePermission(e)) set.add(e);
   if (set.has("participant:manage")) set.add("participant:create");
   return [...set];
 }
 export const hasPermission = (role: Role, extras: readonly string[], p: Permission) =>
   effectivePermissions(role, extras).includes(p);
+
+/**
+ * B5 — Mínimo privilegio al otorgar: cada permiso extra debe estar en el catálogo y quien lo otorga debe tenerlo él
+ * mismo. Devuelve los que no puede otorgar (vacío = todo en orden). El servidor lo exige; la pantalla solo lo refleja.
+ */
+export function permissionsNotGrantableBy(granter: { role: Role; extraPermissions: readonly string[] }, requested: readonly string[]): string[] {
+  const own = new Set(effectivePermissions(granter.role, granter.extraPermissions));
+  return requested.filter((p) => !isGrantablePermission(p) || !own.has(p));
+}
 
 /** Nadie puede dar un nivel superior al suyo: el Superadmin da cualquiera; el Administrador solo nivel operador. */
 export const canGrantRole = (granter: Role, target: Role) =>
@@ -693,7 +744,7 @@ export const ACCESS_LEVELS = [
 export const createInvitationSchema = z.object({
   email,
   role: z.enum(ROLES),
-  extraPermissions: z.array(z.enum(GRANTABLE_PERMISSIONS)).default([]),
+  extraPermissions: extraPermissionsSchema.default([]),
   checkpointIds: z.array(z.string().uuid()).max(50).default([]),
 }).strict().refine((v) => v.role === "OPERATOR" || v.checkpointIds.length === 0, {
   message: "Solo los operadores tienen puntos asignados", path: ["checkpointIds"],
@@ -704,6 +755,10 @@ export const acceptInvitationSchema = z.object({
   name: z.string().trim().min(2).max(120),
   password,
 }).strict();
+/** B5: rechazar la invitación desde su enlace (no crea cuenta ni concede nada). */
+export const declineInvitationSchema = z.object({ token: z.string().min(20).max(200) }).strict();
+/** B5: permisos de un colaborador (reemplaza la lista completa de permisos extra). */
+export const userPermissionsSchema = z.object({ extraPermissions: extraPermissionsSchema }).strict();
 
 /* =====================  A3: SOLICITUDES DE PARROQUIA Y PLATAFORMA  ===================== */
 const reqText = (min: number, max: number) => z.string().trim().min(min).max(max);
@@ -980,3 +1035,4 @@ export const revokeAssignmentSchema = z.object({ reason: z.string().trim().min(3
 
 /* =====================  Idiomas y formato  ===================== */
 export * from "./locale";
+export * from "./parishTools";

@@ -1,4 +1,4 @@
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyReply } from "fastify";
 import { z } from "zod";
 import type { Prisma } from "@prisma/client";
 import QRCode from "qrcode";
@@ -6,6 +6,8 @@ import { deriveRegistrationState, normalizeParishCode, type RegistrationField } 
 import { prisma } from "../lib/prisma";
 import { notFound } from "../lib/errors";
 import { parishCodeUrl } from "../lib/parishPoster";
+import { contentImageUrlsFor } from "../lib/contentImages";
+import { currentLivestream } from "../lib/livestreams";
 
 /**
  * B1 — Perfil público de las parroquias (sin sesión). Solo parroquias APROBADAS y solo eventos PÚBLICOS publicados
@@ -14,6 +16,8 @@ import { parishCodeUrl } from "../lib/parishPoster";
 const idParam = z.object({ id: z.string().uuid() });
 const listQuery = z.object({ q: z.string().trim().max(80).optional() });
 const VISIBLE_EVENT: Prisma.EventWhereInput = { visibility: "PUBLIC", status: { in: ["SCHEDULED", "IN_PROGRESS"] } };
+/** B5: los eventos finalizados se siguen mostrando (como publicación) durante 90 días. */
+const FINISHED_WINDOW_MS = 90 * 86_400_000;
 
 /** URLs públicas del logo y de la imagen (con versión para que el navegador no muestre una vieja). */
 export async function parishMediaUrls(organizationId: string) {
@@ -43,14 +47,17 @@ export default async function publicRoutes(app: FastifyInstance) {
         status: "APPROVED",
         ...(code ? { code } : q ? { OR: [{ name: { contains: q, mode: "insensitive" } }, { address: { contains: q, mode: "insensitive" } }] } : {}),
       },
-      select: { id: true, code: true, name: true, description: true, address: true, _count: { select: { followers: true, events: { where: VISIBLE_EVENT } } } },
+      select: {
+        id: true, code: true, name: true, description: true, address: true,
+        _count: { select: { followers: true, events: { where: VISIBLE_EVENT }, livestreams: { where: { status: "LIVE" } } } },
+      },
       orderBy: { name: "asc" },
       take: 50,
     });
     return {
       items: await Promise.all(orgs.map(async (o) => ({
         id: o.id, code: o.code, name: o.name, address: o.address, description: o.description ? o.description.slice(0, 220) : null,
-        followerCount: o._count.followers, publicEvents: o._count.events, ...(await parishMediaUrls(o.id)),
+        followerCount: o._count.followers, publicEvents: o._count.events, live: o._count.livestreams > 0, ...(await parishMediaUrls(o.id)),
       }))),
     };
   });
@@ -73,19 +80,26 @@ export default async function publicRoutes(app: FastifyInstance) {
     return reply.header("Content-Type", "image/svg+xml").header("Cache-Control", "public, max-age=3600").header("X-Content-Type-Options", "nosniff").send(svg);
   });
 
-  /** Perfil público + eventos públicos publicados, con el estado de su inscripción y su formulario. */
+  /**
+   * Perfil público + eventos públicos (próximos, en curso y finalizados de los últimos 90 días) con portada y estado de
+   * su inscripción. B5: transmisión actual (EN VIVO / programada; null = fuera de línea), agenda, campañas de donación
+   * activas y últimos boletines. Nada de personas ni datos internos.
+   */
   app.get("/parishes/:id", rl(120), async (req) => {
     const { id } = idParam.parse(req.params);
     const org = await prisma.organization.findFirst({
       where: { id, status: "APPROVED" },
       select: {
         id: true, code: true, name: true, description: true, address: true, phone: true, email: true, website: true,
-        instagram: true, facebook: true, youtube: true, tiktok: true, _count: { select: { followers: true } },
+        instagram: true, facebook: true, youtube: true, tiktok: true, timezone: true, _count: { select: { followers: true } },
       },
     });
     if (!org) throw notFound("Parroquia no encontrada.");
     const events = await prisma.event.findMany({
-      where: { organizationId: id, ...VISIBLE_EVENT },
+      where: {
+        organizationId: id, visibility: "PUBLIC",
+        OR: [{ status: { in: ["SCHEDULED", "IN_PROGRESS"] } }, { status: "FINISHED", startsAt: { gte: new Date(Date.now() - FINISHED_WINDOW_MS) } }],
+      },
       select: {
         id: true, name: true, description: true, type: true, status: true, startsAt: true, endsAt: true, timezone: true,
         locationName: true, address: true, capabilities: true, registrationOpen: true, registrationOpensAt: true,
@@ -98,8 +112,24 @@ export default async function publicRoutes(app: FastifyInstance) {
       : [];
     const active = new Map(counts.map((c) => [c.eventId, c._count._all]));
     const { _count, ...profile } = org;
+    const [covers, livestream, schedule, campaigns, bulletins] = await Promise.all([
+      contentImageUrlsFor("EVENT_COVER", events.map((e) => e.id)),
+      currentLivestream(id),
+      prisma.scheduleItem.findMany({
+        where: { organizationId: id, active: true, OR: [{ weekday: { not: null } }, { date: { gte: new Date(new Date().toISOString().slice(0, 10)) } }] },
+        orderBy: [{ weekday: "asc" }, { date: "asc" }, { startTime: "asc" }],
+        select: { id: true, kind: true, title: true, weekday: true, date: true, startTime: true, endTime: true, location: true, notes: true },
+      }),
+      prisma.donationCampaign.findMany({ where: { organizationId: id, active: true }, orderBy: [{ sortOrder: "asc" }, { createdAt: "desc" }], select: { id: true, title: true, purpose: true, description: true, beneficiary: true, url: true } }),
+      prisma.bulletin.findMany({ where: { organizationId: id, status: "PUBLISHED" }, orderBy: { publishedAt: "desc" }, take: 3, select: { id: true, title: true, weekOf: true, body: true, publishedAt: true, includeSchedule: true, includeEvents: true, includeCampaigns: true } }),
+    ]);
+    const campaignImages = await contentImageUrlsFor("DONATION_CAMPAIGN", campaigns.map((c) => c.id));
     return {
       parish: { ...profile, followerCount: _count.followers, ...(await parishMediaUrls(id)) },
+      livestream,
+      schedule: schedule.map((s) => ({ ...s, date: s.date ? s.date.toISOString().slice(0, 10) : null })),
+      campaigns: campaigns.map((c) => ({ ...c, image: campaignImages.get(c.id) ?? null })),
+      bulletins,
       events: events.map((e) => {
         const activeParticipants = active.get(e.id) ?? 0;
         const registrationState = deriveRegistrationState({ ...e, activeParticipants });
@@ -111,9 +141,33 @@ export default async function publicRoutes(app: FastifyInstance) {
           spotsLeft: e.capacity != null ? Math.max(0, e.capacity - activeParticipants) : null,
           // El enlace de inscripción de un evento PÚBLICO es público por diseño: solo cuando admite inscripciones.
           registrationPath: registrationState === "OPEN" && registrationToken ? `/registro/${registrationToken}` : null,
+          // B5: publicación del evento — portada y etapa (próximo / en curso / finalizado).
+          cover: covers.get(e.id) ?? null,
+          phase: e.status === "IN_PROGRESS" ? "IN_PROGRESS" : e.status === "FINISHED" ? "FINISHED" : "UPCOMING",
         };
       }),
     };
+  });
+
+  /**
+   * B5: imágenes de contenido (solo variantes WebP sin metadatos; el original nunca es público). Portadas de eventos
+   * públicos o «solo con enlace» publicados, e imágenes de campañas activas, de parroquias aprobadas.
+   */
+  const variantParam = idParam.extend({ variant: z.enum(["large", "medium", "small"]) });
+  const sendImage = (reply: FastifyReply, m: { data: Uint8Array; mime: string; sha256: string } | null) => {
+    if (!m) throw notFound("Imagen no disponible.");
+    return reply.header("Content-Type", m.mime).header("Cache-Control", "public, max-age=86400, immutable").header("ETag", `"${m.sha256}"`)
+      .header("X-Content-Type-Options", "nosniff").send(Buffer.from(m.data));
+  };
+  app.get("/events/:id/image/:variant", rl(300), async (req, reply) => {
+    const { id, variant } = variantParam.parse(req.params);
+    const ev = await prisma.event.findFirst({ where: { id, visibility: { in: ["PUBLIC", "UNLISTED"] }, status: { not: "DRAFT" }, organization: { status: "APPROVED" } }, select: { id: true } });
+    return sendImage(reply, ev ? await prisma.contentImage.findUnique({ where: { ownerType_ownerId_variant: { ownerType: "EVENT_COVER", ownerId: id, variant: variant.toUpperCase() as "LARGE" } }, select: { data: true, mime: true, sha256: true } }) : null);
+  });
+  app.get("/campaigns/:id/image/:variant", rl(300), async (req, reply) => {
+    const { id, variant } = variantParam.parse(req.params);
+    const c = await prisma.donationCampaign.findFirst({ where: { id, active: true, organization: { status: "APPROVED" } }, select: { id: true } });
+    return sendImage(reply, c ? await prisma.contentImage.findUnique({ where: { ownerType_ownerId_variant: { ownerType: "DONATION_CAMPAIGN", ownerId: id, variant: variant.toUpperCase() as "LARGE" } }, select: { data: true, mime: true, sha256: true } }) : null);
   });
 
   /** Imágenes públicas (logo / imagen de la parroquia aprobada), servidas desde la base con caché. */

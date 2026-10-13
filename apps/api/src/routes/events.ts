@@ -177,6 +177,8 @@ export default async function eventRoutes(app: FastifyInstance) {
       try {
         // Transición condicional: si otro cambio de estado se adelantó, no se pisa.
         const updated = await tx.event.update({ where: { id, status: before.status }, data, include });
+        // B5: retención mínima del seguimiento GPS — al finalizar o cancelar el evento no se conserva ninguna ubicación.
+        if (updated.status === "FINISHED" || updated.status === "CANCELLED") await tx.locationShare.deleteMany({ where: { eventId: id } });
         // B1: primera publicación como evento público → aviso a los seguidores de esta parroquia (una sola vez).
         const notice = await notifyEventPublishedIfDue(tx, id, req.auth.id);
         return { event: updated, notice };

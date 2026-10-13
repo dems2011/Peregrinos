@@ -28,6 +28,11 @@ const schema = z.object({
    * verificado. Nunca se habilita por sí solo.
    */
   PILGRIM_EMAIL_VERIFICATION: z.enum(["required", "optional"]).default("required"),
+  /**
+   * B5: YouTube Data API v3 (opcional, solo servidor). Con clave, el estado EN VIVO se verifica con YouTube; sin clave,
+   * lo marca manualmente el personal autorizado (y se informa así en el perfil). Nunca se envía al navegador.
+   */
+  YOUTUBE_API_KEY: z.string().optional().transform((v) => (v ? v : undefined)),
   /** Informe del evento con IA (opcional). Sin clave, la API responde que el servicio no está configurado. */
   ANTHROPIC_API_KEY: z.string().optional(),
   ANTHROPIC_MODEL: z.string().default("claude-opus-5-5"),
