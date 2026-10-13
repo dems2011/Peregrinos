@@ -1,6 +1,6 @@
 # Código institucional, búsqueda, QR y cartel de la parroquia (B4)
 
-Fecha: 2026-10-12. Implementado y probado en local; **requiere aplicar la migración en Neon antes de publicarlo.**
+Fecha: 2026-10-12. En producción desde `372bec0` (migraciones 25 y 26 aplicadas en Neon el 2026-10-12).
 
 ## Código institucional
 - Formato `PAR-` + 6 dígitos (p. ej. `PAR-482193`): corto, se dicta como números, ~900.000 combinaciones, sin datos
@@ -40,10 +40,10 @@ Fecha: 2026-10-12. Implementado y probado en local; **requiere aplicar la migrac
 - **Continuar hacia la parroquia después de instalar** (enlace diferido): requiere App Links verificados
   (`assetlinks.json` en el dominio definitivo + intent-filter en la APK) y, para el caso «no instalada», Play Install
   Referrer. Depende del dominio definitivo y de publicar en Play.
-- **Dominio**: el QR usa `WEB_ORIGIN`. Imprimir carteles en serie después de fijar el dominio definitivo
-  (ver docs/MIGRACION-GOOGLE-CLOUD.md §8).
-- Diócesis y horarios de misa no existen en el modelo (hoy van en la descripción). Ver docs/ESTADO-PRODUCTO.md.
-- Preferencias de avisos por parroquia (silenciar sin dejar de seguir): no existe.
+- **Dominio**: el QR usa `WEB_ORIGIN` (hoy `https://peregrinos-1.onrender.com`). Imprimir carteles en serie después
+  de fijar el dominio definitivo: un cambio de dominio posterior dejaría sin destino los QR ya impresos.
+- Diócesis: no existe en el modelo. Los horarios de misa están en la agenda pastoral (B5). Ver docs/ESTADO-PRODUCTO.md.
+- Preferencias por parroquia: solo «boletín también por correo» (B5); silenciar avisos sin dejar de seguir no existe.
 
 ## Pruebas
 - `apps/api/test/b4-parish-code.test.ts` (12): normalización, migración, rutas, generación real de PDF A4/A3.
