@@ -1,76 +1,66 @@
-# GPS en segundo plano — estado real y plan
+# GPS en segundo plano — «Compartir mi ubicación»
 
-Fecha del relevamiento: 2026-10-12. **No está implementado.** Este documento describe qué existe y qué falta; no
-hay código de seguimiento en segundo plano en el repositorio.
+Actualizado: 2026-10-13. **Código preparado, sin probar en un teléfono.** La API y la web están probadas contra la
+base local (envío desde el navegador, intervalo mínimo, vista de la organización y borrado al dejar de compartir). La
+parte nativa (pantalla apagada) necesita aplicar el script de Android, compilar la APK 1.2 e instalarla.
 
-## 1. Qué existe hoy (solo primer plano)
+## 1. Qué hay
 
-| Pieza | Dónde | Qué hace |
+| Pieza | Dónde | Estado |
 |---|---|---|
-| Lectura de ubicación | `apps/web/src/app/(app)/registrar/page.tsx` | `navigator.geolocation.watchPosition` solo mientras la pantalla «Registrar llegada» está abierta. Sin permiso, la llegada se registra sin coordenadas. |
-| Persistencia | `Checkin.latitude/longitude` (`schema.prisma`), `apps/api/src/lib/checkins.ts` | Una coordenada por llegada registrada (opcional). No hay historial de posiciones. |
-| Permisos Android | `android/app/src/main/AndroidManifest.xml` (aplicado con `scripts/android-camera-location.ps1`) | `ACCESS_FINE_LOCATION` y `ACCESS_COARSE_LOCATION`, hardware opcional. **Sin** `ACCESS_BACKGROUND_LOCATION` ni servicio en primer plano. |
-| Mapas | `MapView.tsx`, `/recorrido` | Puntos de control, origen y destino fijos. No muestra posiciones en vivo. |
+| Activación por evento | `Configuración → Evento` (`EventPublicationCard`, `PUT /api/events/:id/tracking/settings`) | Hecho. Al desactivarlo se borran las ubicaciones. |
+| Consentimiento del peregrino | `/p` → `ShareLocation` (`POST /api/pilgrim/tracking/consent`) | Hecho. Opt-in explícito; «Dejar de compartir» borra la última posición. |
+| Envío de posiciones | `POST /api/pilgrim/tracking/ping` (máx. 6/min; el cliente envía como mucho cada 30 s) | Hecho. Solo la **última** posición (`LocationShare`), sin historial. |
+| Vista de la organización | «Mapa y recorrido» → personas en vivo (`LiveTracking`, `GET /api/events/:id/tracking`) | Hecho. |
+| Borrado | Al terminar o cancelar el evento, al apagar el seguimiento o al dejar de compartir | Hecho (`lib/tracking.ts`). |
+| Navegador | `navigator.geolocation.watchPosition` | Solo con la pantalla abierta. |
+| **App Android, pantalla apagada** | `apps/web/src/lib/backgroundLocation.ts` + plugin nativo | **Preparado, falta APK 1.2.** |
 
-Con la app minimizada o la pantalla apagada, el WebView deja de recibir posiciones: hoy **no** hay seguimiento.
+## 2. Solución nativa elegida
 
-## 2. Componentes pendientes
+Plugin `@capacitor-community/background-geolocation` **1.2.26** (MIT; ya en `package.json` de la raíz).
 
-### 2.1 Permisos y consentimiento
-- `ACCESS_BACKGROUND_LOCATION` (Android 10+) se pide **aparte** y después del permiso en primer plano; Android 11+
-  obliga a concederlo desde Ajustes. Google Play exige una declaración de uso y un video que lo justifique.
-- `FOREGROUND_SERVICE` y `FOREGROUND_SERVICE_LOCATION` (Android 14+), con notificación persistente visible.
-- `POST_NOTIFICATIONS` (ya declarado) para esa notificación en Android 13+.
-- Pantalla propia de consentimiento antes del diálogo del sistema: quién ve la ubicación, durante qué evento, cuánto
-  tiempo se conserva y cómo detenerla. El consentimiento debe guardarse (fecha, versión del texto) y poder retirarse.
-- Solo para quien lo necesite (p. ej. operadores o voluntarios durante el evento), nunca por defecto a peregrinos.
+- Servicio en primer plano de tipo `location` con **notificación fija** («Peregrinos está compartiendo tu ubicación»).
+  Lo inicia el usuario con la app abierta, por eso **no** hace falta `ACCESS_BACKGROUND_LOCATION` ni la declaración de
+  ubicación en segundo plano de Google Play.
+- Las posiciones llegan al WebView aun minimizado o con la pantalla apagada (`android.useLegacyBridge: true`; con el
+  puente nuevo Android corta los mensajes a los ~5 min).
+- El envío usa `CapacitorHttp` (HTTP nativo): con la app en segundo plano Android frena las peticiones del WebView.
+  Capacitor 8 instala `CapacitorCookieManager` como gestor de cookies, que lee las del WebView, así que viaja la misma
+  sesión del enlace personal. Si el servidor respondiera 401 por esa vía, la app vuelve a `fetch` (nunca queda peor).
+- Distancia mínima entre posiciones: 25 m; además el cliente respeta el intervalo de 30 s del servidor.
+- En el navegador, o en una APK sin el plugin, todo sigue como antes (solo con la pantalla abierta) y el texto de la
+  pantalla lo dice.
 
-### 2.2 Servicio en segundo plano
-- El WebView no sirve: hace falta código nativo. Opciones: plugin `@capacitor-community/background-geolocation`
-  (servicio en primer plano, sin costo) o un servicio propio en `MainActivity`/Java.
-- Restricciones del sistema: Doze y App Standby, optimización de batería de cada fabricante (Samsung la aplica fuerte
-  — el equipo de pruebas es un Galaxy A34), límites de frecuencia en segundo plano y cierre del servicio al deslizar la
-  app. Pedir que se excluya de la optimización de batería solo si es imprescindible.
-- Arranque y fin atados al evento: empieza al iniciar la jornada y se detiene solo (estado `FINISHED`/`CANCELLED`
-  o hora de fin), además del botón de detener.
+### Cómo aplicarlo (lo ejecuta el usuario; Claude no puede editar `android/` ni ejecutar `npx cap`)
 
-### 2.3 Envío, recepción y persistencia
-- Endpoint nuevo, p. ej. `POST /api/events/:id/locations`, por lotes (varias posiciones por petición) con
-  `timestamp` del dispositivo, `accuracy`, `latitude`, `longitude`, `speed` opcional e id de dispositivo.
-- Cola local en el dispositivo cuando no hay señal (en ruta es habitual) y reenvío idempotente (id generado por el
-  cliente, como `Checkin`).
-- Tabla nueva (p. ej. `LocationPing`) con índice por `(eventId, userId, timestamp)`; o, si solo interesa la última
-  posición, una tabla `LastLocation` con upsert. Requiere migración: se aplica en Neon solo con aprobación.
-- Retención: borrado automático tras el evento (p. ej. 30 días) por tarea programada.
+```powershell
+npm install                                                     # instala el plugin (ya está en package.json)
+powershell -ExecutionPolicy Bypass -File scripts\android-background-gps.ps1
+npx cap sync android
+# compilar y firmar la APK 1.2 (versionCode 4) como las anteriores
+```
 
-### 2.4 Seguridad
-- Solo el titular envía su propia ubicación; el `eventId` debe ser uno en el que tenga asignación vigente.
-- Solo roles autorizados del mismo evento y organización la consultan (permiso nuevo, p. ej. `location:read`).
-- Límite de frecuencia por usuario y validación de rangos (lat/lng, precisión, marcas de tiempo futuras).
-- Auditoría de consultas a la ubicación de terceros.
+El script (se puede ejecutar más de una vez; `-OutDir <carpeta>` para probarlo sin tocar el proyecto):
+- `capacitor.config.ts`: `android.useLegacyBridge = true`.
+- `AndroidManifest.xml`: `FOREGROUND_SERVICE` y `FOREGROUND_SERVICE_LOCATION`; servicio del plugin **no exportado**
+  (`tools:replace`); GPS sigue como hardware opcional aunque el plugin lo declare obligatorio.
+- `strings.xml`: canal «Ubicación compartida», icono de los avisos (`ic_stat_peregrinos`) y azul de la marca.
+- `build.gradle`: versionCode 3 → 4, versionName 1.1 → 1.2.
 
-### 2.5 Frecuencia, batería y errores
-- Propuesta: cada 60 s o 50 m de desplazamiento (lo que ocurra primero), precisión equilibrada; alta precisión solo
-  bajo demanda. Envío por lotes cada 2–5 min.
-- Errores: GPS apagado, permiso retirado, sin red, servicio detenido por el sistema → estado visible en la app y en
-  el panel («sin señal desde hh:mm»).
+## 3. Pruebas pendientes en el teléfono (Galaxy A34)
 
-### 2.6 Visualización y gestión
-- Mapa en vivo en `/recorrido` con la última posición de cada persona seguida y su antigüedad.
-- Lista de quién comparte, quién no dio permiso y quién dejó de enviar.
-- El usuario ve en su app que está compartiendo y puede detenerlo.
+1. Activar el seguimiento en un evento EN CURSO, abrir `/p` con un participante confirmado y «Compartir mi ubicación».
+2. Aceptar el permiso de ubicación («Mientras se usa la app») y el de notificaciones; debe aparecer la notificación fija.
+3. Apagar la pantalla 30 min caminando: en «Mapa y recorrido» la hora de la última posición debe seguir avanzando.
+4. Modo avión 5 min y volver: se reanuda (no hay cola local; se pierde lo de ese intervalo, solo importa la última).
+5. «Dejar de compartir»: desaparece la notificación y la posición en el mapa.
+6. Terminar el evento: la app deja de enviar (409) y se borra la posición.
+7. Samsung: si el sistema corta el servicio, revisar Ajustes → Batería → «Sin restricciones» para Peregrinos (no se
+   pide por código).
 
-## 3. Pruebas necesarias
-- API: autorización (solo el titular envía, solo roles del evento leen, aislamiento entre organizaciones),
-  idempotencia de lotes, validación de rangos, límite de frecuencia y retención.
-- Android en equipo real: permisos en Android 10, 11, 13 y 14; pantalla apagada 30 min; modo avión y reconexión;
-  reinicio del teléfono; batería en una jornada completa.
-- Web: mapa en vivo, estados «sin señal» y consentimiento.
+## 4. Límites conocidos
 
-## 4. Propuesta por etapas
-1. **Decisión funcional**: quién comparte ubicación, cuándo y quién la ve. (Bloqueante; lo define el usuario).
-2. **Backend**: tabla, migración, endpoint por lotes, permisos, retención y pruebas. Sin cambios en la app.
-3. **Primer plano mejorado**: enviar la posición mientras la app está abierta (sin permiso nuevo) y mostrarla en el mapa.
-4. **Segundo plano nativo**: plugin o servicio, permisos, notificación persistente y consentimiento. APK nueva con
-   versionCode mayor.
-5. **Play Store**: declaración de ubicación en segundo plano y video, si se publica allí.
+- Sin cola local: con mala señal se envía la siguiente posición disponible; no hay recorrido histórico (por diseño).
+- Si el usuario cierra la app deslizándola, Android detiene el servicio; al volver a abrir `/p` se retoma solo.
+- iOS no está contemplado (no hay app iOS).
