@@ -14,33 +14,18 @@ import { hashAccess, normalizeCode } from "../lib/pilgrim";
 import { cookieBase } from "../lib/session";
 import { prepareProof } from "../lib/storage";
 import { assertEventCapability } from "../lib/eventLifecycle";
+import { eventContacts, participantRoute } from "../lib/routeProgress";
 import { PILGRIM_COOKIE } from "../plugins/auth";
 
 const COOKIE_PATH = "/api/pilgrim";
 const maskDoc = (d: string) => (d.length > 3 ? `${"•".repeat(d.length - 3)}${d.slice(-3)}` : d);
 
-const contactsOf = async (eventId: string): Promise<PilgrimMe["contacts"]> => {
-  const rows = await prisma.eventContact.findMany({
-    where: { eventId }, orderBy: [{ isEmergency: "desc" }, { sortOrder: "asc" }, { name: "asc" }],
-    include: { checkpoint: { select: { name: true } } },
-  });
-  return rows.map((c) => ({ id: c.id, name: c.name, roleLabel: c.roleLabel, phone: c.phone, email: c.email, notes: c.notes, isEmergency: c.isEmergency, checkpointName: c.checkpoint?.name ?? null }));
-};
+const contactsOf = eventContacts;
 
 /** Participante oficial: solo datos propios + información del evento. Nada de otros participantes. */
 async function buildPilgrimMe(participantId: string): Promise<PilgrimMe> {
   const p = await prisma.participant.findUniqueOrThrow({ where: { id: participantId }, include: { event: true } });
-  const [cps, mine, contacts] = await Promise.all([
-    prisma.checkpoint.findMany({ where: { eventId: p.eventId, status: "ACTIVE" }, orderBy: { order: "asc" } }),
-    prisma.checkin.findMany({ where: { eventId: p.eventId, participantId, status: "ACTIVE" } }),
-    contactsOf(p.eventId),
-  ]);
-  const at = new Map(mine.map((c) => [c.checkpointId, c.timestamp]));
-  const route = cps.map((c) => ({
-    checkpointId: c.id, order: c.order, name: c.name, address: c.address, reference: c.reference,
-    latitude: c.latitude, longitude: c.longitude, arrived: at.has(c.id), timestamp: at.get(c.id)?.toISOString() ?? null,
-  }));
-  const done = route.filter((r) => r.arrived).length;
+  const [{ route, progress }, contacts] = await Promise.all([participantRoute(p.eventId, participantId), contactsOf(p.eventId)]);
   return {
     stage: "OFFICIAL",
     participant: { number: p.number, firstName: p.firstName, lastName: p.lastName, documentMasked: maskDoc(p.documentNumber) },
@@ -48,7 +33,7 @@ async function buildPilgrimMe(participantId: string): Promise<PilgrimMe> {
     event: { id: p.event.id, name: p.event.name, description: p.event.description, startsAt: p.event.startsAt.toISOString(), status: p.event.status, timezone: p.event.timezone,
       type: p.event.type, endsAt: p.event.endsAt?.toISOString() ?? null, locationName: p.event.locationName, address: p.event.address },
     route,
-    progress: { done, total: route.length, percent: route.length ? Math.round((done / route.length) * 100) : 0 },
+    progress,
     contacts,
   };
 }

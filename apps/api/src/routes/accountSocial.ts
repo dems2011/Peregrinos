@@ -7,6 +7,7 @@ import { audit } from "../lib/audit";
 import { AppError, forbidden, notFound } from "../lib/errors";
 import { assertPilgrimInEvent, listMessages, postMessage } from "../lib/chat";
 import { parishMediaUrls } from "./public";
+import { eventContacts, participantRoute } from "../lib/routeProgress";
 
 /**
  * B1 — Lo social de la cuenta del peregrino (prefijo /api/auth/account): seguir parroquias, bandeja de avisos, sus
@@ -150,6 +151,53 @@ export default async function accountSocialRoutes(app: FastifyInstance) {
       return { ...e, chat } as Record<string, unknown> & { startsAt: Date; chat: boolean };
     }).sort((a, b) => +new Date(b.startsAt) - +new Date(a.startsAt));
     return { items };
+  });
+
+  /**
+   * Pantalla principal: el evento actual del peregrino y las herramientas que ese evento usa. Solo lectura, solo
+   * participaciones propias y ACTIVAS. Se elige el evento EN CURSO; si no hay, el próximo programado; si no, el último
+   * terminado. Sin participación → { current: null }. Todo lo devuelto es de ESE evento (nada se mezcla con otros).
+   * Lo que se muestra lo deciden las capacidades del evento (no su tipo): POINTS → puntos de control; CHECKIN → avance
+   * (llegadas, mismas reglas que el acceso personal); ROUTE → trayecto; LOCATION → lugar; CONTACTS → contactos.
+   */
+  app.get("/progress", auth, async (req) => {
+    const u = await prisma.user.findUniqueOrThrow({ where: { id: req.pilgrimAccount.id }, select: { personId: true } });
+    if (!u.personId) return { current: null };
+    const parts = await prisma.participant.findMany({
+      where: { personId: u.personId, status: "ACTIVE", event: { status: { in: ["IN_PROGRESS", "SCHEDULED", "FINISHED"] } } },
+      select: {
+        id: true, number: true,
+        event: {
+          select: {
+            id: true, name: true, type: true, status: true, startsAt: true, endsAt: true, timezone: true, parishName: true, capabilities: true,
+            locationName: true, address: true, latitude: true, longitude: true, organization: { select: { name: true } },
+            route: { select: { originName: true, originLat: true, originLng: true, destinationName: true, destinationLat: true, destinationLng: true, distanceKm: true } },
+          },
+        },
+      },
+    });
+    const rank = { IN_PROGRESS: 0, SCHEDULED: 1, FINISHED: 2 } as Record<string, number>;
+    const p = parts.sort((a, b) => rank[a.event.status] - rank[b.event.status]
+      || (a.event.status === "FINISHED" ? +b.event.startsAt - +a.event.startsAt : +a.event.startsAt - +b.event.startsAt))[0];
+    if (!p) return { current: null };
+    const e = p.event;
+    const has = (c: (typeof e.capabilities)[number]) => e.capabilities.includes(c);
+    const tools = { points: has("POINTS"), checkin: has("CHECKIN"), journey: has("ROUTE") && !!e.route, location: has("LOCATION"), contacts: has("CONTACTS") };
+    const points = tools.points ? await participantRoute(e.id, p.id) : { route: [], progress: { done: 0, total: 0, percent: 0 } };
+    return {
+      current: {
+        participant: { id: p.id, number: p.number },
+        event: {
+          id: e.id, name: e.name, type: e.type, status: e.status, startsAt: e.startsAt, endsAt: e.endsAt, timezone: e.timezone,
+          organization: e.parishName ?? e.organization.name,
+          place: tools.location && (e.locationName || e.address) ? { name: e.locationName, address: e.address, latitude: e.latitude, longitude: e.longitude } : null,
+        },
+        tools,
+        ...points,
+        journey: tools.journey && e.route ? { ...e.route, distanceKm: e.route.distanceKm == null ? null : Number(e.route.distanceKm) } : null,
+        contacts: tools.contacts ? await eventContacts(e.id) : [],
+      },
+    };
   });
 
   /* ---------- Chat del evento (como peregrino) ---------- */
