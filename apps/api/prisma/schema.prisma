@@ -39,34 +39,42 @@ model Organization {
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
 
-  events        Event[]
-  invitations   Invitation[]
-  users         User[]
-  request       OrganizationRequest?
-  statusChanges OrganizationStatusChange[]
+  events               Event[]
+  invitations          Invitation[]
+  users                User[]
+  request              OrganizationRequest?
+  statusChanges        OrganizationStatusChange[]
   /// A4a: personas registradas por esta organización que aún no reclamó su titular.
-  persons       Person[]
+  persons              Person[]
   /// A5.0: registros de esta organización unidos a cuentas globales (reversibles por esta organización).
-  personClaims  PersonClaim[]
+  personClaims         PersonClaim[]
   /// B1: imágenes propias (logo, imagen de la parroquia, fondos de credencial) guardadas en la base (no en disco).
-  media         MediaAsset[]
+  media                MediaAsset[]
   /// B1: cuentas de peregrino que siguen a esta parroquia.
-  followers     ParishFollower[]
+  followers            ParishFollower[]
   /// B1: avisos enviados por esta parroquia (manuales o automáticos).
-  notifications Notification[]
+  notifications        Notification[]
   /// B2: suscripción de la parroquia (estructura preparada; todavía sin lógica de cobro ni de acceso).
-  subscription  OrganizationSubscription?
+  subscription         OrganizationSubscription?
   /// B5: zona horaria de la agenda pastoral (horarios de misa, etc.).
-  timezone      String                   @default("America/Argentina/Buenos_Aires")
+  timezone             String                     @default("America/Argentina/Buenos_Aires")
   /// B5: herramientas parroquiales.
-  livestreams         ParishLivestream[]
-  images              ContentImage[]
-  scheduleItems       ScheduleItem[]
-  donationCampaigns   DonationCampaign[]
-  bulletins           Bulletin[]
-  certificateRequests CertificateRequest[]
-  inventoryItems      InventoryItem[]
-  pastoralGroups      PastoralGroup[]
+  livestreams          ParishLivestream[]
+  images               ContentImage[]
+  scheduleItems        ScheduleItem[]
+  donationCampaigns    DonationCampaign[]
+  bulletins            Bulletin[]
+  certificateRequests  CertificateRequest[]
+  inventoryItems       InventoryItem[]
+  pastoralGroups       PastoralGroup[]
+  /// SIGyP: horarios de atención y celebraciones (texto). Lo administra SIGyP si profileSource = "SIGYP".
+  officeHours          String?
+  /// SIGyP: si es "SIGYP", los campos públicos que SIGyP publica no se editan aquí (una sola fuente de verdad).
+  profileSource        String?
+  profileSyncedVersion Int                        @default(0)
+  profileSyncedAt      DateTime?
+  integrationClients   IntegrationClient[]
+  announcements        ParishAnnouncement[]
 }
 
 /// A4a: identidad humana. Independiente de la cuenta (User), de la participación (Participant) y de la inscripción
@@ -1425,7 +1433,9 @@ model EventChatMessage {
   @@index([eventId, createdAt])
 }
 
-/* =====================  B5: HERRAMIENTAS PARROQUIALES  ===================== */
+/**
+ * =====================  B5: HERRAMIENTAS PARROQUIALES  =====================
+ */
 
 enum LivestreamStatus {
   SCHEDULED
@@ -1791,4 +1801,47 @@ model PastoralAttendance {
 
   @@id([meetingId, memberId])
   @@index([memberId])
+}
+
+/// SIGyP: credencial de integración de UNA organización. Solo se guarda el SHA-256 de la credencial (se muestra una
+/// vez al crearla); la organización de cada solicitud entrante sale de aquí, nunca del contenido.
+model IntegrationClient {
+  id             String       @id @default(uuid())
+  organizationId String
+  kind           String       @default("SIGYP")
+  label          String
+  tokenHash      String       @unique
+  tokenHint      String
+  scopes         String[]
+  createdById    String?
+  createdAt      DateTime     @default(now())
+  lastUsedAt     DateTime?
+  revokedAt      DateTime?
+  revokedById    String?
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, revokedAt])
+}
+
+/// SIGyP: aviso de cartelera recibido de SIGyP. Se muestra solo si no está retirado y está vigente
+/// (isAnnouncementVisible). «version» es la del emisor: una versión no mayor que la guardada se ignora.
+model ParishAnnouncement {
+  id             String       @id @default(uuid())
+  organizationId String
+  sourceSystem   String       @default("SIGYP")
+  sourceId       String
+  version        Int
+  title          String
+  body           String
+  category       String
+  startsAt       DateTime
+  endsAt         DateTime?
+  publishedAt    DateTime
+  withdrawnAt    DateTime?
+  receivedAt     DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, sourceSystem, sourceId])
+  @@index([organizationId, withdrawnAt, startsAt])
 }

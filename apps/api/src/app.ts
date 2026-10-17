@@ -48,6 +48,8 @@ import eventCoverRoutes from "./routes/eventCover";
 import agendaRoutes from "./routes/agenda";
 import donationRoutes from "./routes/donations";
 import bulletinRoutes from "./routes/bulletins";
+import sigypIntegrationRoutes from "./routes/sigypIntegration";
+import organizationIntegrationRoutes from "./routes/organizationIntegrations";
 import certificateRoutes, { certificatePublicRoutes } from "./routes/certificates";
 import inventoryRoutes from "./routes/inventory";
 import groupRoutes from "./routes/groups";
@@ -164,6 +166,9 @@ export async function buildApp() {
   await app.register(agendaRoutes, { prefix: "/api/organization/agenda" });
   await app.register(donationRoutes, { prefix: "/api/organization/donations" });
   await app.register(bulletinRoutes, { prefix: "/api/organization/bulletins" });
+  // SIGyP (Gestión Parroquial): entrada autenticada por credencial de organización y su administración.
+  await app.register(sigypIntegrationRoutes, { prefix: "/api/integrations/sigyp/v1" });
+  await app.register(organizationIntegrationRoutes, { prefix: "/api/organization/integrations/sigyp" });
   await app.register(certificateRoutes, { prefix: "/api/organization/certificates" });
   await app.register(certificatePublicRoutes, { prefix: "/api/public" });
   await app.register(inventoryRoutes, { prefix: "/api/organization/inventory" });

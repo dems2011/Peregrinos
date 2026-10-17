@@ -32,7 +32,11 @@ export interface ParishProfile {
   id: string; code: string; name: string; description: string | null; address: string | null; phone: string | null; email: string | null;
   website: string | null; instagram: string | null; facebook: string | null; youtube: string | null; tiktok: string | null;
   followerCount: number; logoUrl: string | null; coverUrl: string | null;
+  /** SIGyP: horarios (texto) y, en el panel de la organización, si el perfil lo administra SIGyP. */
+  officeHours?: string | null; profileSource?: string | null; profileSyncedAt?: string | null;
 }
+/** SIGyP: aviso de cartelera vigente (la API ya filtra: no retirado, comenzado y no vencido). */
+export interface PublicAnnouncement { id: string; title: string; body: string; category: string; startsAt: string; endsAt: string | null; publishedAt: string }
 export interface PublicEvent {
   id: string; name: string; description: string | null; type: EventType; status: EventStatus; startsAt: string; endsAt: string | null;
   timezone: string; locationName: string | null; address: string | null; capacity: number | null; spotsLeft: number | null;
@@ -51,7 +55,7 @@ export interface PublicLivestream {
 export interface PublicScheduleItem { id: string; kind: string; title: string; weekday: number | null; date: string | null; startTime: string; endTime: string | null; location: string | null; notes: string | null }
 export interface PublicCampaign { id: string; title: string; purpose: string; description: string | null; beneficiary: string; url: string; image: ImageSet | null }
 export interface PublicBulletin { id: string; title: string; weekOf: string; body: string; publishedAt: string }
-export interface ParishExtras { livestream: PublicLivestream | null; schedule: PublicScheduleItem[]; campaigns: PublicCampaign[]; bulletins: PublicBulletin[] }
+export interface ParishExtras { livestream: PublicLivestream | null; schedule: PublicScheduleItem[]; campaigns: PublicCampaign[]; bulletins: PublicBulletin[]; announcements?: PublicAnnouncement[] }
 export interface Person {
   id: string; personId?: string; number: number; firstName: string; lastName: string; documentNumber: string; status: "ACTIVE" | "CANCELLED";
   phone?: string; documentType?: string; notes?: string | null; createdAt?: string;

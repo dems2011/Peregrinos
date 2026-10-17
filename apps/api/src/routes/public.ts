@@ -91,7 +91,7 @@ export default async function publicRoutes(app: FastifyInstance) {
       where: { id, status: "APPROVED" },
       select: {
         id: true, code: true, name: true, description: true, address: true, phone: true, email: true, website: true,
-        instagram: true, facebook: true, youtube: true, tiktok: true, timezone: true, _count: { select: { followers: true } },
+        instagram: true, facebook: true, youtube: true, tiktok: true, timezone: true, officeHours: true, _count: { select: { followers: true } },
       },
     });
     if (!org) throw notFound("Parroquia no encontrada.");
@@ -112,7 +112,8 @@ export default async function publicRoutes(app: FastifyInstance) {
       : [];
     const active = new Map(counts.map((c) => [c.eventId, c._count._all]));
     const { _count, ...profile } = org;
-    const [covers, livestream, schedule, campaigns, bulletins] = await Promise.all([
+    const now = new Date();
+    const [covers, livestream, schedule, campaigns, bulletins, announcements] = await Promise.all([
       contentImageUrlsFor("EVENT_COVER", events.map((e) => e.id)),
       currentLivestream(id),
       prisma.scheduleItem.findMany({
@@ -122,6 +123,12 @@ export default async function publicRoutes(app: FastifyInstance) {
       }),
       prisma.donationCampaign.findMany({ where: { organizationId: id, active: true }, orderBy: [{ sortOrder: "asc" }, { createdAt: "desc" }], select: { id: true, title: true, purpose: true, description: true, beneficiary: true, url: true } }),
       prisma.bulletin.findMany({ where: { organizationId: id, status: "PUBLISHED" }, orderBy: { publishedAt: "desc" }, take: 3, select: { id: true, title: true, weekOf: true, body: true, publishedAt: true, includeSchedule: true, includeEvents: true, includeCampaigns: true } }),
+      // SIGyP: cartelera — solo avisos no retirados y vigentes AHORA (misma regla que isAnnouncementVisible).
+      prisma.parishAnnouncement.findMany({
+        where: { organizationId: id, withdrawnAt: null, startsAt: { lte: now }, OR: [{ endsAt: null }, { endsAt: { gt: now } }] },
+        orderBy: [{ startsAt: "desc" }], take: 20,
+        select: { id: true, title: true, body: true, category: true, startsAt: true, endsAt: true, publishedAt: true },
+      }),
     ]);
     const campaignImages = await contentImageUrlsFor("DONATION_CAMPAIGN", campaigns.map((c) => c.id));
     return {
@@ -130,6 +137,7 @@ export default async function publicRoutes(app: FastifyInstance) {
       schedule: schedule.map((s) => ({ ...s, date: s.date ? s.date.toISOString().slice(0, 10) : null })),
       campaigns: campaigns.map((c) => ({ ...c, image: campaignImages.get(c.id) ?? null })),
       bulletins,
+      announcements,
       events: events.map((e) => {
         const activeParticipants = active.get(e.id) ?? 0;
         const registrationState = deriveRegistrationState({ ...e, activeParticipants });

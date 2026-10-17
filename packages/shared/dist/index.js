@@ -364,6 +364,8 @@ exports.organizationProfileSchema = zod_1.z.object({
     facebook: zod_1.z.string().trim().max(200).nullable().optional(),
     youtube: zod_1.z.string().trim().max(200).nullable().optional(),
     tiktok: zod_1.z.string().trim().max(200).nullable().optional(),
+    /** SIGyP: horarios de atención y celebraciones (texto libre). */
+    officeHours: zod_1.z.string().trim().max(1000).nullable().optional(),
 }).strict();
 /* =====================  B1: AVISOS Y CHAT  ===================== */
 exports.sendNotificationSchema = zod_1.z.object({
@@ -944,3 +946,4 @@ exports.revokeAssignmentSchema = zod_1.z.object({ reason: zod_1.z.string().trim(
 /* =====================  Idiomas y formato  ===================== */
 __exportStar(require("./locale"), exports);
 __exportStar(require("./parishTools"), exports);
+__exportStar(require("./sigyp"), exports);

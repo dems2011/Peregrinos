@@ -1,10 +1,10 @@
 "use client";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { CalendarClock, CalendarDays, ExternalLink, FileBadge, Globe, HeartHandshake, Mail, MapPin, Newspaper, Phone, Radio, Share2, Users } from "lucide-react";
-import { DONATION_PURPOSE_LABEL, EVENT_TYPE_INFO, REGISTRATION_STATE_LABEL, SCHEDULE_KIND_LABEL, WEEKDAY_LABEL, type DonationPurpose, type ScheduleKind } from "@peregrinos/shared";
+import { CalendarClock, CalendarDays, Clock, ExternalLink, FileBadge, Globe, HeartHandshake, Mail, MapPin, Megaphone, Newspaper, Phone, Radio, Share2, Users } from "lucide-react";
+import { SIGYP_CATEGORY_LABEL, DONATION_PURPOSE_LABEL, EVENT_TYPE_INFO, REGISTRATION_STATE_LABEL, SCHEDULE_KIND_LABEL, WEEKDAY_LABEL, type DonationPurpose, type ScheduleKind } from "@peregrinos/shared";
 import { fmtDateMedium, fmtDateTimeMedium, money } from "@/lib/format";
-import type { ImageSet, ParishExtras, ParishProfile, PublicEvent, PublicLivestream } from "@/lib/types";
+import type { ImageSet, ParishExtras, ParishProfile, PublicAnnouncement, PublicEvent, PublicLivestream } from "@/lib/types";
 
 /**
  * B1 — Perfil público de una parroquia. Lo usan la página pública (/parroquias/[id]) y la vista previa del
@@ -47,7 +47,10 @@ export function ParishProfileView({ parish, events, extras, action, preview = fa
           {parish.email && <a href={`mailto:${parish.email}`}><Mail size={15} /> {parish.email}</a>}
           {links.map((l) => <a key={l.label} href={l.href} target="_blank" rel="noopener noreferrer"><Globe size={15} /> {l.label}</a>)}
         </div>
+        {parish.officeHours && <p className="small" style={{ whiteSpace: "pre-line", margin: "8px 0 0" }}><Clock size={15} style={{ verticalAlign: "-2px" }} /> {parish.officeHours}</p>}
       </section>
+
+      {extras && <AnnouncementsCard items={extras.announcements ?? []} preview={preview} />}
 
       {extras?.livestream && <LivestreamCard s={extras.livestream} preview={preview} />}
 
@@ -226,4 +229,25 @@ function social(net: "instagram" | "facebook" | "youtube" | "tiktok", v: string)
   if (/^https?:\/\//i.test(v)) return v;
   const u = v.replace(/^@/, "");
   return { instagram: `https://instagram.com/${u}`, facebook: `https://facebook.com/${u}`, youtube: `https://youtube.com/@${u}`, tiktok: `https://tiktok.com/@${u}` }[net];
+}
+
+/**
+ * SIGyP — Cartelera: avisos que la parroquia publica desde SIGyP (Gestión Parroquial). Solo llegan los vigentes (la API
+ * filtra borradores, retirados y vencidos); sin avisos, la sección no se muestra al público y en la vista previa se explica.
+ */
+function AnnouncementsCard({ items, preview }: { items: PublicAnnouncement[]; preview: boolean }) {
+  if (!items.length && !preview) return null;
+  return (
+    <section className="card stack-sm" aria-labelledby="cartelera-title" data-testid="cartelera">
+      <h2 id="cartelera-title"><Megaphone size={20} style={{ verticalAlign: "-3px" }} /> Cartelera</h2>
+      {!items.length && <p className="muted small" style={{ margin: 0 }}>No hay avisos vigentes. Los avisos que la parroquia publique en SIGyP aparecerán aquí mientras estén vigentes.</p>}
+      {items.map((a) => (
+        <article key={a.id} className="stack-sm" style={{ borderTop: "1px solid var(--border, #e5e7eb)", paddingTop: 8 }}>
+          <span className="muted small">{SIGYP_CATEGORY_LABEL[a.category as keyof typeof SIGYP_CATEGORY_LABEL] ?? a.category}{a.endsAt ? ` · hasta el ${fmtDateTimeMedium(a.endsAt)}` : ""}</span>
+          <b>{a.title}</b>
+          <p className="small" style={{ whiteSpace: "pre-line", margin: 0, overflowWrap: "anywhere" }}>{a.body}</p>
+        </article>
+      ))}
+    </section>
+  );
 }

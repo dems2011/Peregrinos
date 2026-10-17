@@ -461,6 +461,8 @@ export declare const organizationProfileSchema: z.ZodObject<{
     facebook: z.ZodOptional<z.ZodNullable<z.ZodString>>;
     youtube: z.ZodOptional<z.ZodNullable<z.ZodString>>;
     tiktok: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    /** SIGyP: horarios de atención y celebraciones (texto libre). */
+    officeHours: z.ZodOptional<z.ZodNullable<z.ZodString>>;
 }, "strict", z.ZodTypeAny, {
     description?: string | null | undefined;
     website?: string | null | undefined;
@@ -471,6 +473,7 @@ export declare const organizationProfileSchema: z.ZodObject<{
     instagram?: string | null | undefined;
     facebook?: string | null | undefined;
     youtube?: string | null | undefined;
+    officeHours?: string | null | undefined;
     tiktok?: string | null | undefined;
 }, {
     description?: string | null | undefined;
@@ -482,6 +485,7 @@ export declare const organizationProfileSchema: z.ZodObject<{
     instagram?: string | null | undefined;
     facebook?: string | null | undefined;
     youtube?: string | null | undefined;
+    officeHours?: string | null | undefined;
     tiktok?: string | null | undefined;
 }>;
 export declare const sendNotificationSchema: z.ZodObject<{
@@ -635,9 +639,9 @@ export declare const createEventSchema: z.ZodObject<{
     latitude?: number | null | undefined;
     longitude?: number | null | undefined;
     description?: string | undefined;
-    capabilities?: ("VOLUNTEERS" | "INFO" | "LOCATION" | "REGISTRATION" | "PARTICIPANTS" | "CHECKIN" | "ROUTE" | "POINTS" | "CONTACTS" | "CERTIFICATES" | "COMMUNICATIONS" | "DOCUMENTS")[] | undefined;
-    address?: string | null | undefined;
     endsAt?: Date | null | undefined;
+    address?: string | null | undefined;
+    capabilities?: ("VOLUNTEERS" | "INFO" | "LOCATION" | "REGISTRATION" | "PARTICIPANTS" | "CHECKIN" | "ROUTE" | "POINTS" | "CONTACTS" | "CERTIFICATES" | "COMMUNICATIONS" | "DOCUMENTS")[] | undefined;
     parishName?: string | null | undefined;
     locationName?: string | null | undefined;
     capacity?: number | null | undefined;
@@ -679,9 +683,9 @@ export declare const createEventSchema: z.ZodObject<{
     longitude?: number | null | undefined;
     timezone?: string | undefined;
     description?: string | undefined;
-    capabilities?: ("VOLUNTEERS" | "INFO" | "LOCATION" | "REGISTRATION" | "PARTICIPANTS" | "CHECKIN" | "ROUTE" | "POINTS" | "CONTACTS" | "CERTIFICATES" | "COMMUNICATIONS" | "DOCUMENTS")[] | undefined;
-    address?: string | null | undefined;
     endsAt?: Date | null | undefined;
+    address?: string | null | undefined;
+    capabilities?: ("VOLUNTEERS" | "INFO" | "LOCATION" | "REGISTRATION" | "PARTICIPANTS" | "CHECKIN" | "ROUTE" | "POINTS" | "CONTACTS" | "CERTIFICATES" | "COMMUNICATIONS" | "DOCUMENTS")[] | undefined;
     parishName?: string | null | undefined;
     locationName?: string | null | undefined;
     capacity?: number | null | undefined;
@@ -830,10 +834,10 @@ export declare const updateEventSchema: z.ZodObject<{
     timezone?: string | undefined;
     description?: string | undefined;
     name?: string | undefined;
-    capabilities?: ("VOLUNTEERS" | "INFO" | "LOCATION" | "REGISTRATION" | "PARTICIPANTS" | "CHECKIN" | "ROUTE" | "POINTS" | "CONTACTS" | "CERTIFICATES" | "COMMUNICATIONS" | "DOCUMENTS")[] | undefined;
-    address?: string | null | undefined;
     startsAt?: Date | undefined;
     endsAt?: Date | null | undefined;
+    address?: string | null | undefined;
+    capabilities?: ("VOLUNTEERS" | "INFO" | "LOCATION" | "REGISTRATION" | "PARTICIPANTS" | "CHECKIN" | "ROUTE" | "POINTS" | "CONTACTS" | "CERTIFICATES" | "COMMUNICATIONS" | "DOCUMENTS")[] | undefined;
     parishName?: string | null | undefined;
     locationName?: string | null | undefined;
     capacity?: number | null | undefined;
@@ -874,10 +878,10 @@ export declare const updateEventSchema: z.ZodObject<{
     timezone?: string | undefined;
     description?: string | undefined;
     name?: string | undefined;
-    capabilities?: ("VOLUNTEERS" | "INFO" | "LOCATION" | "REGISTRATION" | "PARTICIPANTS" | "CHECKIN" | "ROUTE" | "POINTS" | "CONTACTS" | "CERTIFICATES" | "COMMUNICATIONS" | "DOCUMENTS")[] | undefined;
-    address?: string | null | undefined;
     startsAt?: Date | undefined;
     endsAt?: Date | null | undefined;
+    address?: string | null | undefined;
+    capabilities?: ("VOLUNTEERS" | "INFO" | "LOCATION" | "REGISTRATION" | "PARTICIPANTS" | "CHECKIN" | "ROUTE" | "POINTS" | "CONTACTS" | "CERTIFICATES" | "COMMUNICATIONS" | "DOCUMENTS")[] | undefined;
     parishName?: string | null | undefined;
     locationName?: string | null | undefined;
     capacity?: number | null | undefined;
@@ -2193,3 +2197,4 @@ export declare const revokeAssignmentSchema: z.ZodObject<{
 }>;
 export * from "./locale";
 export * from "./parishTools";
+export * from "./sigyp";

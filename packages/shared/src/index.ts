@@ -357,6 +357,8 @@ export const organizationProfileSchema = z.object({
   facebook: z.string().trim().max(200).nullable().optional(),
   youtube: z.string().trim().max(200).nullable().optional(),
   tiktok: z.string().trim().max(200).nullable().optional(),
+  /** SIGyP: horarios de atención y celebraciones (texto libre). */
+  officeHours: z.string().trim().max(1000).nullable().optional(),
 }).strict();
 
 /* =====================  B1: AVISOS Y CHAT  ===================== */
@@ -1036,3 +1038,4 @@ export const revokeAssignmentSchema = z.object({ reason: z.string().trim().min(3
 /* =====================  Idiomas y formato  ===================== */
 export * from "./locale";
 export * from "./parishTools";
+export * from "./sigyp";

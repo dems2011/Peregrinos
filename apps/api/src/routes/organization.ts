@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { PARISH_IMAGE_SPEC, PARISH_POSTER_SIZES, organizationProfileSchema, sendNotificationSchema, submitOrganizationReviewSchema } from "@peregrinos/shared";
+import { PARISH_IMAGE_SPEC, PARISH_POSTER_SIZES, organizationProfileSchema, sendNotificationSchema, sigypManagedFieldsIn, submitOrganizationReviewSchema } from "@peregrinos/shared";
 import { prisma } from "../lib/prisma";
 import { audit, auditTx } from "../lib/audit";
 import { AppError, forbidden } from "../lib/errors";
@@ -17,6 +17,7 @@ const KIND = { logo: "PARISH_LOGO", cover: "PARISH_COVER" } as const;
 const PROFILE_SELECT = {
   id: true, code: true, name: true, status: true, description: true, address: true, phone: true, email: true, website: true,
   instagram: true, facebook: true, youtube: true, tiktok: true, updatedAt: true,
+  officeHours: true, profileSource: true, profileSyncedAt: true,
 } as const;
 
 /** A3 — Estado de la propia organización para su personal, y presentación a revisión por su SUPERADMIN. */
@@ -71,6 +72,10 @@ export default async function organizationRoutes(app: FastifyInstance) {
 
   app.patch("/profile", { preHandler: profileManager }, async (req) => {
     const body = organizationProfileSchema.parse(req.body);
+    // SIGyP: mientras el perfil lo publica SIGyP, sus campos no se editan aquí (una sola fuente de verdad).
+    const org = await prisma.organization.findUniqueOrThrow({ where: { id: req.auth.organizationId }, select: { profileSource: true } });
+    const managed = org.profileSource === "SIGYP" ? sigypManagedFieldsIn(body) : [];
+    if (managed.length) throw new AppError(409, "PROFILE_MANAGED_BY_SIGYP", `Estos datos se administran desde SIGyP: ${managed.join(", ")}.`);
     await prisma.organization.update({ where: { id: req.auth.organizationId }, data: body });
     await audit(req, { action: "ORGANIZATION_PROFILE_UPDATED", entityType: "Organization", entityId: req.auth.organizationId, metadata: { fields: Object.keys(body) } });
     return profileView(req.auth.organizationId);

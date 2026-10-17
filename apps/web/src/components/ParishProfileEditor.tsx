@@ -1,9 +1,10 @@
 "use client";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Copy, Download, Trash2, Upload } from "lucide-react";
-import { PARISH_IMAGE_SPEC, PARISH_POSTER_SIZES, type ParishPosterSize } from "@peregrinos/shared";
-import { ApiError, api, del, download, patch, upload } from "@/lib/api";
+import { PARISH_IMAGE_SPEC, PARISH_POSTER_SIZES, SIGYP_PROFILE_FIELDS, type ParishPosterSize } from "@peregrinos/shared";
+import { ApiError, api, del, download, patch, post, upload } from "@/lib/api";
 import { useLoad } from "@/lib/hooks";
+import { fmtDateMedium, fmtDateTimeMedium } from "@/lib/format";
 import { useApp } from "@/components/AppContext";
 import { ParishProfileView } from "@/components/ParishProfileView";
 import { copyText, ErrorBox, Loading, Page } from "@/components/ui";
@@ -17,8 +18,9 @@ type Profile = ParishProfile & { status: string };
 const FIELDS = [
   ["name", "Nombre de la parroquia", 160], ["address", "Dirección", 240], ["phone", "Teléfono", 40], ["email", "Correo público", 200],
   ["website", "Sitio web (https://…)", 300], ["instagram", "Instagram (@usuario o enlace)", 200], ["facebook", "Facebook", 200],
-  ["youtube", "YouTube", 200], ["tiktok", "TikTok", 200],
+  ["youtube", "YouTube", 200], ["tiktok", "TikTok", 200], ["officeHours", "Horarios de atención y celebraciones", 1000],
 ] as const;
+const SIGYP_MANAGED = new Set<string>(SIGYP_PROFILE_FIELDS);
 type Key = (typeof FIELDS)[number][0] | "description";
 
 export function ParishProfileEditor({ back }: { back?: string }) {
@@ -27,12 +29,13 @@ export function ParishProfileEditor({ back }: { back?: string }) {
   const sa = can("parish:profile");
   const prof = useLoad(() => api<{ profile: Profile }>("/organization/profile"), []);
   const pub = useLoad(() => api<{ events: PublicEvent[] } & ParishExtras>(`/public/parishes/${me.user.organizationId}`)
-    .catch(() => ({ events: [] as PublicEvent[], livestream: null, schedule: [], campaigns: [], bulletins: [] } as { events: PublicEvent[] } & ParishExtras)), []);
+    .catch(() => ({ events: [] as PublicEvent[], livestream: null, schedule: [], campaigns: [], bulletins: [], announcements: [] } as { events: PublicEvent[] } & ParishExtras)), []);
   const [f, setF] = useState<Record<Key, string>>({} as Record<Key, string>);
   const [err, setErr] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const p = prof.data?.profile;
+  const managed = p?.profileSource === "SIGYP";
   useEffect(() => { if (p) setF(Object.fromEntries([...FIELDS.map(([k]) => [k, (p[k] as string | null) ?? ""]), ["description", p.description ?? ""]]) as Record<Key, string>); }, [p]);
 
   if (!sa) return <Page title="Perfil de la parroquia" back={back}><div className="alert warn">No tienes permiso para editar el perfil de la parroquia.</div></Page>;
@@ -43,7 +46,8 @@ export function ParishProfileEditor({ back }: { back?: string }) {
   };
   const save = (e: FormEvent) => {
     e.preventDefault();
-    const body = Object.fromEntries(Object.entries(f).map(([k, v]) => [k, k === "name" ? v.trim() : v.trim() || null]));
+    // SIGyP: los campos que publica SIGyP no se envían mientras los administre SIGyP (la API también lo rechaza).
+    const body = Object.fromEntries(Object.entries(f).filter(([k]) => !(managed && SIGYP_MANAGED.has(k))).map(([k, v]) => [k, k === "name" ? v.trim() : v.trim() || null]));
     void run(() => patch("/organization/profile", body), "Perfil guardado.");
   };
   const sendImage = (kind: "logo" | "cover", file?: File) => {
@@ -71,13 +75,17 @@ export function ParishProfileEditor({ back }: { back?: string }) {
         <h2 style={{ margin: "16px 0 0" }}>Editar el perfil</h2>
         <form className="card" onSubmit={save} noValidate>
           <h2>Información pública</h2>
+          {managed && <div className="alert warn" role="note">La descripción, los datos de contacto, los canales y los horarios se administran desde SIGyP (Gestión Parroquial){p?.profileSyncedAt ? ` · última actualización ${fmtDateTimeMedium(p.profileSyncedAt)}` : ""}. Aquí solo puedes cambiar el nombre, el logo y la imagen.</div>}
           {FIELDS.map(([k, label, max]) => (
-            <div className="field" key={k}><label htmlFor={`pf-${k}`}>{label}</label><input id={`pf-${k}`} value={f[k] ?? ""} maxLength={max} onChange={(e) => setF({ ...f, [k]: e.target.value })} /></div>
+            <div className="field" key={k}><label htmlFor={`pf-${k}`}>{label}</label>{k === "officeHours"
+              ? <textarea id={`pf-${k}`} value={f[k] ?? ""} maxLength={max} disabled={managed} onChange={(e) => setF({ ...f, [k]: e.target.value })} />
+              : <input id={`pf-${k}`} value={f[k] ?? ""} maxLength={max} disabled={managed && SIGYP_MANAGED.has(k)} onChange={(e) => setF({ ...f, [k]: e.target.value })} />}</div>
           ))}
-          <div className="field"><label htmlFor="pf-d">Descripción</label><textarea id="pf-d" value={f.description ?? ""} maxLength={2000} onChange={(e) => setF({ ...f, description: e.target.value })} placeholder="Quiénes son, horarios de misa, cómo participar…" /></div>
+          <div className="field"><label htmlFor="pf-d">Descripción</label><textarea id="pf-d" value={f.description ?? ""} maxLength={2000} disabled={managed} onChange={(e) => setF({ ...f, description: e.target.value })} placeholder="Quiénes son, horarios de misa, cómo participar…" /></div>
           <button className="btn btn-primary" disabled={busy || (f.name ?? "").trim().length < 3}>{busy ? "Guardando…" : "Guardar perfil"}</button>
         </form>
 
+        <SigypCard onChanged={() => void prof.reload()} />
         <ImageCard title="Logo" kind="logo" url={p.logoUrl} busy={busy} onPick={sendImage} onRemove={() => void run(() => del("/organization/media/logo"), "Logo quitado.")}
           hint={`Cuadrado (proporción ${PARISH_IMAGE_SPEC.logo.minRatio}–${PARISH_IMAGE_SPEC.logo.maxRatio}), mínimo ${PARISH_IMAGE_SPEC.logo.minPx} × ${PARISH_IMAGE_SPEC.logo.minPx} px, PNG/JPEG/WEBP, hasta 1 MB. Se muestra en un círculo.`} />
         <ImageCard title="Imagen de la parroquia" kind="cover" url={p.coverUrl} busy={busy} onPick={sendImage} onRemove={() => void run(() => del("/organization/media/cover"), "Imagen quitada.")}
@@ -120,6 +128,50 @@ function ImageCard({ title, kind, url, hint, busy, onPick, onRemove }: { title: 
       <div className="btn-row">
         <label htmlFor={`img-${kind}`} className="btn" aria-disabled={busy}><Upload size={18} /> {url ? "Reemplazar" : "Subir"}</label>
         {url && <button type="button" className="btn" disabled={busy} onClick={onRemove}><Trash2 size={18} /> Quitar</button>}
+      </div>
+    </section>
+  );
+}
+
+interface SigypClientRow { id: string; label: string; tokenHint: string; scopes: string[]; createdAt: string; lastUsedAt: string | null; revokedAt: string | null }
+
+/**
+ * SIGyP (Gestión Parroquial): credencial para que SIGyP publique la cartelera y el perfil de ESTA parroquia. Se muestra
+ * una sola vez al crearla; se pega en SIGyP («Perfil parroquial → Vinculación con Peregrinos»). Revocar corta de inmediato.
+ */
+function SigypCard({ onChanged }: { onChanged: () => void }) {
+  const data = useLoad(() => api<{ organizationId: string; profileSource: string | null; items: SigypClientRow[] }>("/organization/integrations/sigyp"), []);
+  const [token, setToken] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const act = async (fn: () => Promise<unknown>) => {
+    setBusy(true); setErr(null);
+    try { await fn(); await data.reload(); onChanged(); }
+    catch (e) { setErr(e instanceof ApiError ? e.message : "No se pudo completar."); } finally { setBusy(false); }
+  };
+  const active = data.data?.items.filter((i) => !i.revokedAt) ?? [];
+  return (
+    <section className="card stack-sm" data-testid="sigyp-card">
+      <h2>Conexión con SIGyP (Gestión Parroquial)</h2>
+      <p className="muted small" style={{ margin: 0 }}>Permite que el sistema de gestión de la parroquia publique aquí su cartelera y sus datos públicos. Solo envía lo que la parroquia publica; no da acceso a nada más de Peregrinos.</p>
+      <ErrorBox msg={err ?? data.error} />
+      {data.data && <p className="small" style={{ margin: 0 }}>Identificador de la organización: <code>{data.data.organizationId}</code> <button type="button" className="btn btn-sm" onClick={() => copyText(data.data!.organizationId)}><Copy size={16} /> Copiar</button></p>}
+      {token && (
+        <div className="alert ok" role="status">
+          <p style={{ margin: 0 }}>Credencial creada. Cópiala ahora: <b>no se volverá a mostrar</b>.</p>
+          <p style={{ margin: "6px 0", overflowWrap: "anywhere" }}><code>{token}</code></p>
+          <button type="button" className="btn btn-sm" onClick={() => copyText(token)}><Copy size={16} /> Copiar credencial</button>
+        </div>
+      )}
+      {active.map((c) => (
+        <p key={c.id} className="small" style={{ margin: 0 }}>
+          {c.label} · credencial {c.tokenHint} · creada {fmtDateMedium(c.createdAt)} · {c.lastUsedAt ? `último uso ${fmtDateTimeMedium(c.lastUsedAt)}` : "sin usar"}{" "}
+          <button type="button" className="btn btn-sm" disabled={busy} onClick={() => void act(() => post(`/organization/integrations/sigyp/${c.id}/revoke`, {}))}>Revocar</button>
+        </p>
+      ))}
+      <div className="btn-row">
+        <button type="button" className="btn" disabled={busy} onClick={() => void act(async () => { const r = await post<{ token: string }>("/organization/integrations/sigyp", { label: "SIGyP" }); setToken(r.token); })}>Crear credencial</button>
+        {data.data?.profileSource === "SIGYP" && <button type="button" className="btn" disabled={busy} onClick={() => void act(() => post("/organization/integrations/sigyp/release-profile", {}))}>Volver a editar el perfil aquí</button>}
       </div>
     </section>
   );
