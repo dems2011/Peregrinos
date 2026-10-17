@@ -1,10 +1,10 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { SIGYP_SCOPES } from "@peregrinos/shared";
+import { LINK_CODE_TTL_MINUTES, SIGYP_SCOPES } from "@peregrinos/shared";
 import { prisma } from "../lib/prisma";
 import { audit } from "../lib/audit";
-import { AppError, notFound } from "../lib/errors";
-import { newSigypToken } from "../lib/sigyp";
+import { AppError, forbidden, notFound } from "../lib/errors";
+import { newLinkCode, newSigypToken } from "../lib/sigyp";
 
 const idParam = z.object({ id: z.string().uuid() });
 const createBody = z.object({ label: z.string().trim().min(3).max(80).default("SIGyP") }).strict();
@@ -39,6 +39,36 @@ export default async function organizationIntegrationRoutes(app: FastifyInstance
     await audit(req, { action: "SIGYP_CLIENT_CREATED", entityType: "IntegrationClient", entityId: c.id, metadata: { label, tokenHint: t.hint, scopes: c.scopes } });
     // Única vez que la credencial sale del servidor.
     return reply.status(201).header("Cache-Control", "no-store").send({ id: c.id, token: t.token, scopes: c.scopes, organizationId: req.auth.organizationId });
+  });
+
+  /**
+   * Código de vinculación de UN solo uso (15 minutos) para completar la vinculación DESDE SIGyP. Solo el SUPERADMIN:
+   * así la vinculación demuestra autoridad sobre esta parroquia (un colaborador con parish:profile no basta).
+   */
+  app.post("/link-codes", { preHandler: [manage, app.requireRecentMfa], config: { rateLimit: { max: 10, timeWindow: "1 hour" } } }, async (req, reply) => {
+    if (req.auth.role !== "SUPERADMIN") throw forbidden("Solo el titular de la parroquia (SUPERADMIN) puede vincularla con SIGyP.");
+    const active = await prisma.integrationLinkCode.count({ where: { organizationId: req.auth.organizationId, usedAt: null, revokedAt: null, expiresAt: { gt: new Date() } } });
+    if (active >= 3) throw new AppError(409, "TOO_MANY_LINK_CODES", "Ya hay códigos de vinculación vigentes: usa o revoca uno.");
+    const { code, hash } = newLinkCode();
+    const expiresAt = new Date(Date.now() + LINK_CODE_TTL_MINUTES * 60_000);
+    const row = await prisma.integrationLinkCode.create({ data: { organizationId: req.auth.organizationId, codeHash: hash, scopes: [...SIGYP_SCOPES], createdById: req.auth.id, expiresAt } });
+    await audit(req, { action: "SIGYP_LINK_CODE_CREATED", entityType: "IntegrationLinkCode", entityId: row.id, metadata: { expiresAt: expiresAt.toISOString(), scopes: row.scopes } });
+    return reply.status(201).header("Cache-Control", "no-store").send({ id: row.id, code, expiresAt, scopes: row.scopes });
+  });
+
+  app.get("/link-codes", { preHandler: manage }, async (req) => ({
+    items: await prisma.integrationLinkCode.findMany({
+      where: { organizationId: req.auth.organizationId }, orderBy: { createdAt: "desc" }, take: 20,
+      select: { id: true, scopes: true, createdAt: true, expiresAt: true, usedAt: true, usedLabel: true, revokedAt: true },
+    }),
+  }));
+
+  app.post("/link-codes/:id/revoke", { preHandler: [manage, app.requireRecentMfa] }, async (req) => {
+    const { id } = idParam.parse(req.params);
+    const r = await prisma.integrationLinkCode.updateMany({ where: { id, organizationId: req.auth.organizationId, usedAt: null, revokedAt: null }, data: { revokedAt: new Date() } });
+    if (r.count !== 1) throw notFound("Código no encontrado, ya usado o revocado.");
+    await audit(req, { action: "SIGYP_LINK_CODE_REVOKED", entityType: "IntegrationLinkCode", entityId: id });
+    return { ok: true };
   });
 
   app.post("/:id/revoke", { preHandler: [manage, app.requireRecentMfa] }, async (req) => {

@@ -9,9 +9,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import {
-  isAnnouncementVisible, SIGYP_PROFILE_FIELDS, sigypAnnouncementSchema, sigypManagedFieldsIn, sigypProfileSchema, sigypWithdrawSchema,
+  EVENT_TYPES, isAnnouncementVisible, multiNoticeSchema, normalizeLinkCode, SIGYP_EVENT_TYPES, SIGYP_PROFILE_FIELDS, sigypAnnouncementSchema,
+  sigypEventSchema, sigypLinkCompleteSchema, sigypManagedFieldsIn, sigypNoticeSchema, sigypProfileSchema, sigypWithdrawSchema, uniqueRecipients,
 } from "@peregrinos/shared";
-import { bearerSigypToken, hashSigypToken, newSigypToken, sameHash, versionOutcome } from "../src/lib/sigyp";
+import { bearerSigypToken, hashLinkCode, hashSigypToken, newLinkCode, newSigypToken, sameHash, versionOutcome } from "../src/lib/sigyp";
 
 const root = path.resolve(__dirname, "..");
 const read = (p: string) => fs.readFileSync(path.join(root, p), "utf8");
@@ -104,12 +105,89 @@ describe("S1: reglas verificadas sobre la fuente", () => {
   it("emitir, revocar y liberar exigen parish:profile y segundo factor reciente", () => {
     const adm = read("src/routes/organizationIntegrations.ts");
     assert.match(adm, /requirePermission\("parish:profile"\)/);
-    assert.equal((adm.match(/app\.requireRecentMfa/g) ?? []).length, 3);
+    assert.equal((adm.match(/app\.requireRecentMfa/g) ?? []).length, 5);
     assert.match(adm, /tokenHash: t\.hash/);
     assert.ok(!/token: t\.token[^}]*\} *\}\);/.test(adm.split("prisma.integrationClient.create")[1]?.split("});")[0] ?? ""), "la credencial no se guarda en claro");
   });
   it("la migración es aditiva", () => {
     const sql = fs.readFileSync(path.join(root, "prisma/migrations/20261019000000_sigyp_integration/migration.sql"), "utf8").replace(/--[^\n]*/g, "");
     assert.ok(!/\bDROP\b|^\s*DELETE\b|^\s*UPDATE\b|\bTRUNCATE\b|RENAME/im.test(sql));
+  });
+});
+
+describe("S1: vinculación con código de un solo uso", () => {
+  it("formato «PGV-» con ≈100 bits, comparación sin guiones ni mayúsculas y solo hash guardado", () => {
+    const a = newLinkCode();
+    assert.match(a.code, /^PGV-[A-Z2-9]{5}(-[A-Z2-9]{5}){3}$/);
+    assert.equal(hashLinkCode(a.code.toLowerCase().replace(/-/g, " ")), a.hash);
+    assert.notEqual(newLinkCode().code, a.code);
+    for (const bad of ["", "PGV-ABC", "XYZ-ABCDE-FGHJK-MNPQR-STUVW", "PGV-ABCDE-FGHJK-MNPQR-STUV0"]) assert.equal(hashLinkCode(bad), null, bad);
+    assert.equal(normalizeLinkCode("PGV-ABCDE-FGHJK-MNPQR-STUVI"), null, "sin letras ambiguas (I, L, O, 0, 1)");
+  });
+  it("completar exige la instalación y nada más", () => {
+    assert.equal(sigypLinkCompleteSchema.safeParse({ code: "PGV-ABCDE-FGHJK-MNPQR-STUVW", installation: { parishCode: "PAR01", label: "Secretaría" } }).success, true);
+    assert.equal(sigypLinkCompleteSchema.safeParse({ code: "PGV-ABCDE-FGHJK-MNPQR-STUVW", installation: { parishCode: "PAR01", label: "Secretaría" }, organizationId: randomUUID() }).success, false);
+  });
+  it("la fuente: solo el SUPERADMIN genera códigos; se consume en la misma sentencia y una sola vez", () => {
+    const adm = read("src/routes/organizationIntegrations.ts");
+    assert.match(adm, /req\.auth\.role !== "SUPERADMIN"/);
+    const r = read("src/routes/sigypIntegration.ts");
+    assert.match(r, /integrationLinkCode\.updateMany\(\{ where: \{ codeHash: hash, usedAt: null, revokedAt: null, expiresAt: \{ gt: new Date\(\) \} \}/);
+    assert.match(r, /Código de vinculación inválido, vencido o ya usado/);
+    assert.match(r, /app\.post\("\/unlink"/);
+  });
+});
+
+describe("S1: eventos desde SIGyP con el modelo Event de Peregrinos", () => {
+  const ev = { contract: 1, sourceId: randomUUID(), version: 1, title: "Misa criolla", description: null, eventType: "LITURGICAL_CELEBRATION", startsAt: "2026-11-01T13:00:00Z", endsAt: null, timezone: "America/Argentina/Buenos_Aires", locationName: "Templo", address: null, attendanceMode: "IN_PERSON", onlineUrl: null, visibility: "PUBLIC" };
+  it("los tipos coinciden con EVENT_TYPES", () => assert.deepEqual([...SIGYP_EVENT_TYPES], [...EVENT_TYPES]));
+  it("esquema estricto con reglas de modalidad", () => {
+    assert.equal(sigypEventSchema.safeParse(ev).success, true);
+    assert.equal(sigypEventSchema.safeParse({ ...ev, registrationOpen: true }).success, false, "sin inscripciones desde SIGyP");
+    assert.equal(sigypEventSchema.safeParse({ ...ev, attendanceMode: "ONLINE", locationName: null }).success, false, "virtual exige enlace");
+    assert.equal(sigypEventSchema.safeParse({ ...ev, attendanceMode: "ONLINE", locationName: null, onlineUrl: "https://meet.example/x" }).success, true);
+    assert.equal(sigypEventSchema.safeParse({ ...ev, attendanceMode: "HYBRID", onlineUrl: "http://meet.example/x" }).success, false, "solo https");
+    assert.equal(sigypEventSchema.safeParse({ ...ev, locationName: null }).success, false, "presencial exige lugar o dirección");
+    assert.equal(sigypEventSchema.safeParse({ ...ev, timezone: "Hora local" }).success, false);
+  });
+  it("la fuente: no avisa a los seguidores, solo INFO/LOCATION, versión en la base y el panel no lo edita", () => {
+    const r = read("src/routes/sigypIntegration.ts");
+    const events = r.slice(r.indexOf('app.put("/events/:sourceId"'), r.indexOf("/* ---------- Avisos multigrupo"));
+    assert.ok(!/notifyFollowers|notifyEventPublishedIfDue|pushNotification/.test(events), "publicar un evento no envía avisos");
+    assert.match(events, /publishedNotifiedAt: new Date\(\)/);
+    assert.match(events, /\["INFO", "LOCATION"\]/);
+    assert.match(events, /sourceVersion: \{ lt: v\.version \}/);
+    assert.match(read("src/routes/events.ts"), /EVENT_MANAGED_BY_SIGYP/);
+    assert.match(read("src/routes/eventCover.ts"), /EVENT_MANAGED_BY_SIGYP/);
+  });
+});
+
+describe("S1: avisos multigrupo", () => {
+  it("una persona en dos grupos recibe un solo aviso", () => {
+    assert.deepEqual(uniqueRecipients([["a", "b"], ["b", "c"], []]), ["a", "b", "c"]);
+  });
+  it("esquemas: grupos válidos, sin repetir; urgente con motivo y como push; confirmación obligatoria", () => {
+    const base = { title: "Reunión", body: "Mañana 19 h", audiences: ["FOLLOWERS", "STAFF:ADMIN"], delivery: "INBOX", confirmedRecipients: 3 };
+    assert.equal(multiNoticeSchema.safeParse(base).success, true);
+    assert.equal(multiNoticeSchema.safeParse({ ...base, audiences: ["FOLLOWERS", "FOLLOWERS"] }).success, false);
+    assert.equal(multiNoticeSchema.safeParse({ ...base, audiences: ["CATEQUISTAS"] }).success, false);
+    assert.equal(multiNoticeSchema.safeParse({ ...base, urgent: true, delivery: "PUSH" }).success, false, "urgente sin motivo");
+    assert.equal(multiNoticeSchema.safeParse({ ...base, urgent: true, urgentReason: "Corte de calle por la procesión" }).success, false, "urgente solo push");
+    assert.equal(multiNoticeSchema.safeParse({ ...base, urgent: true, delivery: "PUSH", urgentReason: "Corte de calle por la procesión" }).success, true);
+    const { confirmedRecipients: _c, ...noConfirm } = base;
+    assert.equal(multiNoticeSchema.safeParse(noConfirm).success, false);
+    assert.equal(sigypNoticeSchema.safeParse({ contract: 1, sourceId: randomUUID(), title: "Hola", body: "Texto", audiences: ["FOLLOWERS"], delivery: "PUSH", urgent: true }).success, false, "SIGyP no envía urgentes");
+  });
+  it("la fuente: permisos en el servidor, total confirmado, sin listas de personas y una vez por sourceId", () => {
+    const org = read("src/routes/organization.ts");
+    assert.match(org, /AUDIENCE_NOT_ALLOWED/);
+    assert.match(org, /"user:manage"/);
+    assert.match(org, /RECIPIENTS_CHANGED/);
+    assert.match(org, /URGENT_NOT_ALLOWED/);
+    assert.match(read("src/lib/notifications.ts"), /uniqueRecipients\(/);
+    const r = read("src/routes/sigypIntegration.ts");
+    const aud = r.slice(r.indexOf('app.get("/notices/audiences"'), r.indexOf('app.post("/notices/:sourceId"'));
+    assert.match(aud, /return \{ counts: r\.counts \}/, "solo cantidades");
+    assert.match(r, /organizationId_sourceSystem_sourceId/);
   });
 });

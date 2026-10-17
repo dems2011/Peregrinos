@@ -74,6 +74,7 @@ model Organization {
   profileSyncedVersion Int                        @default(0)
   profileSyncedAt      DateTime?
   integrationClients   IntegrationClient[]
+  integrationLinkCodes IntegrationLinkCode[]
   announcements        ParishAnnouncement[]
 }
 
@@ -352,7 +353,16 @@ model Event {
   trackingEnabled          Boolean                  @default(false)
   locationShares           LocationShare[]
   livestreams              ParishLivestream[]
+  /// SIGyP: evento publicado desde SIGyP (Gestión Parroquial). Lo administra SIGyP: el panel no lo edita y su
+  /// publicación no avisa automáticamente a los seguidores. «sourceVersion» = última versión aplicada (idempotencia).
+  sourceSystem             String?
+  sourceId                 String?
+  sourceVersion            Int                      @default(0)
+  /// SIGyP: modalidad (IN_PERSON, ONLINE, HYBRID) y enlace de participación virtual, si corresponde.
+  attendanceMode           String?
+  onlineUrl                String?
 
+  @@unique([organizationId, sourceSystem, sourceId])
   @@index([organizationId, status])
   @@index([organizationId, type])
 }
@@ -1392,12 +1402,22 @@ model Notification {
   body           String
   createdById    String?
   recipientCount Int                     @default(0)
+  /// SIGyP/avisos multigrupo: PUSH = bandeja + notificación al teléfono; INBOX = solo bandeja (sin push).
+  delivery       String                  @default("PUSH")
+  /// Alerta urgente (permiso y confirmación específicos).
+  urgent         Boolean                 @default(false)
+  /// Destinatarios lógicos elegidos (p. ej. ["FOLLOWERS","STAFF:ADMIN"]); los individuales están en recipients.
+  audience       Json?
+  /// SIGyP: aviso enviado desde SIGyP; (organización, origen, id) es único: un reintento nunca lo duplica.
+  sourceSystem   String?
+  sourceId       String?
   createdAt      DateTime                @default(now())
   organization   Organization            @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   event          Event?                  @relation(fields: [eventId], references: [id], onDelete: Restrict)
   createdBy      User?                   @relation(fields: [createdById], references: [id], onDelete: SetNull)
   recipients     NotificationRecipient[]
 
+  @@unique([organizationId, sourceSystem, sourceId])
   @@index([organizationId, createdAt])
 }
 
@@ -1844,4 +1864,23 @@ model ParishAnnouncement {
 
   @@unique([organizationId, sourceSystem, sourceId])
   @@index([organizationId, withdrawnAt, startsAt])
+}
+
+/// SIGyP: código de vinculación de UN solo uso que genera el SUPERADMIN (autoridad de la parroquia) con MFA reciente.
+/// Solo se guarda su SHA-256; vence a los 15 minutos. Al completarse crea la credencial de integración (IntegrationClient).
+model IntegrationLinkCode {
+  id             String       @id @default(uuid())
+  organizationId String
+  codeHash       String       @unique
+  scopes         String[]
+  createdById    String
+  createdAt      DateTime     @default(now())
+  expiresAt      DateTime
+  usedAt         DateTime?
+  usedClientId   String?
+  usedLabel      String?
+  revokedAt      DateTime?
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, usedAt, revokedAt])
 }

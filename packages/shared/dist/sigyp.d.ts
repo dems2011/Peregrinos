@@ -1,4 +1,7 @@
 import { z } from "zod";
+/** Tipos de evento admitidos desde SIGyP: copia de EVENT_TYPES (index.ts) para no crear una dependencia circular;
+ *  una prueba (s1) verifica que sean idénticos. */
+export declare const SIGYP_EVENT_TYPES: readonly ["PILGRIMAGE", "PROCESSION", "PATRONAL_FEAST", "LITURGICAL_CELEBRATION", "ROSARY", "RETREAT", "GATHERING", "COMMUNITY_ACTIVITY", "CULTURAL_ACTIVITY", "OTHER"];
 /**
  * Integración con SIGyP — Gestión Parroquial (contrato v1, ver docs/INTEGRACION-SIGYP.md). SIGyP es la fuente de verdad
  * de la cartelera y de los campos públicos del perfil que publica; Peregrinos los recibe por un canal autenticado con
@@ -6,7 +9,7 @@ import { z } from "zod";
  * versión creciente: una versión no mayor que la guardada se ignora (reintentar nunca duplica ni retrocede).
  */
 export declare const SIGYP_CONTRACT_VERSION = 1;
-export declare const SIGYP_SCOPES: readonly ["announcements:write", "profile:write"];
+export declare const SIGYP_SCOPES: readonly ["announcements:write", "profile:write", "events:write", "notices:send"];
 export type SigypScope = (typeof SIGYP_SCOPES)[number];
 export declare const SIGYP_CATEGORIES: readonly ["GENERAL", "LITURGIA", "SACRAMENTOS", "CATEQUESIS", "CARIDAD", "ACTIVIDADES", "SECRETARIA"];
 export declare const SIGYP_CATEGORY_LABEL: Record<(typeof SIGYP_CATEGORIES)[number], string>;
@@ -149,3 +152,286 @@ export declare function isAnnouncementVisible(a: {
 }, now?: Date): boolean;
 /** Campos del perfil que dejan de editarse en Peregrinos mientras la organización recibe el perfil desde SIGyP. */
 export declare function sigypManagedFieldsIn(body: Record<string, unknown>): string[];
+export declare const LINK_CODE_TTL_MINUTES = 15;
+export declare function normalizeLinkCode(raw: string): string | null;
+export declare function formatLinkCode(body20: string): string;
+export declare const LINK_CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+export declare const sigypLinkPreviewSchema: z.ZodObject<{
+    code: z.ZodString;
+}, "strict", z.ZodTypeAny, {
+    code: string;
+}, {
+    code: string;
+}>;
+export declare const sigypLinkCompleteSchema: z.ZodObject<{
+    code: z.ZodString;
+    /** Instalación de SIGyP que se vincula (para identificar la credencial; no concede nada). */
+    installation: z.ZodObject<{
+        parishCode: z.ZodString;
+        label: z.ZodString;
+    }, "strict", z.ZodTypeAny, {
+        parishCode: string;
+        label: string;
+    }, {
+        parishCode: string;
+        label: string;
+    }>;
+}, "strict", z.ZodTypeAny, {
+    code: string;
+    installation: {
+        parishCode: string;
+        label: string;
+    };
+}, {
+    code: string;
+    installation: {
+        parishCode: string;
+        label: string;
+    };
+}>;
+export declare const SIGYP_ATTENDANCE_MODES: readonly ["IN_PERSON", "ONLINE", "HYBRID"];
+export declare const sigypEventSchema: z.ZodEffects<z.ZodEffects<z.ZodEffects<z.ZodObject<{
+    contract: z.ZodLiteral<1>;
+    sourceId: z.ZodString;
+    version: z.ZodNumber;
+    title: z.ZodString;
+    description: z.ZodNullable<z.ZodString>;
+    eventType: z.ZodEnum<["PILGRIMAGE", "PROCESSION", "PATRONAL_FEAST", "LITURGICAL_CELEBRATION", "ROSARY", "RETREAT", "GATHERING", "COMMUNITY_ACTIVITY", "CULTURAL_ACTIVITY", "OTHER"]>;
+    startsAt: z.ZodString;
+    endsAt: z.ZodNullable<z.ZodString>;
+    timezone: z.ZodString;
+    locationName: z.ZodNullable<z.ZodString>;
+    address: z.ZodNullable<z.ZodString>;
+    attendanceMode: z.ZodEnum<["IN_PERSON", "ONLINE", "HYBRID"]>;
+    onlineUrl: z.ZodNullable<z.ZodEffects<z.ZodString, string, string>>;
+    visibility: z.ZodEnum<["PUBLIC", "UNLISTED"]>;
+}, "strict", z.ZodTypeAny, {
+    title: string;
+    timezone: string;
+    description: string | null;
+    contract: 1;
+    sourceId: string;
+    version: number;
+    startsAt: string;
+    endsAt: string | null;
+    address: string | null;
+    eventType: "OTHER" | "PILGRIMAGE" | "PROCESSION" | "PATRONAL_FEAST" | "LITURGICAL_CELEBRATION" | "ROSARY" | "RETREAT" | "GATHERING" | "COMMUNITY_ACTIVITY" | "CULTURAL_ACTIVITY";
+    locationName: string | null;
+    attendanceMode: "IN_PERSON" | "ONLINE" | "HYBRID";
+    onlineUrl: string | null;
+    visibility: "PUBLIC" | "UNLISTED";
+}, {
+    title: string;
+    timezone: string;
+    description: string | null;
+    contract: 1;
+    sourceId: string;
+    version: number;
+    startsAt: string;
+    endsAt: string | null;
+    address: string | null;
+    eventType: "OTHER" | "PILGRIMAGE" | "PROCESSION" | "PATRONAL_FEAST" | "LITURGICAL_CELEBRATION" | "ROSARY" | "RETREAT" | "GATHERING" | "COMMUNITY_ACTIVITY" | "CULTURAL_ACTIVITY";
+    locationName: string | null;
+    attendanceMode: "IN_PERSON" | "ONLINE" | "HYBRID";
+    onlineUrl: string | null;
+    visibility: "PUBLIC" | "UNLISTED";
+}>, {
+    title: string;
+    timezone: string;
+    description: string | null;
+    contract: 1;
+    sourceId: string;
+    version: number;
+    startsAt: string;
+    endsAt: string | null;
+    address: string | null;
+    eventType: "OTHER" | "PILGRIMAGE" | "PROCESSION" | "PATRONAL_FEAST" | "LITURGICAL_CELEBRATION" | "ROSARY" | "RETREAT" | "GATHERING" | "COMMUNITY_ACTIVITY" | "CULTURAL_ACTIVITY";
+    locationName: string | null;
+    attendanceMode: "IN_PERSON" | "ONLINE" | "HYBRID";
+    onlineUrl: string | null;
+    visibility: "PUBLIC" | "UNLISTED";
+}, {
+    title: string;
+    timezone: string;
+    description: string | null;
+    contract: 1;
+    sourceId: string;
+    version: number;
+    startsAt: string;
+    endsAt: string | null;
+    address: string | null;
+    eventType: "OTHER" | "PILGRIMAGE" | "PROCESSION" | "PATRONAL_FEAST" | "LITURGICAL_CELEBRATION" | "ROSARY" | "RETREAT" | "GATHERING" | "COMMUNITY_ACTIVITY" | "CULTURAL_ACTIVITY";
+    locationName: string | null;
+    attendanceMode: "IN_PERSON" | "ONLINE" | "HYBRID";
+    onlineUrl: string | null;
+    visibility: "PUBLIC" | "UNLISTED";
+}>, {
+    title: string;
+    timezone: string;
+    description: string | null;
+    contract: 1;
+    sourceId: string;
+    version: number;
+    startsAt: string;
+    endsAt: string | null;
+    address: string | null;
+    eventType: "OTHER" | "PILGRIMAGE" | "PROCESSION" | "PATRONAL_FEAST" | "LITURGICAL_CELEBRATION" | "ROSARY" | "RETREAT" | "GATHERING" | "COMMUNITY_ACTIVITY" | "CULTURAL_ACTIVITY";
+    locationName: string | null;
+    attendanceMode: "IN_PERSON" | "ONLINE" | "HYBRID";
+    onlineUrl: string | null;
+    visibility: "PUBLIC" | "UNLISTED";
+}, {
+    title: string;
+    timezone: string;
+    description: string | null;
+    contract: 1;
+    sourceId: string;
+    version: number;
+    startsAt: string;
+    endsAt: string | null;
+    address: string | null;
+    eventType: "OTHER" | "PILGRIMAGE" | "PROCESSION" | "PATRONAL_FEAST" | "LITURGICAL_CELEBRATION" | "ROSARY" | "RETREAT" | "GATHERING" | "COMMUNITY_ACTIVITY" | "CULTURAL_ACTIVITY";
+    locationName: string | null;
+    attendanceMode: "IN_PERSON" | "ONLINE" | "HYBRID";
+    onlineUrl: string | null;
+    visibility: "PUBLIC" | "UNLISTED";
+}>, {
+    title: string;
+    timezone: string;
+    description: string | null;
+    contract: 1;
+    sourceId: string;
+    version: number;
+    startsAt: string;
+    endsAt: string | null;
+    address: string | null;
+    eventType: "OTHER" | "PILGRIMAGE" | "PROCESSION" | "PATRONAL_FEAST" | "LITURGICAL_CELEBRATION" | "ROSARY" | "RETREAT" | "GATHERING" | "COMMUNITY_ACTIVITY" | "CULTURAL_ACTIVITY";
+    locationName: string | null;
+    attendanceMode: "IN_PERSON" | "ONLINE" | "HYBRID";
+    onlineUrl: string | null;
+    visibility: "PUBLIC" | "UNLISTED";
+}, {
+    title: string;
+    timezone: string;
+    description: string | null;
+    contract: 1;
+    sourceId: string;
+    version: number;
+    startsAt: string;
+    endsAt: string | null;
+    address: string | null;
+    eventType: "OTHER" | "PILGRIMAGE" | "PROCESSION" | "PATRONAL_FEAST" | "LITURGICAL_CELEBRATION" | "ROSARY" | "RETREAT" | "GATHERING" | "COMMUNITY_ACTIVITY" | "CULTURAL_ACTIVITY";
+    locationName: string | null;
+    attendanceMode: "IN_PERSON" | "ONLINE" | "HYBRID";
+    onlineUrl: string | null;
+    visibility: "PUBLIC" | "UNLISTED";
+}>;
+export declare const sigypEventWithdrawSchema: z.ZodObject<{
+    contract: z.ZodLiteral<1>;
+    sourceId: z.ZodString;
+    version: z.ZodNumber;
+}, "strict", z.ZodTypeAny, {
+    contract: 1;
+    sourceId: string;
+    version: number;
+}, {
+    contract: 1;
+    sourceId: string;
+    version: number;
+}>;
+export type SigypEvent = z.infer<typeof sigypEventSchema>;
+/** Grupos de destinatarios en Peregrinos. Se derivan de datos reales: seguidores y personal según su rol. */
+export declare const NOTICE_AUDIENCES: readonly ["FOLLOWERS", "STAFF:SUPERADMIN", "STAFF:ADMIN", "STAFF:OPERATOR"];
+export type NoticeAudience = (typeof NOTICE_AUDIENCES)[number];
+export declare const NOTICE_AUDIENCE_LABEL: Record<NoticeAudience, string>;
+export declare const noticeAudiencesSchema: z.ZodEffects<z.ZodArray<z.ZodEnum<["FOLLOWERS", "STAFF:SUPERADMIN", "STAFF:ADMIN", "STAFF:OPERATOR"]>, "many">, ("FOLLOWERS" | "STAFF:SUPERADMIN" | "STAFF:ADMIN" | "STAFF:OPERATOR")[], ("FOLLOWERS" | "STAFF:SUPERADMIN" | "STAFF:ADMIN" | "STAFF:OPERATOR")[]>;
+export declare const multiNoticeSchema: z.ZodEffects<z.ZodEffects<z.ZodObject<{
+    title: z.ZodString;
+    body: z.ZodString;
+    audiences: z.ZodEffects<z.ZodArray<z.ZodEnum<["FOLLOWERS", "STAFF:SUPERADMIN", "STAFF:ADMIN", "STAFF:OPERATOR"]>, "many">, ("FOLLOWERS" | "STAFF:SUPERADMIN" | "STAFF:ADMIN" | "STAFF:OPERATOR")[], ("FOLLOWERS" | "STAFF:SUPERADMIN" | "STAFF:ADMIN" | "STAFF:OPERATOR")[]>;
+    delivery: z.ZodDefault<z.ZodEnum<["PUSH", "INBOX"]>>;
+    eventId: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    urgent: z.ZodDefault<z.ZodBoolean>;
+    /** Alerta urgente: motivo obligatorio (queda en la auditoría). */
+    urgentReason: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    /** Confirmación explícita del resumen de destinatarios mostrado antes de enviar. */
+    confirmedRecipients: z.ZodNumber;
+}, "strict", z.ZodTypeAny, {
+    title: string;
+    body: string;
+    audiences: ("FOLLOWERS" | "STAFF:SUPERADMIN" | "STAFF:ADMIN" | "STAFF:OPERATOR")[];
+    delivery: "PUSH" | "INBOX";
+    urgent: boolean;
+    confirmedRecipients: number;
+    eventId?: string | null | undefined;
+    urgentReason?: string | null | undefined;
+}, {
+    title: string;
+    body: string;
+    audiences: ("FOLLOWERS" | "STAFF:SUPERADMIN" | "STAFF:ADMIN" | "STAFF:OPERATOR")[];
+    confirmedRecipients: number;
+    eventId?: string | null | undefined;
+    delivery?: "PUSH" | "INBOX" | undefined;
+    urgent?: boolean | undefined;
+    urgentReason?: string | null | undefined;
+}>, {
+    title: string;
+    body: string;
+    audiences: ("FOLLOWERS" | "STAFF:SUPERADMIN" | "STAFF:ADMIN" | "STAFF:OPERATOR")[];
+    delivery: "PUSH" | "INBOX";
+    urgent: boolean;
+    confirmedRecipients: number;
+    eventId?: string | null | undefined;
+    urgentReason?: string | null | undefined;
+}, {
+    title: string;
+    body: string;
+    audiences: ("FOLLOWERS" | "STAFF:SUPERADMIN" | "STAFF:ADMIN" | "STAFF:OPERATOR")[];
+    confirmedRecipients: number;
+    eventId?: string | null | undefined;
+    delivery?: "PUSH" | "INBOX" | undefined;
+    urgent?: boolean | undefined;
+    urgentReason?: string | null | undefined;
+}>, {
+    title: string;
+    body: string;
+    audiences: ("FOLLOWERS" | "STAFF:SUPERADMIN" | "STAFF:ADMIN" | "STAFF:OPERATOR")[];
+    delivery: "PUSH" | "INBOX";
+    urgent: boolean;
+    confirmedRecipients: number;
+    eventId?: string | null | undefined;
+    urgentReason?: string | null | undefined;
+}, {
+    title: string;
+    body: string;
+    audiences: ("FOLLOWERS" | "STAFF:SUPERADMIN" | "STAFF:ADMIN" | "STAFF:OPERATOR")[];
+    confirmedRecipients: number;
+    eventId?: string | null | undefined;
+    delivery?: "PUSH" | "INBOX" | undefined;
+    urgent?: boolean | undefined;
+    urgentReason?: string | null | undefined;
+}>;
+export declare const sigypNoticeSchema: z.ZodObject<{
+    contract: z.ZodLiteral<1>;
+    sourceId: z.ZodString;
+    title: z.ZodString;
+    body: z.ZodString;
+    audiences: z.ZodEffects<z.ZodArray<z.ZodEnum<["FOLLOWERS", "STAFF:SUPERADMIN", "STAFF:ADMIN", "STAFF:OPERATOR"]>, "many">, ("FOLLOWERS" | "STAFF:SUPERADMIN" | "STAFF:ADMIN" | "STAFF:OPERATOR")[], ("FOLLOWERS" | "STAFF:SUPERADMIN" | "STAFF:ADMIN" | "STAFF:OPERATOR")[]>;
+    delivery: z.ZodEnum<["PUSH", "INBOX"]>;
+}, "strict", z.ZodTypeAny, {
+    title: string;
+    body: string;
+    contract: 1;
+    sourceId: string;
+    audiences: ("FOLLOWERS" | "STAFF:SUPERADMIN" | "STAFF:ADMIN" | "STAFF:OPERATOR")[];
+    delivery: "PUSH" | "INBOX";
+}, {
+    title: string;
+    body: string;
+    contract: 1;
+    sourceId: string;
+    audiences: ("FOLLOWERS" | "STAFF:SUPERADMIN" | "STAFF:ADMIN" | "STAFF:OPERATOR")[];
+    delivery: "PUSH" | "INBOX";
+}>;
+/** Destinatarios únicos de varios grupos: una persona en dos grupos recibe UN aviso. */
+export declare function uniqueRecipients(groups: readonly (readonly string[])[]): string[];

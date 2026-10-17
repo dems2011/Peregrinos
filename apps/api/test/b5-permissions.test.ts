@@ -121,7 +121,8 @@ describe("B5: API de permisos e invitaciones (fuente)", () => {
     assert.match(org, /const profileManager = app\.requirePermission\("parish:profile"\);/);
     assert.match(org, /const noticeSender = app\.requirePermission\("notice:send"\);/);
     assert.equal((org.match(/preHandler: profileManager/g) ?? []).length, 4);
-    assert.equal((org.match(/preHandler: noticeSender/g) ?? []).length, 2);
+    // Listar y enviar avisos, más el resumen de destinatarios y el envío multigrupo.
+    assert.equal((org.match(/preHandler: noticeSender/g) ?? []).length, 4);
     assert.doesNotMatch(org, /requireSuperadmin/);
   });
 });

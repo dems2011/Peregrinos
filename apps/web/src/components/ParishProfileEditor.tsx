@@ -150,6 +150,8 @@ function SigypCard({ onChanged }: { onChanged: () => void }) {
     catch (e) { setErr(e instanceof ApiError ? e.message : "No se pudo completar."); } finally { setBusy(false); }
   };
   const active = data.data?.items.filter((i) => !i.revokedAt) ?? [];
+  const { me } = useApp();
+  const [link, setLink] = useState<{ code: string; expiresAt: string; scopes: string[] } | null>(null);
   return (
     <section className="card stack-sm" data-testid="sigyp-card">
       <h2>Conexión con SIGyP (Gestión Parroquial)</h2>
@@ -169,8 +171,22 @@ function SigypCard({ onChanged }: { onChanged: () => void }) {
           <button type="button" className="btn btn-sm" disabled={busy} onClick={() => void act(() => post(`/organization/integrations/sigyp/${c.id}/revoke`, {}))}>Revocar</button>
         </p>
       ))}
+      {me.user.role === "SUPERADMIN" && (
+        <div className="stack-sm" style={{ borderTop: "1px solid var(--border, #e5e7eb)", paddingTop: 8 }}>
+          <b>Vincular con un código (recomendado)</b>
+          <p className="muted small" style={{ margin: 0 }}>Genera un código de un solo uso y escríbelo en SIGyP («Integración con Peregrinos»). Vence en 15 minutos. SIGyP te mostrará esta parroquia y lo que se compartirá antes de confirmar.</p>
+          {link && (
+            <div className="alert ok" role="status">
+              <p style={{ margin: 0 }}>Código: <b style={{ letterSpacing: 1, overflowWrap: "anywhere" }}>{link.code}</b> · vence {fmtDateTimeMedium(link.expiresAt)}</p>
+              <p className="small" style={{ margin: "6px 0 0" }}>Se compartirá: cartelera, datos públicos del perfil, eventos públicos y avisos a los grupos que elija la parroquia. No da acceso a datos de personas ni a la administración de Peregrinos.</p>
+              <button type="button" className="btn btn-sm" onClick={() => copyText(link.code)}><Copy size={16} /> Copiar código</button>
+            </div>
+          )}
+          <div className="btn-row"><button type="button" className="btn btn-primary" disabled={busy} onClick={() => void act(async () => { setLink(await post<{ code: string; expiresAt: string; scopes: string[] }>("/organization/integrations/sigyp/link-codes", {})); })}>Generar código de vinculación</button></div>
+        </div>
+      )}
       <div className="btn-row">
-        <button type="button" className="btn" disabled={busy} onClick={() => void act(async () => { const r = await post<{ token: string }>("/organization/integrations/sigyp", { label: "SIGyP" }); setToken(r.token); })}>Crear credencial</button>
+        <button type="button" className="btn" disabled={busy} onClick={() => void act(async () => { const r = await post<{ token: string }>("/organization/integrations/sigyp", { label: "SIGyP" }); setToken(r.token); })}>Crear credencial (avanzado)</button>
         {data.data?.profileSource === "SIGYP" && <button type="button" className="btn" disabled={busy} onClick={() => void act(() => post("/organization/integrations/sigyp/release-profile", {}))}>Volver a editar el perfil aquí</button>}
       </div>
     </section>

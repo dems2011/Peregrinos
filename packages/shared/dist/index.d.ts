@@ -295,29 +295,29 @@ export declare const registrationFieldSchema: z.ZodEffects<z.ZodObject<{
     options: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
 }, "strict", z.ZodTypeAny, {
     type: "number" | "date" | "text" | "textarea" | "select" | "checkbox";
-    id: string;
     label: string;
+    id: string;
     required: boolean;
     options?: string[] | undefined;
     help?: string | undefined;
 }, {
     type: "number" | "date" | "text" | "textarea" | "select" | "checkbox";
-    id: string;
     label: string;
+    id: string;
     options?: string[] | undefined;
     required?: boolean | undefined;
     help?: string | undefined;
 }>, {
     type: "number" | "date" | "text" | "textarea" | "select" | "checkbox";
-    id: string;
     label: string;
+    id: string;
     required: boolean;
     options?: string[] | undefined;
     help?: string | undefined;
 }, {
     type: "number" | "date" | "text" | "textarea" | "select" | "checkbox";
-    id: string;
     label: string;
+    id: string;
     options?: string[] | undefined;
     required?: boolean | undefined;
     help?: string | undefined;
@@ -333,43 +333,43 @@ export declare const registrationFieldsSchema: z.ZodEffects<z.ZodArray<z.ZodEffe
     options: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
 }, "strict", z.ZodTypeAny, {
     type: "number" | "date" | "text" | "textarea" | "select" | "checkbox";
-    id: string;
     label: string;
+    id: string;
     required: boolean;
     options?: string[] | undefined;
     help?: string | undefined;
 }, {
     type: "number" | "date" | "text" | "textarea" | "select" | "checkbox";
-    id: string;
     label: string;
+    id: string;
     options?: string[] | undefined;
     required?: boolean | undefined;
     help?: string | undefined;
 }>, {
     type: "number" | "date" | "text" | "textarea" | "select" | "checkbox";
-    id: string;
     label: string;
+    id: string;
     required: boolean;
     options?: string[] | undefined;
     help?: string | undefined;
 }, {
     type: "number" | "date" | "text" | "textarea" | "select" | "checkbox";
-    id: string;
     label: string;
+    id: string;
     options?: string[] | undefined;
     required?: boolean | undefined;
     help?: string | undefined;
 }>, "many">, {
     type: "number" | "date" | "text" | "textarea" | "select" | "checkbox";
-    id: string;
     label: string;
+    id: string;
     required: boolean;
     options?: string[] | undefined;
     help?: string | undefined;
 }[], {
     type: "number" | "date" | "text" | "textarea" | "select" | "checkbox";
-    id: string;
     label: string;
+    id: string;
     options?: string[] | undefined;
     required?: boolean | undefined;
     help?: string | undefined;
@@ -587,43 +587,43 @@ export declare const createEventSchema: z.ZodObject<{
         options: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
     }, "strict", z.ZodTypeAny, {
         type: "number" | "date" | "text" | "textarea" | "select" | "checkbox";
-        id: string;
         label: string;
+        id: string;
         required: boolean;
         options?: string[] | undefined;
         help?: string | undefined;
     }, {
         type: "number" | "date" | "text" | "textarea" | "select" | "checkbox";
-        id: string;
         label: string;
+        id: string;
         options?: string[] | undefined;
         required?: boolean | undefined;
         help?: string | undefined;
     }>, {
         type: "number" | "date" | "text" | "textarea" | "select" | "checkbox";
-        id: string;
         label: string;
+        id: string;
         required: boolean;
         options?: string[] | undefined;
         help?: string | undefined;
     }, {
         type: "number" | "date" | "text" | "textarea" | "select" | "checkbox";
-        id: string;
         label: string;
+        id: string;
         options?: string[] | undefined;
         required?: boolean | undefined;
         help?: string | undefined;
     }>, "many">, {
         type: "number" | "date" | "text" | "textarea" | "select" | "checkbox";
-        id: string;
         label: string;
+        id: string;
         required: boolean;
         options?: string[] | undefined;
         help?: string | undefined;
     }[], {
         type: "number" | "date" | "text" | "textarea" | "select" | "checkbox";
-        id: string;
         label: string;
+        id: string;
         options?: string[] | undefined;
         required?: boolean | undefined;
         help?: string | undefined;
@@ -641,11 +641,11 @@ export declare const createEventSchema: z.ZodObject<{
     description?: string | undefined;
     endsAt?: Date | null | undefined;
     address?: string | null | undefined;
+    locationName?: string | null | undefined;
+    visibility?: "PUBLIC" | "UNLISTED" | "PRIVATE" | undefined;
     capabilities?: ("VOLUNTEERS" | "INFO" | "LOCATION" | "REGISTRATION" | "PARTICIPANTS" | "CHECKIN" | "ROUTE" | "POINTS" | "CONTACTS" | "CERTIFICATES" | "COMMUNICATIONS" | "DOCUMENTS")[] | undefined;
     parishName?: string | null | undefined;
-    locationName?: string | null | undefined;
     capacity?: number | null | undefined;
-    visibility?: "PRIVATE" | "UNLISTED" | "PUBLIC" | undefined;
     registrationOpen?: boolean | undefined;
     registrationOpensAt?: Date | null | undefined;
     registrationClosesAt?: Date | null | undefined;
@@ -667,8 +667,8 @@ export declare const createEventSchema: z.ZodObject<{
     } | null | undefined;
     registrationFields?: {
         type: "number" | "date" | "text" | "textarea" | "select" | "checkbox";
-        id: string;
         label: string;
+        id: string;
         required: boolean;
         options?: string[] | undefined;
         help?: string | undefined;
@@ -685,11 +685,11 @@ export declare const createEventSchema: z.ZodObject<{
     description?: string | undefined;
     endsAt?: Date | null | undefined;
     address?: string | null | undefined;
+    locationName?: string | null | undefined;
+    visibility?: "PUBLIC" | "UNLISTED" | "PRIVATE" | undefined;
     capabilities?: ("VOLUNTEERS" | "INFO" | "LOCATION" | "REGISTRATION" | "PARTICIPANTS" | "CHECKIN" | "ROUTE" | "POINTS" | "CONTACTS" | "CERTIFICATES" | "COMMUNICATIONS" | "DOCUMENTS")[] | undefined;
     parishName?: string | null | undefined;
-    locationName?: string | null | undefined;
     capacity?: number | null | undefined;
-    visibility?: "PRIVATE" | "UNLISTED" | "PUBLIC" | undefined;
     registrationOpen?: boolean | undefined;
     registrationOpensAt?: Date | null | undefined;
     registrationClosesAt?: Date | null | undefined;
@@ -711,8 +711,8 @@ export declare const createEventSchema: z.ZodObject<{
     } | null | undefined;
     registrationFields?: {
         type: "number" | "date" | "text" | "textarea" | "select" | "checkbox";
-        id: string;
         label: string;
+        id: string;
         options?: string[] | undefined;
         required?: boolean | undefined;
         help?: string | undefined;
@@ -784,43 +784,43 @@ export declare const updateEventSchema: z.ZodObject<{
         options: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
     }, "strict", z.ZodTypeAny, {
         type: "number" | "date" | "text" | "textarea" | "select" | "checkbox";
-        id: string;
         label: string;
+        id: string;
         required: boolean;
         options?: string[] | undefined;
         help?: string | undefined;
     }, {
         type: "number" | "date" | "text" | "textarea" | "select" | "checkbox";
-        id: string;
         label: string;
+        id: string;
         options?: string[] | undefined;
         required?: boolean | undefined;
         help?: string | undefined;
     }>, {
         type: "number" | "date" | "text" | "textarea" | "select" | "checkbox";
-        id: string;
         label: string;
+        id: string;
         required: boolean;
         options?: string[] | undefined;
         help?: string | undefined;
     }, {
         type: "number" | "date" | "text" | "textarea" | "select" | "checkbox";
-        id: string;
         label: string;
+        id: string;
         options?: string[] | undefined;
         required?: boolean | undefined;
         help?: string | undefined;
     }>, "many">, {
         type: "number" | "date" | "text" | "textarea" | "select" | "checkbox";
-        id: string;
         label: string;
+        id: string;
         required: boolean;
         options?: string[] | undefined;
         help?: string | undefined;
     }[], {
         type: "number" | "date" | "text" | "textarea" | "select" | "checkbox";
-        id: string;
         label: string;
+        id: string;
         options?: string[] | undefined;
         required?: boolean | undefined;
         help?: string | undefined;
@@ -837,11 +837,11 @@ export declare const updateEventSchema: z.ZodObject<{
     startsAt?: Date | undefined;
     endsAt?: Date | null | undefined;
     address?: string | null | undefined;
+    locationName?: string | null | undefined;
+    visibility?: "PUBLIC" | "UNLISTED" | "PRIVATE" | undefined;
     capabilities?: ("VOLUNTEERS" | "INFO" | "LOCATION" | "REGISTRATION" | "PARTICIPANTS" | "CHECKIN" | "ROUTE" | "POINTS" | "CONTACTS" | "CERTIFICATES" | "COMMUNICATIONS" | "DOCUMENTS")[] | undefined;
     parishName?: string | null | undefined;
-    locationName?: string | null | undefined;
     capacity?: number | null | undefined;
-    visibility?: "PRIVATE" | "UNLISTED" | "PUBLIC" | undefined;
     registrationOpen?: boolean | undefined;
     registrationOpensAt?: Date | null | undefined;
     registrationClosesAt?: Date | null | undefined;
@@ -863,8 +863,8 @@ export declare const updateEventSchema: z.ZodObject<{
     } | null | undefined;
     registrationFields?: {
         type: "number" | "date" | "text" | "textarea" | "select" | "checkbox";
-        id: string;
         label: string;
+        id: string;
         required: boolean;
         options?: string[] | undefined;
         help?: string | undefined;
@@ -881,11 +881,11 @@ export declare const updateEventSchema: z.ZodObject<{
     startsAt?: Date | undefined;
     endsAt?: Date | null | undefined;
     address?: string | null | undefined;
+    locationName?: string | null | undefined;
+    visibility?: "PUBLIC" | "UNLISTED" | "PRIVATE" | undefined;
     capabilities?: ("VOLUNTEERS" | "INFO" | "LOCATION" | "REGISTRATION" | "PARTICIPANTS" | "CHECKIN" | "ROUTE" | "POINTS" | "CONTACTS" | "CERTIFICATES" | "COMMUNICATIONS" | "DOCUMENTS")[] | undefined;
     parishName?: string | null | undefined;
-    locationName?: string | null | undefined;
     capacity?: number | null | undefined;
-    visibility?: "PRIVATE" | "UNLISTED" | "PUBLIC" | undefined;
     registrationOpen?: boolean | undefined;
     registrationOpensAt?: Date | null | undefined;
     registrationClosesAt?: Date | null | undefined;
@@ -907,8 +907,8 @@ export declare const updateEventSchema: z.ZodObject<{
     } | null | undefined;
     registrationFields?: {
         type: "number" | "date" | "text" | "textarea" | "select" | "checkbox";
-        id: string;
         label: string;
+        id: string;
         options?: string[] | undefined;
         required?: boolean | undefined;
         help?: string | undefined;

@@ -78,7 +78,8 @@ describe("Push: envío de avisos a los seguidores", () => {
     assert.doesNotMatch(push, /deviceToken\.delete/);
   });
   it("el push se lanza DESPUÉS de cada transacción, sin esperar (void)", () => {
-    for (const [src, n] of [[events, 2], [org, 1]] as const) {
+    // org: aviso a seguidores y aviso multigrupo (este último solo si delivery = PUSH).
+    for (const [src, n] of [[events, 2], [org, 2]] as const) {
       const calls = [...src.matchAll(/void pushNotification\(/g)];
       assert.equal(calls.length, n);
       for (const c of calls) {

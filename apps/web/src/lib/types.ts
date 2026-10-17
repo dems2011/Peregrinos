@@ -44,6 +44,8 @@ export interface PublicEvent {
   /** B5: portada (variantes WebP) y etapa de la publicación. */
   cover?: ImageSet | null;
   phase?: "UPCOMING" | "IN_PROGRESS" | "FINISHED";
+  /** SIGyP: modalidad y enlace de participación virtual (eventos publicados desde SIGyP). */
+  attendanceMode?: "IN_PERSON" | "ONLINE" | "HYBRID" | null; onlineUrl?: string | null;
 }
 
 /* B5 — contenido del perfil público además de los eventos. */

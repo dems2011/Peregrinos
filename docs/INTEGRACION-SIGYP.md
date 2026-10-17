@@ -43,3 +43,32 @@ valor por defecto, tres CHECK). Validada aplicando las 28 migraciones en un esqu
 
 `apps/api/test/s1-sigyp-integration.test.ts` (sin base: esquemas, credenciales, versiones, vigencia y reglas sobre la
 fuente). La suite completa sin base: 453/453. Pendiente: e2e con base y verificación visual en web y app.
+
+## Ampliación (2026-10-17): vinculación con código, eventos y avisos multigrupo
+
+Migración aditiva `20261019000100_sigyp_link_events_notices` (validada igual que la anterior: 29 migraciones en un esquema
+temporal ajeno a Peregrinos, transacción revertida; 61 tablas y 6 CHECK nuevos). **No aplicada en ninguna base.**
+
+- **Vinculación con código.** El **SUPERADMIN** (autoridad de la parroquia) genera en «Conexión con SIGyP» un código
+  `PGV-XXXXX-XXXXX-XXXXX-XXXXX` (≈100 bits, solo SHA-256 en la base) que vence a los **15 minutos** y sirve **una vez**.
+  SIGyP llama a `POST /link/preview` (no consume: muestra parroquia, qué se comparte y vencimiento) y, tras la
+  confirmación explícita del párroco, a `POST /link/complete`, que consume el código en la misma sentencia
+  (`updateMany … usedAt: null, expiresAt > now`) y entrega la credencial una sola vez. `POST /unlink` revoca la propia
+  credencial desde SIGyP. Mismo mensaje para código inexistente, vencido, usado o revocado.
+- **Eventos.** `PUT /events/:sourceId`, `POST …/withdraw` y `PUT …/cover` crean o actualizan un **`Event` de Peregrinos**
+  (no hay un sistema paralelo): `(organización, SIGYP, sourceId)` es único y `sourceVersion` impide duplicar o
+  retroceder. Solo capacidades `INFO`/`LOCATION` (sin inscripciones, participantes ni certificados), modalidad
+  presencial, virtual o mixta con enlace https. **Publicar desde SIGyP no avisa a los seguidores**
+  (`publishedNotifiedAt` se fija al crear). Retirar = `CANCELLED`. El panel no edita eventos de SIGyP ni su portada
+  (`409 EVENT_MANAGED_BY_SIGYP`). La portada usa el mismo procesamiento que el panel (variantes WebP sin EXIF/GPS).
+- **Avisos multigrupo.** Grupos derivados de datos reales: `FOLLOWERS` (seguidores) y personal **activo** por rol
+  (`STAFF:SUPERADMIN`, `STAFF:ADMIN`, `STAFF:OPERATOR`). Una persona en varios grupos recibe **un** aviso
+  (`uniqueRecipients`). En el panel («Avisos»): solo se ofrecen los grupos permitidos (seguidores con `notice:send`;
+  personal además con `user:manage`), se muestra el total único y hay que confirmarlo (`409 RECIPIENTS_CHANGED` si
+  cambió); `PUSH` (bandeja + teléfono) o `INBOX` (solo bandeja); alerta urgente solo del SUPERADMIN, con motivo. Desde
+  SIGyP: `GET /notices/audiences` (solo cantidades) y `POST /notices/:sourceId` (una vez por `sourceId`).
+- **Limitación:** los grupos pastorales (`PastoralGroup`) no tienen cuentas, por eso no son destinatarios de avisos de
+  la aplicación. Los «roles personalizados» existen en SIGyP (sus avisos internos).
+
+Pruebas: `s1` 22/22; suite completa sin base 462/462 (se actualizaron dos pruebas estructurales que cuentan rutas y
+llamadas a push; siguen exigiendo push después de confirmar la transacción).

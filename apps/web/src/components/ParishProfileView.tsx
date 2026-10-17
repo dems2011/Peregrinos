@@ -196,6 +196,7 @@ function EventPost({ e, parishId, preview, highlight }: { e: PublicEvent; parish
           <span className="pill">{EVENT_TYPE_INFO[e.type]?.label ?? e.type}</span>
           <h3 style={{ margin: "6px 0 2px" }}>{e.name}</h3>
           <div className="muted small">{fmtDateTimeMedium(e.startsAt, e.timezone)}{e.locationName ? ` · ${e.locationName}` : ""}</div>
+          {e.attendanceMode && e.attendanceMode !== "IN_PERSON" && <div className="small">{e.attendanceMode === "ONLINE" ? "Virtual" : "Presencial y virtual"}{e.onlineUrl && !preview ? <> · <a href={e.onlineUrl} target="_blank" rel="noopener noreferrer">Participar en línea</a></> : null}</div>}
         </div>
         {e.phase === "FINISHED"
           ? <span className="pill gray">Finalizado</span>

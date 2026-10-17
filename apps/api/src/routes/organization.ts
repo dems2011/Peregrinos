@@ -1,13 +1,13 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { PARISH_IMAGE_SPEC, PARISH_POSTER_SIZES, organizationProfileSchema, sendNotificationSchema, sigypManagedFieldsIn, submitOrganizationReviewSchema } from "@peregrinos/shared";
+import { NOTICE_AUDIENCES, PARISH_IMAGE_SPEC, PARISH_POSTER_SIZES, hasPermission, multiNoticeSchema, organizationProfileSchema, sendNotificationSchema, sigypManagedFieldsIn, submitOrganizationReviewSchema, type NoticeAudience } from "@peregrinos/shared";
 import { prisma } from "../lib/prisma";
 import { audit, auditTx } from "../lib/audit";
 import { AppError, forbidden } from "../lib/errors";
 import { assertOrgCan, assertOrgTransition } from "../lib/orgLifecycle";
 import { recordStatusChange } from "../lib/orgStatus";
 import { readSingleFile, validateImage } from "../lib/image";
-import { notifyFollowers, pushNotification } from "../lib/notifications";
+import { notifyAudiences, notifyFollowers, pushNotification, resolveAudiences } from "../lib/notifications";
 import { buildParishPosterPdf } from "../lib/parishPoster";
 import { parishMediaUrls } from "./public";
 
@@ -126,7 +126,7 @@ export default async function organizationRoutes(app: FastifyInstance) {
   app.get("/notifications", { preHandler: noticeSender }, async (req) => {
     const items = await prisma.notification.findMany({
       where: { organizationId: req.auth.organizationId }, orderBy: { createdAt: "desc" }, take: 50,
-      select: { id: true, kind: true, title: true, body: true, recipientCount: true, createdAt: true, event: { select: { id: true, name: true } }, _count: { select: { recipients: { where: { readAt: { not: null } } } } } },
+      select: { id: true, kind: true, title: true, body: true, recipientCount: true, createdAt: true, delivery: true, urgent: true, audience: true, sourceSystem: true, event: { select: { id: true, name: true } }, _count: { select: { recipients: { where: { readAt: { not: null } } } } } },
     });
     return { items: items.map(({ _count, ...n }) => ({ ...n, readCount: _count.recipients })) };
   });
@@ -143,5 +143,53 @@ export default async function organizationRoutes(app: FastifyInstance) {
     // Push después de confirmar el aviso; sin esperar: un fallo de FCM no afecta al aviso ni a la respuesta.
     void pushNotification(n);
     return reply.status(201).send({ id: n.id, recipientCount: n.recipientCount });
+  });
+
+  /* ---------- Avisos multigrupo: seguidores, administración y personal por rol ---------- */
+
+  /**
+   * Grupos que ESTA persona puede usar (se comprueba en el servidor): seguidores con notice:send; personal
+   * (administración y operadores) con notice:send + user:manage. Alertas urgentes: solo el SUPERADMIN.
+   */
+  const allowedAudiences = (req: { auth: { role: Parameters<typeof hasPermission>[0]; extraPermissions: Parameters<typeof hasPermission>[1] } }): NoticeAudience[] => {
+    const send = hasPermission(req.auth.role, req.auth.extraPermissions, "notice:send");
+    const staff = send && hasPermission(req.auth.role, req.auth.extraPermissions, "user:manage");
+    return NOTICE_AUDIENCES.filter((a) => (a === "FOLLOWERS" ? send : staff));
+  };
+
+  /** Resumen antes de enviar: cantidad por grupo y total SIN duplicados (solo números). */
+  app.get("/notifications/audiences", { preHandler: noticeSender }, async (req) => {
+    const allowed = allowedAudiences(req);
+    const q = z.object({ audiences: z.string().optional() }).parse(req.query);
+    const chosen = (q.audiences ? q.audiences.split(",") : []).filter((a): a is NoticeAudience => (allowed as string[]).includes(a));
+    const all = await resolveAudiences(prisma, req.auth.organizationId, allowed);
+    const sel = chosen.length ? await resolveAudiences(prisma, req.auth.organizationId, chosen) : null;
+    return { allowed, counts: all.counts, selected: chosen, uniqueRecipients: sel ? sel.userIds.length : 0, canSendUrgent: req.auth.role === "SUPERADMIN" };
+  });
+
+  /** Aviso a varios grupos: una persona en dos grupos recibe UN aviso; exige confirmar el total que se mostró. */
+  app.post("/notifications/multi", { preHandler: noticeSender, config: { rateLimit: { max: 10, timeWindow: "1 hour" } } }, async (req, reply) => {
+    const body = multiNoticeSchema.parse(req.body);
+    assertOrgCan(req.auth.organizationStatus, "PUBLISH_EVENT");
+    const allowed = allowedAudiences(req);
+    const denied = body.audiences.filter((a) => !allowed.includes(a));
+    if (denied.length) throw new AppError(403, "AUDIENCE_NOT_ALLOWED", `No tienes permiso para enviar a: ${denied.join(", ")}.`);
+    if (body.urgent && req.auth.role !== "SUPERADMIN") throw new AppError(403, "URGENT_NOT_ALLOWED", "Solo el titular de la parroquia puede enviar alertas urgentes.");
+    if (body.eventId) {
+      const ev = await prisma.event.findFirst({ where: { id: body.eventId, organizationId: req.auth.organizationId }, select: { id: true } });
+      if (!ev) throw new AppError(404, "NOT_FOUND", "Evento no encontrado.");
+    }
+    const r = await prisma.$transaction(async (tx) => {
+      const preview = await resolveAudiences(tx, req.auth.organizationId, body.audiences);
+      // Protección contra errores de selección: el total confirmado debe ser el que hay ahora.
+      if (preview.userIds.length !== body.confirmedRecipients) {
+        throw new AppError(409, "RECIPIENTS_CHANGED", `Los destinatarios cambiaron: ahora son ${preview.userIds.length}. Revisa el resumen y confirma de nuevo.`);
+      }
+      const out = await notifyAudiences(tx, { organizationId: req.auth.organizationId, audiences: body.audiences, title: body.title, body: body.body, delivery: body.delivery, urgent: body.urgent, eventId: body.eventId ?? null, createdById: req.auth.id });
+      await auditTx(tx, req, { action: body.urgent ? "NOTIFICATION_URGENT_SENT" : "NOTIFICATION_SENT", entityType: "Notification", entityId: out.notification.id, metadata: { audiences: body.audiences, counts: out.counts, recipients: out.notification.recipientCount, delivery: body.delivery, urgent: body.urgent, ...(body.urgent ? { urgentReason: body.urgentReason } : {}) } });
+      return out;
+    });
+    if (r.notification.delivery === "PUSH") void pushNotification(r.notification);
+    return reply.status(201).send({ id: r.notification.id, recipientCount: r.notification.recipientCount, counts: r.counts, delivery: r.notification.delivery });
   });
 }

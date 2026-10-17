@@ -1,5 +1,12 @@
 import { z } from "zod";
 
+/** Tipos de evento admitidos desde SIGyP: copia de EVENT_TYPES (index.ts) para no crear una dependencia circular;
+ *  una prueba (s1) verifica que sean idénticos. */
+export const SIGYP_EVENT_TYPES = [
+  "PILGRIMAGE", "PROCESSION", "PATRONAL_FEAST", "LITURGICAL_CELEBRATION", "ROSARY",
+  "RETREAT", "GATHERING", "COMMUNITY_ACTIVITY", "CULTURAL_ACTIVITY", "OTHER",
+] as const;
+
 /**
  * Integración con SIGyP — Gestión Parroquial (contrato v1, ver docs/INTEGRACION-SIGYP.md). SIGyP es la fuente de verdad
  * de la cartelera y de los campos públicos del perfil que publica; Peregrinos los recibe por un canal autenticado con
@@ -7,7 +14,7 @@ import { z } from "zod";
  * versión creciente: una versión no mayor que la guardada se ignora (reintentar nunca duplica ni retrocede).
  */
 export const SIGYP_CONTRACT_VERSION = 1;
-export const SIGYP_SCOPES = ["announcements:write", "profile:write"] as const;
+export const SIGYP_SCOPES = ["announcements:write", "profile:write", "events:write", "notices:send"] as const;
 export type SigypScope = (typeof SIGYP_SCOPES)[number];
 
 export const SIGYP_CATEGORIES = ["GENERAL", "LITURGIA", "SACRAMENTOS", "CATEQUESIS", "CARIDAD", "ACTIVIDADES", "SECRETARIA"] as const;
@@ -71,4 +78,91 @@ export function isAnnouncementVisible(a: { withdrawnAt: Date | string | null; st
 /** Campos del perfil que dejan de editarse en Peregrinos mientras la organización recibe el perfil desde SIGyP. */
 export function sigypManagedFieldsIn(body: Record<string, unknown>): string[] {
   return Object.keys(body).filter((k) => (SIGYP_PROFILE_FIELDS as readonly string[]).includes(k));
+}
+
+/* -------- Vinculación con código de un solo uso (lo genera el SUPERADMIN en Peregrinos) -------- */
+
+/** «PGV-» + 4 grupos de 5 caracteres base32 sin ambiguos (≈100 bits). Se compara sin guiones ni mayúsculas. */
+const LINK_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+export const LINK_CODE_TTL_MINUTES = 15;
+export function normalizeLinkCode(raw: string): string | null {
+  const c = raw.trim().toUpperCase().replace(/[\s-]/g, "");
+  if (!c.startsWith("PGV") || c.length !== 23) return null;
+  const body = c.slice(3);
+  return [...body].every((ch) => LINK_ALPHABET.includes(ch)) ? c : null;
+}
+export function formatLinkCode(body20: string): string {
+  return `PGV-${body20.match(/.{5}/g)!.join("-")}`;
+}
+export const LINK_CODE_ALPHABET = LINK_ALPHABET;
+
+export const sigypLinkPreviewSchema = z.object({ code: z.string().trim().min(10).max(40) }).strict();
+export const sigypLinkCompleteSchema = z.object({
+  code: z.string().trim().min(10).max(40),
+  /** Instalación de SIGyP que se vincula (para identificar la credencial; no concede nada). */
+  installation: z.object({ parishCode: z.string().trim().min(2).max(40), label: z.string().trim().min(3).max(80) }).strict(),
+}).strict();
+
+/* -------- Eventos publicados desde SIGyP (usan el modelo Event de Peregrinos) -------- */
+
+export const SIGYP_ATTENDANCE_MODES = ["IN_PERSON", "ONLINE", "HYBRID"] as const;
+const https = z.string().trim().url().max(300).refine((u) => u.startsWith("https://"), "Debe ser https");
+export const sigypEventSchema = z.object({
+  contract: z.literal(1),
+  sourceId: z.string().uuid(),
+  version: z.number().int().min(1).max(1_000_000),
+  title: z.string().trim().min(3).max(160),
+  description: z.string().trim().max(5000).nullable(),
+  eventType: z.enum(SIGYP_EVENT_TYPES),
+  startsAt: iso,
+  endsAt: iso.nullable(),
+  timezone: z.string().trim().min(3).max(64).regex(/^[A-Za-z_]+(\/[A-Za-z0-9_+-]+)+$|^UTC$/),
+  locationName: z.string().trim().max(160).nullable(),
+  address: z.string().trim().max(240).nullable(),
+  attendanceMode: z.enum(SIGYP_ATTENDANCE_MODES),
+  onlineUrl: https.nullable(),
+  visibility: z.enum(["PUBLIC", "UNLISTED"]),
+}).strict()
+  .refine((e) => e.endsAt === null || new Date(e.endsAt).getTime() > new Date(e.startsAt).getTime(), { message: "endsAt debe ser posterior a startsAt", path: ["endsAt"] })
+  .refine((e) => e.attendanceMode === "IN_PERSON" || e.onlineUrl !== null, { message: "Un evento virtual o mixto necesita el enlace de participación", path: ["onlineUrl"] })
+  .refine((e) => e.attendanceMode === "ONLINE" || e.locationName !== null || e.address !== null, { message: "Un evento presencial o mixto necesita lugar o dirección", path: ["locationName"] });
+export const sigypEventWithdrawSchema = sigypWithdrawSchema;
+export type SigypEvent = z.infer<typeof sigypEventSchema>;
+
+/* -------- Avisos multigrupo (lógica de destinatarios compartida) -------- */
+
+/** Grupos de destinatarios en Peregrinos. Se derivan de datos reales: seguidores y personal según su rol. */
+export const NOTICE_AUDIENCES = ["FOLLOWERS", "STAFF:SUPERADMIN", "STAFF:ADMIN", "STAFF:OPERATOR"] as const;
+export type NoticeAudience = (typeof NOTICE_AUDIENCES)[number];
+export const NOTICE_AUDIENCE_LABEL: Record<NoticeAudience, string> = {
+  FOLLOWERS: "Seguidores de la parroquia", "STAFF:SUPERADMIN": "Administración: titular", "STAFF:ADMIN": "Administración: administradores",
+  "STAFF:OPERATOR": "Personal operativo",
+};
+export const noticeAudiencesSchema = z.array(z.enum(NOTICE_AUDIENCES)).min(1).max(NOTICE_AUDIENCES.length)
+  .refine((a) => new Set(a).size === a.length, "Grupos repetidos");
+export const multiNoticeSchema = z.object({
+  title: z.string().trim().min(3, "Escribe un título").max(120),
+  body: z.string().trim().min(3, "Escribe el mensaje").max(2000),
+  audiences: noticeAudiencesSchema,
+  delivery: z.enum(["PUSH", "INBOX"]).default("PUSH"),
+  eventId: z.string().uuid().nullable().optional(),
+  urgent: z.boolean().default(false),
+  /** Alerta urgente: motivo obligatorio (queda en la auditoría). */
+  urgentReason: z.string().trim().min(10).max(300).nullable().optional(),
+  /** Confirmación explícita del resumen de destinatarios mostrado antes de enviar. */
+  confirmedRecipients: z.number().int().min(0),
+}).strict().refine((n) => !n.urgent || !!n.urgentReason, { message: "Una alerta urgente necesita un motivo", path: ["urgentReason"] })
+  .refine((n) => !n.urgent || n.delivery === "PUSH", { message: "Una alerta urgente se envía como push", path: ["delivery"] });
+export const sigypNoticeSchema = z.object({
+  contract: z.literal(1),
+  sourceId: z.string().uuid(),
+  title: z.string().trim().min(3).max(120),
+  body: z.string().trim().min(3).max(2000),
+  audiences: noticeAudiencesSchema,
+  delivery: z.enum(["PUSH", "INBOX"]),
+}).strict();
+
+/** Destinatarios únicos de varios grupos: una persona en dos grupos recibe UN aviso. */
+export function uniqueRecipients(groups: readonly (readonly string[])[]): string[] {
+  return [...new Set(groups.flat())];
 }

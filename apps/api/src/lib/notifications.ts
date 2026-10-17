@@ -1,5 +1,6 @@
 import type { Notification, NotificationKind, Prisma } from "@prisma/client";
 import { formatDate } from "@peregrinos/shared";
+import { uniqueRecipients, type NoticeAudience } from "@peregrinos/shared";
 import { prisma } from "./prisma";
 import { pushConfigured, sendPushToUsers } from "./push";
 
@@ -77,4 +78,42 @@ export async function notifyEventPublishedIfDue(tx: Tx, eventId: string, created
     title: `Nuevo evento: ${e.name}`.slice(0, 120),
     body: `${parish} publicó «${e.name}» para el ${formatDate(e.startsAt, { timeZone: e.timezone, monthName: true })}. Entra al perfil de la parroquia para ver los detalles e inscribirte.`,
   });
+}
+
+/* -------- Avisos multigrupo (seguidores, administración y personal por rol) -------- */
+
+/**
+ * Personas de cada grupo, derivadas de datos reales: seguidores (ParishFollower) y personal ACTIVO de la organización
+ * por su rol. Devuelve los ids por grupo y la lista SIN duplicados (quien está en dos grupos recibe un solo aviso).
+ * Nunca devuelve datos personales: solo ids internos, que no salen de la API.
+ */
+export async function resolveAudiences(tx: Tx, organizationId: string, audiences: readonly NoticeAudience[]) {
+  const byGroup: Partial<Record<NoticeAudience, string[]>> = {};
+  for (const a of audiences) {
+    if (a === "FOLLOWERS") {
+      byGroup[a] = (await tx.parishFollower.findMany({ where: { organizationId, user: { isActive: true } }, select: { userId: true } })).map((f) => f.userId);
+    } else {
+      const role = a.slice("STAFF:".length) as "SUPERADMIN" | "ADMIN" | "OPERATOR";
+      byGroup[a] = (await tx.user.findMany({ where: { organizationId, isActive: true, accountType: "STAFF", role }, select: { id: true } })).map((u) => u.id);
+    }
+  }
+  const all = uniqueRecipients(Object.values(byGroup) as string[][]);
+  return { byGroup, counts: Object.fromEntries(Object.entries(byGroup).map(([k, v]) => [k, v!.length])) as Record<string, number>, userIds: all };
+}
+
+/** Crea el aviso con sus destinatarios únicos. El push (si delivery = PUSH) se envía DESPUÉS de confirmar. */
+export async function notifyAudiences(tx: Tx, input: {
+  organizationId: string; audiences: readonly NoticeAudience[]; title: string; body: string; delivery: "PUSH" | "INBOX";
+  urgent?: boolean; eventId?: string | null; createdById?: string | null; sourceSystem?: string | null; sourceId?: string | null;
+}) {
+  const r = await resolveAudiences(tx, input.organizationId, input.audiences);
+  const n = await tx.notification.create({
+    data: {
+      organizationId: input.organizationId, eventId: input.eventId ?? null, kind: "MANUAL", title: input.title.trim(), body: input.body.trim(),
+      createdById: input.createdById ?? null, recipientCount: r.userIds.length, delivery: input.delivery, urgent: !!input.urgent,
+      audience: [...input.audiences], sourceSystem: input.sourceSystem ?? null, sourceId: input.sourceId ?? null,
+    },
+  });
+  if (r.userIds.length) await tx.notificationRecipient.createMany({ data: r.userIds.map((userId) => ({ notificationId: n.id, userId })), skipDuplicates: true });
+  return { notification: n, counts: r.counts };
 }

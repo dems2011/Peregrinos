@@ -1,5 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { prisma } from "../lib/prisma";
+import { AppError } from "../lib/errors";
 import { audit, auditTx } from "../lib/audit";
 import { eventParam, loadEvent } from "../lib/access";
 import { readSingleFile } from "../lib/image";
@@ -21,6 +22,8 @@ export default async function eventCoverRoutes(app: FastifyInstance) {
   app.put("/", { preHandler: manage, config: { rateLimit: { max: 20, timeWindow: "15 minutes" } } }, async (req) => {
     const { eventId } = eventParam.parse(req.params);
     const event = await loadEvent(req, eventId);
+    const managed = await prisma.event.findUnique({ where: { id: eventId }, select: { sourceSystem: true } });
+    if (managed?.sourceSystem === "SIGYP") throw new AppError(409, "EVENT_MANAGED_BY_SIGYP", "La portada de este evento se administra desde SIGyP.");
     const images = await prepareContentImage("EVENT_COVER", await readSingleFile(req));
     const original = images[0];
     await prisma.$transaction(async (tx) => {

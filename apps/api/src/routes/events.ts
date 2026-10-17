@@ -122,6 +122,8 @@ export default async function eventRoutes(app: FastifyInstance) {
     const { route, settings, capabilities: requested, ...body } = updateEventSchema.parse(req.body);
     const before = await prisma.event.findFirst({ where: { id, organizationId: req.auth.organizationId }, include: { route: true } });
     if (!before) throw notFound("Evento no encontrado.");
+    // SIGyP: un evento publicado desde SIGyP se edita allí (una sola fuente de verdad; evita ediciones que se pisen).
+    if (before.sourceSystem === "SIGYP") throw new AppError(409, "EVENT_MANAGED_BY_SIGYP", "Este evento se publicó desde SIGyP: edítalo allí.");
 
     // A4: solo transiciones permitidas; el estado de la inscripción no interviene.
     if (body.status) assertEventTransition(before.status, body.status);

@@ -104,6 +104,7 @@ export default async function publicRoutes(app: FastifyInstance) {
         id: true, name: true, description: true, type: true, status: true, startsAt: true, endsAt: true, timezone: true,
         locationName: true, address: true, capabilities: true, registrationOpen: true, registrationOpensAt: true,
         registrationClosesAt: true, capacity: true, registrationToken: true, registrationFee: true,
+        attendanceMode: true, onlineUrl: true,
       },
       orderBy: { startsAt: "asc" },
     });

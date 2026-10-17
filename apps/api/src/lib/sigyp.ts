@@ -1,4 +1,5 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
+import { formatLinkCode, LINK_CODE_ALPHABET, normalizeLinkCode } from "@peregrinos/shared";
 
 /**
  * SIGyP — credenciales de integración por organización (docs/INTEGRACION-SIGYP.md). La credencial se genera aquí, se
@@ -36,4 +37,20 @@ export function sameHash(a: string, b: string): boolean {
  */
 export function versionOutcome(stored: number | null | undefined, incoming: number): "applied" | "stale" {
   return stored != null && stored >= incoming ? "stale" : "applied";
+}
+
+/* -------- Códigos de vinculación (un solo uso, 15 minutos) -------- */
+
+/** Código nuevo («PGV-XXXXX-XXXXX-XXXXX-XXXXX», ≈100 bits). Solo se guarda el hash del código normalizado. */
+export function newLinkCode(): { code: string; hash: string } {
+  const bytes = randomBytes(20);
+  const body = [...bytes].map((b) => LINK_CODE_ALPHABET[b % LINK_CODE_ALPHABET.length]).join("");
+  const code = formatLinkCode(body);
+  return { code, hash: hashSigypToken(normalizeLinkCode(code)!) };
+}
+
+/** Hash del código tal como lo escribe la persona (con o sin guiones, en minúsculas), o null si no tiene el formato. */
+export function hashLinkCode(raw: string): string | null {
+  const n = normalizeLinkCode(raw);
+  return n ? hashSigypToken(n) : null;
 }
