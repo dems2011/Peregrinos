@@ -115,7 +115,14 @@ imágenes (límite de almacenamiento del plan de Neon: verificar en su panel).
 - **Reversión a Render**: mientras dure la transición, Render sigue activo apuntando a la misma Neon; revertir = volver el
   DNS a Render (TTL bajo durante el cambio) o seguir usando `peregrinos-1.onrender.com`. Las migraciones aditivas no
   rompen el código viejo en lectura (a confirmar con el ensayo).
-- Escrituras durante el cambio: mismas base y versión de esquema en ambos lados → no se pierden.
+- **No se asume que dos servidores puedan escribir a la vez sin consecuencias** (corrección CICLO 2). Con Render y
+  Railway activos contra la misma Neon: los límites de intentos viven en memoria de cada proceso (el límite efectivo se
+  duplica), dos versiones de código distintas escriben las mismas tablas, y una petición repetida por el cliente puede
+  caer en cada servidor. Por eso: (1) ambos con **el mismo commit** y el mismo esquema; (2) el cambio de DNS es la
+  frontera — tras propagarse, Render queda **solo para reversión** (idealmente en modo mantenimiento o con la API
+  apagada y la web mostrando un aviso); (3) la app Android apunta a un único origen por versión; (4) la reversión es el
+  camino inverso con la misma regla. Peregrinos no tiene tareas periódicas en proceso (verificado: sin `setInterval` ni
+  planificadores en `src/`), así que no hay trabajos duplicados que coordinar.
 
 ## 10. Recursos y costo (ESTIMACIÓN, a confirmar midiendo)
 
@@ -142,7 +149,35 @@ memoria aumenta el costo: configurar en Railway un **límite de gasto** y alerta
 6. Nueva versión de la app con `server.url = https://peregrinos.net.ar` (cuando el dominio esté estable).
 7. Tras un período estable, apagar Render.
 
-## 12. Decisiones del propietario
+## 12. Medir `TRUST_PROXY` sin adivinar (procedimiento)
+
+En el dominio temporal de Railway (nunca en producción), con una sola instancia:
+
+1. Desplegar sin `TRUST_PROXY` (se conserva `true` y la API advierte al iniciar).
+2. Desde una conexión con IP pública conocida, pedir `/api/health` dos veces: normal y con un encabezado
+   `X-Forwarded-For: 203.0.113.7` (dirección de documentación, falsa).
+3. Leer en el registro de la petición la IP que Fastify registró (`remoteAddress`) y la cadena completa de
+   `X-Forwarded-For` que llegó (registro temporal de diagnóstico, sin cookies ni encabezados de autorización; se quita al
+   terminar).
+4. Contar cuántos saltos propios hay a la derecha de la IP real (borde de Railway, y Next si reenvía `/api`): ese es el
+   valor. Fijar `TRUST_PROXY=<n>` y repetir el paso 2: con y sin el encabezado falso debe registrarse **la misma IP
+   real**. Si con el falso aparece 203.0.113.7, el valor es demasiado alto; si aparece una IP interna para todos, es
+   demasiado bajo.
+5. Anotar el valor y la evidencia (sin IPs personales) en este documento.
+
+## 13. Costos separados (orientativos al 2026-10-19, sin contratar)
+
+| Concepto | Proveedor | Costo | Estado |
+|---|---|---|---|
+| Cómputo API + web | Railway Hobby | USD 5/mes con USD 5 de consumo incluidos; RAM ≈ USD 10/GB-mes, CPU ≈ USD 20/vCPU-mes, salida USD 0,05/GB; estimado total 7–10 USD/mes (§10) | A medir en el ensayo |
+| Volumen | Railway | USD 0,15/GB-mes | **No necesario** (imágenes en Neon, §6) |
+| Base | Neon | Plan actual | Sin cambios; vigilar almacenamiento por imágenes |
+| Dominio | Registro actual | Ya pagado | Hobby admite 2 dominios propios |
+| Correo | Proveedor SMTP actual | Sin cambios | Verificar puerto 587/465 |
+| Push | Firebase FCM | Gratuito | Mismo proyecto |
+| Copia externa de Neon | A decidir | Pocos USD/mes | Bloqueado por decisión |
+
+## 14. Decisiones del propietario
 
 Autorizar la creación de servicios (costo); límite de gasto; dominio para el portal comercial (2 dominios en Hobby);
 activar o no el informe con IA (costo por uso); publicar la nueva versión de la app; fecha de corte y período de
