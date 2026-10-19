@@ -196,8 +196,16 @@ export const del = <T>(path: string) => api<T>(path, { method: "DELETE" });
 export const upload = <T>(path: string, form: FormData, method: "POST" | "PUT" = "POST", headers?: Record<string, string>) =>
   api<T>(path, { method, body: form, headers });
 
+/** En la app Android (Capacitor) las descargas «blob:» que no son PDF no se guardan (docs/ANDROID-PRUEBAS-Y-DESCARGAS.md). */
+export const inNativeApp = () =>
+  typeof window !== "undefined" && !!(window as unknown as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor?.isNativePlatform?.();
+
 /** Descarga un archivo (PDF, CSV…) con la sesión actual. `method: "POST"` para endpoints que emiten datos. */
 export async function download(path: string, filename: string, init: RequestInit = {}) {
+  // Antes de pedir nada: algunas descargas tienen efectos (reemitir accesos) y en la app el archivo se perdería.
+  if (inNativeApp() && !/.pdf$/i.test(filename)) {
+    throw new ApiError(0, "Este archivo no se puede descargar en la aplicación. Ábrelo desde un navegador web.", "NATIVE_DOWNLOAD_UNSUPPORTED");
+  }
   let res: Response;
   // Sin reintento automático: algunas descargas marcan datos (credenciales impresas); el usuario vuelve a pulsar.
   try { res = await call(path, init, false); }

@@ -1,7 +1,7 @@
 "use client";
 import { useState, type FormEvent } from "react";
 import type { MeResponse } from "@peregrinos/shared";
-import { ApiError, post } from "@/lib/api";
+import { ApiError, inNativeApp, post } from "@/lib/api";
 import { useApp } from "@/components/AppContext";
 import { copyText, ErrorBox, Page } from "@/components/ui";
 
@@ -110,10 +110,6 @@ function Enabled({ me, onCodes, onDisabled }: { me: MeResponse; onCodes: (c: str
     </div>
   );
 }
-
-/** En la app Android (Capacitor) las descargas «blob:» que no son PDF no se guardan (docs/ANDROID-PRUEBAS-Y-DESCARGAS.md). */
-const inNativeApp = () =>
-  typeof window !== "undefined" && !!(window as unknown as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor?.isNativePlatform?.();
 
 function RecoveryCodes({ codes, onDone }: { codes: string[]; onDone: () => void }) {
   const [saved, setSaved] = useState(false);

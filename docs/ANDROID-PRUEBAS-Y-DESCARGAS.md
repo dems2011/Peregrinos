@@ -63,4 +63,4 @@ en Git**), ni se compiló ni instaló nada. No hay dispositivo ni emulador dispo
 | Sin dispositivo ni AVD | Recurso externo |
 | Sin entorno de prueba con HTTPS | Decisión (y costo) del propietario |
 | `android/` sin versionar | Decisión del propietario |
-| Descargas CSV/PNG/TXT en la app | Pendiente de desarrollo (cambio del §2) |
+| Descargas CSV/PNG/TXT en la app | **Mitigado** (commit de este ciclo): en la app, `download()` rechaza todo lo que no sea PDF **antes** de llamar al servidor, con un mensaje que remite al navegador (evita reemitir accesos que se perderían); los códigos de recuperación se copian en vez de descargarse; prueba `s4-native-downloads` (6/6, sin dispositivo). Guardar esos archivos en la app sigue **pendiente de desarrollo** (cambio nativo del §2) |
