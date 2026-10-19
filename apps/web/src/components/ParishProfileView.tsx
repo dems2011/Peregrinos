@@ -203,7 +203,7 @@ function EventPost({ e, parishId, preview, highlight }: { e: PublicEvent; parish
           : <span className={`pill ${e.registrationState === "OPEN" ? "ok" : e.registrationState === "FULL" ? "err" : "gray"}`}>{REGISTRATION_STATE_LABEL[e.registrationState]}</span>}
       </div>
       {e.description && <p className="small" style={{ whiteSpace: "pre-line", margin: "6px 0" }}>{e.description}</p>}
-      {e.phase !== "FINISHED" && (
+      {e.phase !== "FINISHED" && e.registrationState !== "DISABLED" && (
         <div className="muted small">
           {e.capacity != null && <>Cupo: {e.capacity}{e.spotsLeft != null && ` · quedan ${e.spotsLeft}`} · </>}
           {e.registrationFee ? `Inscripción: ${money(e.registrationFee)}` : "Inscripción sin costo"}
@@ -212,7 +212,7 @@ function EventPost({ e, parishId, preview, highlight }: { e: PublicEvent; parish
       <div className="btn-row" style={{ marginTop: 8 }}>
         {e.registrationPath && e.phase !== "FINISHED"
           ? (preview ? <span className="btn btn-primary" aria-disabled="true">Inscribirme</span> : <Link className="btn btn-primary" href={e.registrationPath}>Inscribirme</Link>)
-          : e.phase !== "FINISHED" && <span className="muted small">{e.registrationState === "FULL" ? "El cupo está completo." : "La inscripción no está abierta."}</span>}
+          : e.phase !== "FINISHED" && e.registrationState !== "DISABLED" && <span className="muted small">{e.registrationState === "FULL" ? "El cupo está completo." : "La inscripción no está abierta."}</span>}
         {!preview && <button type="button" className="btn btn-sm" onClick={() => void share()}><Share2 size={16} /> {shared ?? "Compartir"}</button>}
       </div>
     </article>

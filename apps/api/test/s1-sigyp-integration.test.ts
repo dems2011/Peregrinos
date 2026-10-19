@@ -209,4 +209,11 @@ describe("S1: avisos multigrupo", () => {
     assert.doesNotMatch(r, /req\.cookies|req\.auth\b|app\.authenticate|requirePermission/);
     assert.ok(r.includes("bearerSigypToken(req.headers.authorization)"));
   });
+  it("tarjeta de evento: uno sin inscripción (los informativos de SIGyP) no muestra costo ni «la inscripción no está abierta»", () => {
+    // Regresión de la revisión visual 2026-10-19: «Sin inscripción», «Inscripción sin costo» y «La inscripción no está
+    // abierta» aparecían juntos en el muro para los eventos que publica SIGyP (solo INFO/LOCATION).
+    const v = fs.readFileSync(path.join(root, "..", "web", "src", "components", "ParishProfileView.tsx"), "utf8");
+    assert.ok(v.includes('e.phase !== "FINISHED" && e.registrationState !== "DISABLED" && (\n        <div className="muted small">'), "línea de costo y cupo");
+    assert.ok(v.includes('e.phase !== "FINISHED" && e.registrationState !== "DISABLED" && <span className="muted small">'), "mensaje de inscripción");
+  });
 });
