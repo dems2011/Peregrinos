@@ -1,5 +1,6 @@
 import "dotenv/config";
 import { z } from "zod";
+import { parseTrustProxy } from "./lib/proxy";
 
 const schema = z.object({
   DATABASE_URL: z.string().min(1),
@@ -40,6 +41,8 @@ const schema = z.object({
    * Notificaciones push (FCM, opcional): JSON de la cuenta de servicio de Firebase codificado en base64.
    * Sin esta variable no se envían push (los avisos siguen llegando a la bandeja de la app).
    */
+  /** Proxies propios en los que se confía para la IP del cliente (lib/proxy.ts): saltos o lista de IP/CIDR. */
+  TRUST_PROXY: z.string().optional().transform((v, ctx) => { try { return parseTrustProxy(v); } catch (e) { ctx.addIssue({ code: "custom", message: (e as Error).message }); return z.NEVER; } }),
   FIREBASE_SERVICE_ACCOUNT: z
     .string()
     .optional()

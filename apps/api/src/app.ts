@@ -54,13 +54,16 @@ import certificateRoutes, { certificatePublicRoutes } from "./routes/certificate
 import inventoryRoutes from "./routes/inventory";
 import groupRoutes from "./routes/groups";
 import { requiresCsrfHeader } from "./lib/csrf";
+import { fastifyTrustProxy, trustProxyWarning } from "./lib/proxy";
 
 export async function buildApp() {
   const app = Fastify({
     logger: { level: cfg.NODE_ENV === "production" ? "info" : "debug", redact: ["req.headers.cookie", "req.headers.authorization"], serializers: { req: reqSerializer } },
-    trustProxy: true,
+    trustProxy: fastifyTrustProxy(cfg.TRUST_PROXY),
     bodyLimit: 1_000_000,
   });
+  const proxyWarning = trustProxyWarning(cfg.NODE_ENV, cfg.TRUST_PROXY);
+  if (proxyWarning) app.log.warn(proxyWarning);
 
   await app.register(helmet);
   await app.register(cors, {

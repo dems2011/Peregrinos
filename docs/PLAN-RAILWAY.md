@@ -39,7 +39,7 @@ SIGyP (PC de la parroquia) ──► https://peregrinos.net.ar/api/integrations/
 | Servicio | Raíz | Compilación | Inicio | Notas |
 |---|---|---|---|---|
 | `api` | repositorio, raíz del monorepo | `npm ci && npm run build:shared && npm run db:generate -w @peregrinos/api && npm run build -w @peregrinos/api` | `npm run start -w @peregrinos/api` (`node dist/server.js`) | Escucha `PORT` (lo define Railway). Salud: `GET /api/health`. Migraciones: **paso manual y separado** (§7), nunca en cada arranque |
-| `web` | raíz del monorepo | `npm ci && npm run build:shared && npm run build -w @peregrinos/web` con `API_URL` definida **en la compilación** | en `apps/web`: `npx next start -p $PORT` (el script `start` fija `-p 3000`: no sirve tal cual en Railway) | `next.config.mjs` fija la reescritura `/api → API_URL` al compilar: sin `API_URL` y fuera de Render apuntaría a `localhost:4000` |
+| `web` | raíz del monorepo | `npm ci && npm run build:shared && npm run build -w @peregrinos/web` con `API_URL` definida **en la compilación** | `npm run start -w @peregrinos/web` (`next start`: usa `PORT` del alojamiento, 3000 si no está; corregido 2026-10-19, antes fijaba `-p 3000`) | `next.config.mjs` fija la reescritura `/api → API_URL` al compilar: sin `API_URL` y fuera de Render apuntaría a `localhost:4000` |
 
 Excluir siempre de la compilación: `apps/web/next.config.ts` (sin seguimiento, `output: "export"`, es para Capacitor),
 `android/`, `capacitor.config.ts` (ver `docs/DESPLIEGUE-A4-A6.md`). Railway compila desde Git: lo que no está en el
@@ -72,9 +72,14 @@ se copian a ciegas**: cada una se revisa contra `apps/api/src/config.ts` (valida
   `https://peregrinos.net.ar/api/...` (mismo origen). Comprobar antes que la red privada de Railway llegue al servidor:
   la API escucha en `0.0.0.0` (IPv4) por código; si la red privada del entorno es solo IPv6, hay que escuchar en `::`
   (cambio pequeño, a probar).
-- **Requisito previo (defecto encontrado 2026-10-19):** `app.ts` usa `trustProxy: true`, que acepta cualquier
-  `X-Forwarded-For` del cliente: el límite de intentos por IP se puede eludir. Debe pasar a un número fijo de saltos de
-  proxy propio (configurable), igual que SIGyP (D29), y probarse en el entorno real. Afecta también a Render hoy.
+- **`TRUST_PROXY` (corregido en código 2026-10-19, `lib/proxy.ts`, prueba `s2`):** antes `trustProxy: true` creía
+  cualquier `X-Forwarded-For` del cliente (límite de intentos por IP eludible; también en Render hoy). Ahora se
+  configura: número de saltos de los proxies propios o lista de IP/CIDR. Sin la variable se conserva `true` (para no
+  cambiar Render sin medir) y la API **advierte al iniciar en producción**. Valor esperado con la web reenviando `/api`:
+  **2** (borde del alojamiento + Next). **Medirlo antes de fijarlo**: en el entorno de prueba, registrar temporalmente
+  `X-Forwarded-For` y la IP del socket en `/api/health` (o en el log) desde un cliente con IP conocida, y elegir el
+  número que devuelva esa IP; luego verificar que un `X-Forwarded-For` falso no la cambie. Un valor demasiado alto
+  vuelve a ser eludible; uno demasiado bajo hace que todos compartan la IP del proxy (bloqueos cruzados).
 - `COOKIE_SECURE=true` (HTTPS), `SameSite=Lax` (actual), CORS limitado a `WEB_ORIGIN`, CSRF por encabezado
   `X-PG-Client` (con la excepción por patrón para `/api/integrations/sigyp/v1/*`, commit `8609f18`).
 - CSP/HSTS en la web de Peregrinos: hoy no hay una CSP explícita (sí en SIGyP); proponerla con el mismo enfoque de nonce
@@ -127,7 +132,7 @@ memoria aumenta el costo: configurar en Railway un **límite de gasto** y alerta
 
 ## 11. Procedimiento propuesto (cada paso con autorización)
 
-1. Corregir `trustProxy` y, si hace falta, el host de escucha; probar en local.
+1. `TRUST_PROXY` y puerto ya corregidos en código (s2); medir y fijar `TRUST_PROXY` en el entorno; si hace falta, host `::`.
 2. Crear proyecto y servicios en Railway **sin dominio**; variables según §3; desplegar y probar en el dominio temporal de
    Railway contra una **rama de Neon** (no la principal).
 3. Ensayo completo: ingreso, MFA, eventos, inscripción, portadas, push de prueba, correo, integración SIGyP (x1 contra el
