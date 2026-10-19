@@ -187,7 +187,7 @@ describe("S1: avisos multigrupo", () => {
     assert.match(read("src/lib/notifications.ts"), /uniqueRecipients\(/);
     const r = read("src/routes/sigypIntegration.ts");
     const aud = r.slice(r.indexOf('app.get("/notices/audiences"'), r.indexOf('app.post("/notices/:sourceId"'));
-    assert.match(aud, /return \{ counts: r\.counts \}/, "solo cantidades");
+    assert.match(aud, /return \{ counts: r\.counts, uniqueRecipients \}/, "solo cantidades");
     assert.match(r, /organizationId_sourceSystem_sourceId/);
   });
 });

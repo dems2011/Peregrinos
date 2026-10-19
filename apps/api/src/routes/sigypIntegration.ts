@@ -2,8 +2,8 @@ import type { FastifyInstance, FastifyRequest } from "fastify";
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import {
-  SIGYP_CONTRACT_VERSION, sigypAnnouncementSchema, sigypEventSchema, sigypEventWithdrawSchema, sigypLinkCompleteSchema,
-  sigypLinkPreviewSchema, sigypNoticeSchema, sigypProfileSchema, sigypWithdrawSchema, type SigypScope,
+  NOTICE_AUDIENCES, SIGYP_CONTRACT_VERSION, sigypAnnouncementSchema, sigypEventSchema, sigypEventWithdrawSchema, sigypLinkCompleteSchema,
+  sigypLinkPreviewSchema, sigypNoticeSchema, sigypProfileSchema, sigypWithdrawSchema, type NoticeAudience, type SigypScope,
 } from "@peregrinos/shared";
 import { prisma } from "../lib/prisma";
 import { auditTx } from "../lib/audit";
@@ -258,7 +258,11 @@ export default async function sigypIntegrationRoutes(app: FastifyInstance) {
   app.get("/notices/audiences", rl(30), async (req) => {
     const c = await client(req, "notices:send");
     const r = await resolveAudiences(prisma, c.organizationId, ["FOLLOWERS", "STAFF:SUPERADMIN", "STAFF:ADMIN", "STAFF:OPERATOR"]);
-    return { counts: r.counts };
+    // Total único de los grupos elegidos (?audiences=A,B): sigue siendo solo un número.
+    const q = z.object({ audiences: z.string().max(200).optional() }).parse(req.query);
+    const chosen = (q.audiences ?? "").split(",").filter((x): x is NoticeAudience => (NOTICE_AUDIENCES as readonly string[]).includes(x));
+    const uniqueRecipients = chosen.length ? (await resolveAudiences(prisma, c.organizationId, chosen)).userIds.length : 0;
+    return { counts: r.counts, uniqueRecipients };
   });
 
   /** Enviar un aviso: se crea UNA vez por (organización, sourceId); un reintento devuelve el ya creado sin reenviar. */
