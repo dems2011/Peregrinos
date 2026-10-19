@@ -111,8 +111,14 @@ function Enabled({ me, onCodes, onDisabled }: { me: MeResponse; onCodes: (c: str
   );
 }
 
+/** En la app Android (Capacitor) las descargas «blob:» que no son PDF no se guardan (docs/ANDROID-PRUEBAS-Y-DESCARGAS.md). */
+const inNativeApp = () =>
+  typeof window !== "undefined" && !!(window as unknown as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor?.isNativePlatform?.();
+
 function RecoveryCodes({ codes, onDone }: { codes: string[]; onDone: () => void }) {
   const [saved, setSaved] = useState(false);
+  const [copied, setCopied] = useState<boolean | null>(null);
+  const native = inNativeApp();
   const text = `Peregrinos — códigos de recuperación\nCada código sirve una sola vez.\n\n${codes.join("\n")}\n`;
   return (
     <Page title="Códigos de recuperación">
@@ -123,12 +129,16 @@ function RecoveryCodes({ codes, onDone }: { codes: string[]; onDone: () => void 
         <ul style={{ fontFamily: "monospace", fontSize: 16, columns: 2, listStyle: "none", padding: 0 }}>
           {codes.map((c) => <li key={c} style={{ padding: "4px 0" }}>{c}</li>)}
         </ul>
-        <button className="btn" onClick={() => copyText(text)}>Copiar</button>
-        <button className="btn" style={{ marginTop: 10 }} onClick={() => {
-          const url = URL.createObjectURL(new Blob([text], { type: "text/plain" }));
-          const a = document.createElement("a"); a.href = url; a.download = "peregrinos-codigos-recuperacion.txt";
-          document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 10_000);
-        }}>Descargar</button>
+        <button className="btn" onClick={() => void copyText(text).then(setCopied)}>Copiar</button>
+        {copied === true && <p className="small" role="status">Copiados. Pégalos en un lugar seguro (por ejemplo, una nota protegida o impresos).</p>}
+        {copied === false && <p className="small" role="alert">No se pudieron copiar: anótalos a mano antes de continuar.</p>}
+        {native
+          ? <p className="small muted" style={{ marginTop: 10 }}>En la aplicación no se pueden descargar como archivo: usa «Copiar» o anótalos.</p>
+          : <button className="btn" style={{ marginTop: 10 }} onClick={() => {
+            const url = URL.createObjectURL(new Blob([text], { type: "text/plain" }));
+            const a = document.createElement("a"); a.href = url; a.download = "peregrinos-codigos-recuperacion.txt";
+            document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 10_000);
+          }}>Descargar</button>}
         <label className="check" style={{ marginTop: 12 }}>
           <input type="checkbox" checked={saved} onChange={(e) => setSaved(e.target.checked)} /> Ya guardé mis códigos
         </label>
