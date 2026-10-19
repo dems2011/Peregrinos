@@ -72,3 +72,13 @@ temporal ajeno a Peregrinos, transacción revertida; 61 tablas y 6 CHECK nuevos)
 
 Pruebas: `s1` 22/22; suite completa sin base 462/462 (se actualizaron dos pruebas estructurales que cuentan rutas y
 llamadas a push; siguen exigiendo push después de confirmar la transacción).
+
+## Corrección (2026-10-19): CSRF y llamadas de servidor a servidor
+
+La primera prueba de extremo a extremo REAL (SIGyP con su cliente HTTP contra esta API sobre una base en memoria,
+`.e2e-local/run.sh e2e-sigyp.mjs`) mostró que el gancho CSRF global rechazaba con `403 CSRF` toda escritura de SIGyP:
+exigía `X-PG-Client: web`, un encabezado de navegador que un servidor no envía. Las pruebas anteriores no lo
+detectaban (simulado y conformidad de esquemas). Ahora `lib/csrf.ts` exceptúa solo las rutas registradas bajo
+`/api/integrations/sigyp/v1/`, decidido por el **patrón de ruta** (no por la URL cruda). Es seguro porque esas rutas no
+usan cookies ni sesión (Bearer `pgsig_…` o código de un solo uso en el cuerpo); `s1` lo fija por la fuente. Resultado:
+e2e real 5/5 en SIGyP + 13/13 verificaciones en esta base; suite de la API 463/463.

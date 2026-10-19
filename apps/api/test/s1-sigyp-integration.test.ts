@@ -12,6 +12,7 @@ import {
   EVENT_TYPES, isAnnouncementVisible, multiNoticeSchema, normalizeLinkCode, SIGYP_EVENT_TYPES, SIGYP_PROFILE_FIELDS, sigypAnnouncementSchema,
   sigypEventSchema, sigypLinkCompleteSchema, sigypManagedFieldsIn, sigypNoticeSchema, sigypProfileSchema, sigypWithdrawSchema, uniqueRecipients,
 } from "@peregrinos/shared";
+import { CSRF_EXEMPT_ROUTE_PREFIX, requiresCsrfHeader } from "../src/lib/csrf";
 import { bearerSigypToken, hashLinkCode, hashSigypToken, newLinkCode, newSigypToken, sameHash, versionOutcome } from "../src/lib/sigyp";
 
 const root = path.resolve(__dirname, "..");
@@ -189,5 +190,23 @@ describe("S1: avisos multigrupo", () => {
     const aud = r.slice(r.indexOf('app.get("/notices/audiences"'), r.indexOf('app.post("/notices/:sourceId"'));
     assert.match(aud, /return \{ counts: r\.counts, uniqueRecipients \}/, "solo cantidades");
     assert.match(r, /organizationId_sourceSystem_sourceId/);
+  });
+  it("CSRF: la integración servidor a servidor no exige el encabezado del navegador; todo lo demás sí", () => {
+    // Regresión (e2e real SIGyP ↔ Peregrinos): el gancho global rechazaba con 403 las llamadas de SIGyP.
+    for (const r of ["/api/integrations/sigyp/v1/link/preview", "/api/integrations/sigyp/v1/link/complete", "/api/integrations/sigyp/v1/events/:sourceId", "/api/integrations/sigyp/v1/notices/:sourceId"]) {
+      assert.equal(requiresCsrfHeader("POST", r), false, r);
+      assert.equal(requiresCsrfHeader("PUT", r), false, r);
+    }
+    for (const r of ["/api/organization/integrations/sigyp/link-codes", "/api/auth/login", "/api/integrations/sigyp/v1", "/api/integrations/sigyp/v10/x", undefined]) {
+      assert.equal(requiresCsrfHeader("POST", r), true, String(r));
+    }
+    assert.equal(requiresCsrfHeader("GET", "/api/auth/me"), false);
+    assert.equal(CSRF_EXEMPT_ROUTE_PREFIX, "/api/integrations/sigyp/v1/");
+    // Se decide por el patrón de ruta registrado, nunca por la URL cruda.
+    assert.ok(read("src/app.ts").includes("requiresCsrfHeader(req.method, req.routeOptions?.url)"));
+    // La excepción solo es segura porque esas rutas no usan cookies ni sesión de usuario.
+    const r = read("src/routes/sigypIntegration.ts");
+    assert.doesNotMatch(r, /req\.cookies|req\.auth\b|app\.authenticate|requirePermission/);
+    assert.ok(r.includes("bearerSigypToken(req.headers.authorization)"));
   });
 });

@@ -53,6 +53,7 @@ import organizationIntegrationRoutes from "./routes/organizationIntegrations";
 import certificateRoutes, { certificatePublicRoutes } from "./routes/certificates";
 import inventoryRoutes from "./routes/inventory";
 import groupRoutes from "./routes/groups";
+import { requiresCsrfHeader } from "./lib/csrf";
 
 export async function buildApp() {
   const app = Fastify({
@@ -83,10 +84,11 @@ export async function buildApp() {
   await app.register(rateLimit, { global: true, max: 300, timeWindow: "1 minute" });
   await app.register(authPlugin);
 
-  // Defensa CSRF: toda petición que modifica datos debe llevar un encabezado propio.
-  // Un formulario o sitio externo no puede enviarlo sin pasar por el preflight de CORS.
+  // Defensa CSRF: toda petición que modifica datos debe llevar un encabezado propio (lib/csrf.ts).
+  // Un formulario o sitio externo no puede enviarlo sin pasar por el preflight de CORS. La integración servidor a
+  // servidor con SIGyP (Bearer, sin cookies) queda exceptuada por su patrón de ruta registrado.
   app.addHook("onRequest", async (req) => {
-    if (["GET", "HEAD", "OPTIONS"].includes(req.method)) return;
+    if (!requiresCsrfHeader(req.method, req.routeOptions?.url)) return;
     if (req.headers["x-pg-client"] !== "web") {
       throw new AppError(403, "CSRF", "Petición no permitida.");
     }
