@@ -196,14 +196,25 @@ export const del = <T>(path: string) => api<T>(path, { method: "DELETE" });
 export const upload = <T>(path: string, form: FormData, method: "POST" | "PUT" = "POST", headers?: Record<string, string>) =>
   api<T>(path, { method, body: form, headers });
 
-/** En la app Android (Capacitor) las descargas «blob:» que no son PDF no se guardan (docs/ANDROID-PRUEBAS-Y-DESCARGAS.md). */
+/** ¿Corre dentro de la app Android (Capacitor)? */
 export const inNativeApp = () =>
   typeof window !== "undefined" && !!(window as unknown as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor?.isNativePlatform?.();
+
+/**
+ * Extensiones que la app Android INSTALADA sabe guardar: su código nativo las publica en `window.__pgDl.types`
+ * (MainActivity). Las versiones anteriores no publican la lista y solo guardan PDF (docs/ANDROID-PRUEBAS-Y-DESCARGAS.md).
+ */
+export const nativeDownloadTypes = (): string[] =>
+  (typeof window !== "undefined" && (window as unknown as { __pgDl?: { types?: string[] } }).__pgDl?.types) || ["pdf"];
+
+/** ¿Se puede guardar este archivo aquí? En el navegador, siempre; en la app, según lo que admita su versión. */
+export const canSaveFile = (filename: string) =>
+  !inNativeApp() || nativeDownloadTypes().includes(filename.slice(filename.lastIndexOf(".") + 1).toLowerCase());
 
 /** Descarga un archivo (PDF, CSV…) con la sesión actual. `method: "POST"` para endpoints que emiten datos. */
 export async function download(path: string, filename: string, init: RequestInit = {}) {
   // Antes de pedir nada: algunas descargas tienen efectos (reemitir accesos) y en la app el archivo se perdería.
-  if (inNativeApp() && !/.pdf$/i.test(filename)) {
+  if (!canSaveFile(filename)) {
     throw new ApiError(0, "Este archivo no se puede descargar en la aplicación. Ábrelo desde un navegador web.", "NATIVE_DOWNLOAD_UNSUPPORTED");
   }
   let res: Response;

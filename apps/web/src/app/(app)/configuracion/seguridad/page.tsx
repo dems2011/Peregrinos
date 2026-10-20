@@ -1,7 +1,7 @@
 "use client";
 import { useState, type FormEvent } from "react";
 import type { MeResponse } from "@peregrinos/shared";
-import { ApiError, inNativeApp, post } from "@/lib/api";
+import { ApiError, canSaveFile, post } from "@/lib/api";
 import { useApp } from "@/components/AppContext";
 import { copyText, ErrorBox, Page } from "@/components/ui";
 
@@ -114,7 +114,8 @@ function Enabled({ me, onCodes, onDisabled }: { me: MeResponse; onCodes: (c: str
 function RecoveryCodes({ codes, onDone }: { codes: string[]; onDone: () => void }) {
   const [saved, setSaved] = useState(false);
   const [copied, setCopied] = useState<boolean | null>(null);
-  const native = inNativeApp();
+  const FILE = "peregrinos-codigos-recuperacion.txt";
+  const canDownload = canSaveFile(FILE);
   const text = `Peregrinos — códigos de recuperación\nCada código sirve una sola vez.\n\n${codes.join("\n")}\n`;
   return (
     <Page title="Códigos de recuperación">
@@ -128,11 +129,11 @@ function RecoveryCodes({ codes, onDone }: { codes: string[]; onDone: () => void 
         <button className="btn" onClick={() => void copyText(text).then(setCopied)}>Copiar</button>
         {copied === true && <p className="small" role="status">Copiados. Pégalos en un lugar seguro (por ejemplo, una nota protegida o impresos).</p>}
         {copied === false && <p className="small" role="alert">No se pudieron copiar: anótalos a mano antes de continuar.</p>}
-        {native
-          ? <p className="small muted" style={{ marginTop: 10 }}>En la aplicación no se pueden descargar como archivo: usa «Copiar» o anótalos.</p>
+        {!canDownload
+          ? <p className="small muted" style={{ marginTop: 10 }}>Esta versión de la aplicación no puede guardarlos como archivo: usa «Copiar» o anótalos.</p>
           : <button className="btn" style={{ marginTop: 10 }} onClick={() => {
             const url = URL.createObjectURL(new Blob([text], { type: "text/plain" }));
-            const a = document.createElement("a"); a.href = url; a.download = "peregrinos-codigos-recuperacion.txt";
+            const a = document.createElement("a"); a.href = url; a.download = FILE;
             document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 10_000);
           }}>Descargar</button>}
         <label className="check" style={{ marginTop: 12 }}>

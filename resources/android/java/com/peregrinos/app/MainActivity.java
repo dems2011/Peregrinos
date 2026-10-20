@@ -33,23 +33,34 @@ import java.util.concurrent.Executors;
 import org.json.JSONObject;
 
 /**
- * Descargas de PDF en la APK. La web descarga con un enlace {@code <a download href="blob:...">}, que el WebView de
- * Android ignora: aquí se intercepta esa descarga, el WebView lee el blob y lo envía por trozos (base64) a este
- * código, que lo guarda en Descargas y lo abre con el visor de PDF del teléfono.
- * Solo se aceptan mensajes del origen de la app (server.url de capacitor.config) y solo archivos PDF.
+ * Descargas en la APK. La web descarga con un enlace {@code <a download href="blob:...">}, que el WebView de Android
+ * ignora: aquí se intercepta esa descarga, el WebView lee el blob y lo envía por trozos (base64) a este código, que lo
+ * guarda en Descargas; los PDF se abren con el visor del teléfono.
+ * Solo se aceptan mensajes del origen de la app (server.url de capacitor.config) y solo los tipos de {@link #TYPES}
+ * (la extensión la decide el tipo, no el nombre pedido). La lista se publica a la página en {@code window.__pgDl.types}:
+ * la web solo ofrece descargas que esta versión de la app sabe guardar (las versiones anteriores, sin la lista, solo PDF).
  */
 public class MainActivity extends BridgeActivity {
 
     private static final String TAG = "PeregrinosDownloads";
     private static final String CHANNEL = "PeregrinosDownloads";
     private static final String PDF = "application/pdf";
+    /** Tipo MIME → extensión. PDF (informes, credenciales), CSV (accesos), PNG (QR), TXT (códigos de recuperación), XLSX (plantilla). */
+    private static final Map<String, String> TYPES = new HashMap<>();
+    static {
+        TYPES.put(PDF, "pdf");
+        TYPES.put("text/csv", "csv");
+        TYPES.put("image/png", "png");
+        TYPES.put("text/plain", "txt");
+        TYPES.put("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "xlsx");
+    }
     private static final long MAX_BYTES = 150L * 1024 * 1024;
     /** Trozo múltiplo de 3 bytes: cada trozo es un base64 independiente y válido. */
     private static final int CHUNK_BYTES = 3 * 256 * 1024;
 
     /** Recuerda el nombre del atributo download de cada enlace blob: (el WebView no lo entrega a DownloadListener). */
     private static final String NAMES_SCRIPT =
-        "(function(){if(window.__pgDl)return;var n={};window.__pgDl={names:n};" +
+        "(function(){if(window.__pgDl)return;var n={};window.__pgDl={names:n,types:['pdf','csv','png','txt','xlsx']};" +
         "document.addEventListener('click',function(e){var a=e.target&&e.target.closest?e.target.closest('a[download]'):null;" +
         "if(a&&a.href&&a.href.indexOf('blob:')===0)n[a.href]=a.getAttribute('download')||'';},true);})();";
 
@@ -58,13 +69,15 @@ public class MainActivity extends BridgeActivity {
 
     private static final class Pending {
         final String name;
+        final String mime;
         final Uri uri;
         final File file;
         final OutputStream out;
         long written;
 
-        Pending(String name, Uri uri, File file, OutputStream out) {
+        Pending(String name, String mime, Uri uri, File file, OutputStream out) {
             this.name = name;
+            this.mime = mime;
             this.uri = uri;
             this.file = file;
             this.out = out;
@@ -87,7 +100,7 @@ public class MainActivity extends BridgeActivity {
         Set<String> allowed = Collections.singleton(origin);
 
         if (!WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)) {
-            Log.w(TAG, "WebView sin WEB_MESSAGE_LISTENER: descargas de PDF no disponibles");
+            Log.w(TAG, "WebView sin WEB_MESSAGE_LISTENER: descargas no disponibles");
             return;
         }
         if (WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
@@ -123,11 +136,12 @@ public class MainActivity extends BridgeActivity {
             id = m.optString("id", null);
             switch (type) {
                 case "begin": {
-                    String mime = m.optString("mime");
-                    if (!mime.toLowerCase(Locale.ROOT).startsWith(PDF)) return; // Solo PDF; otros tipos siguen como antes.
+                    String mime = baseMime(m.optString("mime"));
+                    String ext = TYPES.get(mime);
+                    if (ext == null) return; // Tipo no admitido: se ignora (la web no lo ofrece en la app).
                     if (m.optLong("size") > MAX_BYTES) throw new IOException("Archivo demasiado grande");
-                    pending.put(id, open(fileName(m.optString("name"))));
-                    toast("Descargando PDF…");
+                    pending.put(id, open(fileName(m.optString("name"), ext), mime));
+                    toast("Descargando…");
                     break;
                 }
                 case "chunk": {
@@ -144,38 +158,45 @@ public class MainActivity extends BridgeActivity {
                     if (p == null) return;
                     p.out.close();
                     Uri uri = finish(p);
-                    toast("PDF guardado en Descargas: " + p.name);
-                    runOnUiThread(() -> view(uri));
+                    toast("Guardado en Descargas: " + p.name);
+                    if (PDF.equals(p.mime)) runOnUiThread(() -> view(uri));
                     break;
                 }
                 case "error":
-                    // Solo se informa si era un PDF: una descarga en curso o un blob PDF que no se pudo leer.
-                    if (id != null ? !pending.containsKey(id) : !m.optString("mime").toLowerCase(Locale.ROOT).startsWith(PDF)) return;
+                    // Solo se informa si era un tipo admitido: una descarga en curso o un blob que no se pudo leer.
+                    if (id != null ? !pending.containsKey(id) : !TYPES.containsKey(baseMime(m.optString("mime")))) return;
                     throw new IOException(m.optString("message"));
             }
         } catch (Exception e) {
-            Log.e(TAG, "No se pudo guardar el PDF", e);
+            Log.e(TAG, "No se pudo guardar el archivo", e);
             Pending p = id == null ? null : pending.remove(id);
             if (p != null) discard(p);
-            toast("No se pudo guardar el PDF. Intenta nuevamente.");
+            toast("No se pudo guardar el archivo. Intenta nuevamente.");
         }
     }
 
-    /** Nombre seguro terminado en .pdf; si la web no lo indicó, uno con fecha y hora. */
-    private static String fileName(String requested) {
+    /** «text/csv; charset=utf-8» → «text/csv». */
+    private static String baseMime(String mime) {
+        String b = mime == null ? "" : mime.toLowerCase(Locale.ROOT);
+        int i = b.indexOf(';');
+        return (i >= 0 ? b.substring(0, i) : b).trim();
+    }
+
+    /** Nombre seguro terminado en la extensión del tipo; si la web no lo indicó, uno con fecha y hora. */
+    static String fileName(String requested, String ext) {
         String n = requested == null ? "" : requested.replaceAll("[^\\w.\\- ]", "_").replaceAll("^[.\\s]+", "").trim();
         if (n.length() > 100) n = n.substring(0, 100);
-        if (n.isEmpty() || n.equals(".pdf")) n = "peregrinos-" + new SimpleDateFormat("yyyyMMdd-HHmmss", Locale.ROOT).format(new Date());
-        if (!n.toLowerCase(Locale.ROOT).endsWith(".pdf")) n += ".pdf";
+        if (n.isEmpty() || n.equals("." + ext)) n = "peregrinos-" + new SimpleDateFormat("yyyyMMdd-HHmmss", Locale.ROOT).format(new Date());
+        if (!n.toLowerCase(Locale.ROOT).endsWith("." + ext)) n += "." + ext;
         return n;
     }
 
     /** Android 10+: carpeta pública Descargas (MediaStore, sin permisos). Antes: Descargas de la app + FileProvider. */
-    private Pending open(String name) throws IOException {
+    private Pending open(String name, String mime) throws IOException {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             ContentValues v = new ContentValues();
             v.put(MediaStore.MediaColumns.DISPLAY_NAME, name);
-            v.put(MediaStore.MediaColumns.MIME_TYPE, PDF);
+            v.put(MediaStore.MediaColumns.MIME_TYPE, mime);
             v.put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS);
             v.put(MediaStore.MediaColumns.IS_PENDING, 1);
             ContentResolver r = getContentResolver();
@@ -186,12 +207,12 @@ public class MainActivity extends BridgeActivity {
                 r.delete(uri, null, null);
                 throw new IOException("No se pudo abrir el archivo");
             }
-            return new Pending(name, uri, null, out);
+            return new Pending(name, mime, uri, null, out);
         }
         File dir = getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS);
         if (dir == null || (!dir.exists() && !dir.mkdirs())) throw new IOException("Almacenamiento no disponible");
         File f = new File(dir, name);
-        return new Pending(name, null, f, new FileOutputStream(f));
+        return new Pending(name, mime, null, f, new FileOutputStream(f));
     }
 
     private Uri finish(Pending p) {

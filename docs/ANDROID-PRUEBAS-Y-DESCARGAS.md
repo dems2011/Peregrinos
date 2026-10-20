@@ -64,3 +64,19 @@ en Git**), ni se compiló ni instaló nada. No hay dispositivo ni emulador dispo
 | Sin entorno de prueba con HTTPS | Decisión (y costo) del propietario |
 | `android/` sin versionar | Decisión del propietario |
 | Descargas CSV/PNG/TXT en la app | **Mitigado** (commit de este ciclo): en la app, `download()` rechaza todo lo que no sea PDF **antes** de llamar al servidor, con un mensaje que remite al navegador (evita reemitir accesos que se perderían); los códigos de recuperación se copian en vez de descargarse; prueba `s4-native-downloads` (6/6, sin dispositivo). Guardar esos archivos en la app sigue **pendiente de desarrollo** (cambio nativo del §2) |
+
+## 6. CICLO 3 — implementado sin dispositivo (2026-10-19)
+
+| Pieza | Estado | Evidencia |
+|---|---|---|
+| `MainActivity` (copia versionada en `resources/android/java`) guarda PDF, CSV, PNG, TXT y XLSX en Descargas; la extensión la decide el tipo MIME, no el nombre; solo los PDF se abren con el visor | Implementado, pendiente de validación en dispositivo | Compila (APK de PRUEBA) |
+| La app publica sus tipos en `window.__pgDl.types`; la web (`canSaveFile`) solo ofrece lo que esa versión sabe guardar. Una app ya instalada (sin la lista) sigue con «solo PDF» y el rechazo previo a la petición | Verificado (pruebas) | `s4-native-downloads` 9/9 |
+| Códigos de recuperación del MFA: «Copiar» siempre; «Descargar» (TXT) también en la app cuando su versión lo admite | Implementado, pendiente de validación en dispositivo | `configuracion/seguridad` |
+| Variante **Peregrinos PRUEBA** (`com.peregrinos.app.prueba`): `scripts/android-prueba.mjs --url <origen>` compila en una COPIA temporal; `android/` solo se lee (huella antes/después); exige URL explícita y rechaza producción; sin `google-services.json` (no se registra en el Firebase real); HTTP solo en esta variante | Verificado (compilación) | APK de depuración generado y revisado con `aapt` (paquete, nombre, URL, sin configuración de Firebase) |
+| Íconos oficiales en `resources/android/res` (ver `IDENTIDAD-VISUAL.md`) | Verificado (archivos y pruebas `s3`) | No aplicados a `android/` |
+
+**Para aplicarlo a la app real** (decisión del propietario; modifica `android/`, que no está en Git): hacer copia de
+`android/`, ejecutar `scripts/android-pdf-downloads.ps1` (código nativo) y `scripts/android-branding.ps1` (íconos), compilar y
+probar. **Bloqueado por recurso externo:** no hay teléfono conectado ni dispositivo virtual instalado (sin imágenes de
+sistema en el SDK). Para probar la variante PRUEBA: emulador (`http://10.0.2.2:3000` → esta PC) o teléfono en la misma red
+con la web local y el arnés PGlite (nunca producción).
