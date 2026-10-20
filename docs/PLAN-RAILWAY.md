@@ -53,7 +53,11 @@ deriva de `JWT_SECRET` y rotarlo invalidaría los MFA), `SMTP_URL`, `FIREBASE_SE
 **api — no secretas:** `NODE_ENV=production`, `WEB_ORIGIN=https://peregrinos.net.ar`, `COOKIE_SECURE=true`, `MAIL_FROM`,
 `ACCESS_TTL_MIN`, `REFRESH_TTL_DAYS`, `INVITE_TTL_DAYS`, `PILGRIM_SESSION_DAYS`, `PILGRIM_EMAIL_VERIFICATION=required`,
 `ANTHROPIC_MODEL`, `UPLOAD_DIR` (solo si hay comprobantes antiguos en disco: ver §6).
-**web:** `API_URL` (compilación y ejecución; URL **privada** del servicio `api`), `NODE_ENV=production`.
+**web:** `API_URL` (compilación y ejecución; URL **privada** del servicio `api`), `NODE_ENV=production`, `CSP_MODE`
+(CICLO 3, commit `190d2da`: sin la variable la CSP solo **informa**; pasar a `enforce` después de observar la consola sin
+violaciones en la web y en la app Android; `off` la desactiva). Desde ese cambio el layout raíz se renderiza en cada
+petición (nonce por respuesta): medir CPU de la web en el ensayo, porque las páginas antes estáticas ahora se generan
+al pedirlas (impacto esperado bajo; entra en la estimación de §10).
 No usar: `SEED_PASSWORD` (solo semilla de desarrollo), `MFA_ENFORCE_SUPERADMIN` (eliminada). Las variables de Render **no
 se copian a ciegas**: cada una se revisa contra `apps/api/src/config.ts` (validación zod al iniciar).
 
