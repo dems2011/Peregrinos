@@ -11,6 +11,9 @@
  *    android/ con scripts/android-church-push.ps1.
  * Mismas dimensiones que los archivos que reemplaza. Requiere sharp (dependencia de Next, ya instalada).
  */
+// REEMPLAZADO (CICLO 3) por scripts/generate-brand-icons.cjs, que parte del ícono oficial del propietario. Este script
+// dibujaba la iglesia de Lucide y escribía public/icon.svg (duplicado prohibido): ejecutarlo deshace la identidad oficial.
+if (!process.argv.includes("--forzar-iconos-anteriores")) throw new Error("Reemplazado por scripts/generate-brand-icons.cjs");
 const fs = require("fs");
 const path = require("path");
 const sharp = require("sharp");
