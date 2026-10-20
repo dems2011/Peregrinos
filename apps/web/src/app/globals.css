@@ -416,3 +416,7 @@ img, svg, video { max-width: 100%; }
 .home-data summary { list-style: none; display: flex; align-items: center; justify-content: space-between; cursor: pointer; min-height: 28px; }
 .home-data summary::-webkit-details-marker { display: none; }
 .home-data[open] summary { margin-bottom: 12px; } .home-data[open] summary .chev { transform: rotate(90deg); }
+
+/* Página 404 (app/not-found.tsx). */
+.not-found { min-height: 100vh; display: grid; place-items: center; padding: 24px; text-align: center; }
+.not-found .card { max-width: 420px; }
