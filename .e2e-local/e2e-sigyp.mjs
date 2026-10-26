@@ -43,7 +43,7 @@ const out = await new Promise((ok) => {
   p.on("exit", (code) => ok({ code, s }));
 });
 const clean = out.s.replace(/postgres(ql)?:\/\/\S*/g, "<url-oculta>");
-console.log(clean.split("\n").filter((l) => /^\s*(✔|✖|﹣|ℹ (tests|pass|fail|skipped))|AssertionError|Error:|!==|expected|actual/.test(l)).join("\n"));
+console.log(clean.split("\n").filter((l) => /^\s*(✔|✖|﹣|ℹ (tests|pass|fail|skipped))|AssertionError|Error:|!==|expected|actual|x1-peregrinos-e2e\.test\.ts:\d+/.test(l)).join("\n"));
 check("suite x1 de SIGyP aprobada", out.code === 0);
 
 console.log("— Verificación en la base de Peregrinos");
@@ -69,5 +69,15 @@ check("eventos SIGyP: 2 en A (uno cancelado, uno vigente), ninguno en B", evA.le
 check("perfil de A administrado por SIGyP", (await prisma.organization.findUniqueOrThrow({ where: { id: orgA.id } })).profileSource === "SIGYP");
 const audits = await prisma.auditLog.findMany({ where: { organizationId: orgA.id, action: { startsWith: "SIGYP_" } }, select: { action: true } }).catch(() => null);
 if (audits) check("auditoría de Peregrinos registra la integración", audits.some((x) => x.action === "SIGYP_NOTICE_SENT") && audits.some((x) => x.action.startsWith("SIGYP_LINK")), [...new Set(audits.map((x) => x.action))]);
+// D1–D3 (2026-10-26): lo que la suite x1 ejercitó contra esta API real.
+const clientsB = await prisma.integrationClient.findMany({ where: { organizationId: orgB.id } });
+check("D2: la credencial de B tiene exactamente los alcances elegidos (sin notices:staff)", clientsB.length === 1 && !clientsB[0].scopes.includes("notices:staff") && clientsB[0].scopes.includes("notices:send"), clientsB.map((c) => c.scopes));
+check("D2: la credencial vigente de A incluye el personal (concedido por el titular)", clientsA.find((c) => !c.revokedAt)?.scopes.includes("notices:staff"));
+check("D3: el aviso directo al personal con la credencial de B quedó rechazado y auditado", (await prisma.auditLog.count({ where: { organizationId: orgB.id, action: "SIGYP_NOTICE_DENIED" } })) === 1);
+check("D3: ningún aviso SIGyP al personal en B", (await prisma.notification.count({ where: { organizationId: orgB.id } })) === 0);
+check("D1: los intentos con contraseña incorrecta en Peregrinos quedaron auditados (REAUTH_FAILED)", (await prisma.auditLog.count({ where: { action: "REAUTH_FAILED" } })) >= 1);
+// El ADMIN de la semilla no tiene parish:profile: lo frena el permiso antes que la regla del SUPERADMIN (el caso con
+// parish:profile concedido, auditado como SIGYP_GRANT_DENIED, está en e2e-sigyp-seguridad.mjs).
+check("D2: el ADMIN no emitió ningún código ni credencial", (await prisma.integrationLinkCode.count({ where: { createdById: adminA.id } })) === 0 && (await prisma.integrationClient.count({ where: { createdById: adminA.id } })) === 0);
 await prisma.$disconnect();
 done("E2E SIGyP ↔ Peregrinos");

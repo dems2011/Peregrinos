@@ -2,7 +2,7 @@ import type { FastifyInstance, FastifyRequest } from "fastify";
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import {
-  NOTICE_AUDIENCES, SIGYP_CONTRACT_VERSION, SIGYP_SCOPE_LABEL, sigypAllowedAudiences, sigypAnnouncementSchema, sigypEventSchema,
+  SIGYP_CONTRACT_VERSION, SIGYP_SCOPE_LABEL, sigypAllowedAudiences, sigypAnnouncementSchema, sigypEventSchema,
   sigypEventWithdrawSchema, sigypLinkCompleteSchema, sigypLinkPreviewSchema, sigypNoticeSchema, sigypProfileSchema, sigypWithdrawSchema,
   type NoticeAudience, type SigypScope,
 } from "@peregrinos/shared";
