@@ -104,8 +104,12 @@ alcances; (c) `notices:send` permitía avisar al personal; (d) los límites se c
 
 **Compatibilidad con SIGyP:** las respuestas y rutas v1 no cambian, salvo que una credencial ahora puede tener menos
 alcances (403 en lo no concedido) y `GET /notices/audiences` agrega `allowed`. El panel de Peregrinos (no SIGyP) es quien
-pide la contraseña y los alcances. **Pendiente de verificar en GestionParroquial** (no legible desde este entorno): que
-su prueba `x1` y su pantalla de vinculación toleren alcances parciales y el aviso al personal rechazado.
+pide la contraseña y los alcances. **SIGyP adaptado y probado juntos (2026-10-26):** GestionParroquial rama
+`cierre-piloto-2026-11` (`e328f2e`) pide la contraseña del párroco al pegar una credencial, confirmar y desvincular;
+guarda los alcances de la vinculación; exige su permiso propio `staffnotices:issue` para avisar al personal y rechaza
+antes de enviar lo que la credencial no permite. Extremo a extremo real (`.e2e-local/run.sh e2e-sigyp.mjs` con la suite
+`x1` de SIGyP): **5/5 en SIGyP y 19/19 verificaciones en la base de Peregrinos**, incluidos el aviso al personal
+rechazado por los dos sistemas, la contraseña incorrecta auditada en ambos y la revocación.
 
 **Pendiente de decisión (no implementado aquí):** política general de MFA obligatorio para el SUPERADMIN en todos los
 accesos. D1 no depende de ella: la contraseña se pide igual.

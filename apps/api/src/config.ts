@@ -42,6 +42,8 @@ const schema = z.object({
    * Sin esta variable no se envían push (los avisos siguen llegando a la bandeja de la app).
    */
   /** Proxies propios en los que se confía para la IP del cliente (lib/proxy.ts): saltos o lista de IP/CIDR. */
+  /** Diagnóstico temporal de proxies (lib/proxy.ts, docs/MEDICION-TRUST-PROXY.md). Sin la variable, la ruta no existe. */
+  PROXY_DIAG_TOKEN: z.string().min(32, "PROXY_DIAG_TOKEN debe tener al menos 32 caracteres").optional(),
   TRUST_PROXY: z.string().optional().transform((v, ctx) => { try { return parseTrustProxy(v); } catch (e) { ctx.addIssue({ code: "custom", message: (e as Error).message }); return z.NEVER; } }),
   FIREBASE_SERVICE_ACCOUNT: z
     .string()

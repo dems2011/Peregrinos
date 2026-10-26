@@ -80,3 +80,36 @@ en Git**), ni se compiló ni instaló nada. No hay dispositivo ni emulador dispo
 probar. **Bloqueado por recurso externo:** no hay teléfono conectado ni dispositivo virtual instalado (sin imágenes de
 sistema en el SDK). Para probar la variante PRUEBA: emulador (`http://10.0.2.2:3000` → esta PC) o teléfono en la misma red
 con la web local y el arnés PGlite (nunca producción).
+
+## 7. Pruebas físicas pendientes (lista precisa, 2026-10-26)
+
+**Estado real:** ninguna prueba en dispositivo. No hay teléfono conectado (`adb devices` vacío), ni dispositivo virtual
+ni imágenes de sistema en el SDK. La APK de PRUEBA existe y está inspeccionada, **no validada en un dispositivo**:
+`C:\Proyectos\_respaldos\20261026-apk-prueba\peregrinos-prueba-debug.apk`, SHA-256
+`F978D4BDF9A6A32E581C2C6C3044700F5B25E616B51B4FD516F33291A606BE4A` (`com.peregrinos.app.prueba`, 1.1/3,
+`server.url = http://10.0.2.2:3000` = esta PC desde un emulador, sin Firebase). Para un teléfono físico hace falta
+recompilarla con una URL alcanzable (`docs/ENTORNO-PRUEBA-HTTPS.md`, opción A o C).
+
+Cada prueba se registra con: dispositivo, versión de Android, versión de la APK, fecha, resultado y captura (sin datos
+personales). Contra el entorno de prueba con datos sintéticos; nunca contra producción.
+
+| # | Prueba | Resultado esperado |
+|---|---|---|
+| 1 | Instalar la PRUEBA junto a la app real | Se instala al lado («Peregrinos PRUEBA»), no reemplaza ni toca la app de producción |
+| 2 | Abrir sin red y con red | Mensaje de conexión; al volver la red carga la web del entorno de prueba (nunca producción) |
+| 3 | Ingreso del personal (SUPERADMIN y ADMIN) y del peregrino | Sesión por cookie del WebView; tras cerrar y abrir la app sigue la sesión |
+| 4 | «Salir» de la cuenta del peregrino | Vuelve a /login solo si el servidor confirmó; con el modo avión activado muestra el aviso y «Reintentar» (D5) |
+| 5 | Botón «atrás» del sistema | Navega hacia atrás; en la pantalla inicial no cierra la sesión |
+| 6 | Descargas: cartel A4/A3 (PDF), credencial (PDF), informe (PDF) | Se guardan en Descargas y abren con el visor |
+| 7 | Descargas: accesos (CSV), QR de participante (PNG), códigos de recuperación (TXT), Excel (XLSX) | Se guardan en Descargas con la extensión correcta; los no PDF no intentan abrirse con el visor |
+| 8 | Tipo no admitido | La web lo rechaza antes de pedirlo al servidor, con mensaje claro |
+| 9 | Cámara: escáner de QR en «Registrar llegada» | Pide el permiso una vez; lee un QR de prueba; registra la llegada |
+| 10 | Ubicación: compartir ubicación en un evento | Pide el permiso; aparece en el mapa del personal; dejar de compartir la quita |
+| 11 | Notificaciones | Con la variante PRUEBA no hay push (sin Firebase): el aviso llega a la bandeja. Push real solo con la APK de producción 1.2 y un aviso de prueba autorizado |
+| 12 | CSP con `CSP_MODE=enforce` en el entorno de prueba | Ninguna violación en la consola remota (chrome://inspect) en las pantallas recorridas |
+| 13 | Rotación, teclado y zona segura inferior | Nada tapado por la barra del sistema ni por el teclado (chat, formularios) |
+| 14 | Desinstalar la PRUEBA | La app real sigue intacta |
+
+**Para la APK de producción 1.2** (además de lo anterior, solo con autorización): aplicar los scripts nativos e íconos a
+una copia de `android/` (hoy versionada), subir `versionCode`, firmar con el keystore existente (nunca uno nuevo),
+instalar SOBRE la 1.1 y comprobar que conserva la sesión y que el push real llega.

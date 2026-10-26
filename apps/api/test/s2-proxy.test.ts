@@ -8,7 +8,7 @@ import fs from "node:fs";
 import path from "node:path";
 import Fastify from "fastify";
 import rateLimit from "@fastify/rate-limit";
-import { fastifyTrustProxy, parseTrustProxy, trustProxyWarning, type TrustProxy } from "../src/lib/proxy";
+import { fastifyTrustProxy, parseTrustProxy, registerProxyDiagnostics, trustProxyWarning, type TrustProxy } from "../src/lib/proxy";
 
 async function ipSeen(trustProxy: TrustProxy, remoteAddress: string, xff?: string) {
   const app = Fastify({ trustProxy: fastifyTrustProxy(trustProxy) });
@@ -81,6 +81,25 @@ describe("S2: confianza en proxies (TRUST_PROXY)", () => {
     assert.ok(app.includes("trustProxy: fastifyTrustProxy(cfg.TRUST_PROXY)"));
     assert.ok(!/trustProxy:\s*true/.test(app));
     assert.ok(app.includes("trustProxyWarning(cfg.NODE_ENV, cfg.TRUST_PROXY)"));
+  });
+  it("diagnóstico de medición: 404 sin el token exacto; con él, solo lo que vio esta conexión", async () => {
+    const TOKEN = "t".repeat(40);
+    const app = Fastify({ trustProxy: fastifyTrustProxy(1) });
+    registerProxyDiagnostics(app, TOKEN);
+    const ask = (headers: Record<string, string>) => app.inject({ method: "GET", url: "/api/diag/proxy", remoteAddress: "10.0.0.5", headers });
+    assert.equal((await ask({ "x-forwarded-for": "6.6.6.6, 203.0.113.9" })).statusCode, 404, "sin token");
+    assert.equal((await ask({ "x-diag-token": "t".repeat(39) + "x" })).statusCode, 404, "token incorrecto");
+    assert.equal((await ask({ "x-diag-token": "corto" })).statusCode, 404, "largo distinto");
+    const r = await ask({ "x-diag-token": TOKEN, "x-forwarded-for": "6.6.6.6, 203.0.113.9" });
+    assert.equal(r.statusCode, 200);
+    assert.deepEqual(Object.keys(r.json()).sort(), ["ip", "ips", "socket", "xForwardedFor"]);
+    assert.equal(r.json().socket, "10.0.0.5");
+    assert.equal(r.json().xForwardedFor, "6.6.6.6, 203.0.113.9");
+    assert.equal(r.json().ip, "203.0.113.9", "con 1 salto");
+    assert.match(r.headers["cache-control"] as string, /no-store/);
+    await app.close();
+    const src = fs.readFileSync(path.join(__dirname, "..", "src", "app.ts"), "utf8");
+    assert.ok(src.includes("if (cfg.PROXY_DIAG_TOKEN) registerProxyDiagnostics(app, cfg.PROXY_DIAG_TOKEN);"), "sin la variable la ruta no se registra");
   });
   it("web: el inicio respeta PORT del alojamiento (sin -p fijo; 3000 por defecto)", () => {
     const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "..", "web", "package.json"), "utf8")) as { scripts: Record<string, string> };

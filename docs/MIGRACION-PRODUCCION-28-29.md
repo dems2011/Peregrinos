@@ -8,7 +8,14 @@ propietario en el momento. Claude no ejecuta `db:deploy` ni `git push` (bloquead
 | 28 `20261019000000_sigyp_integration` | Tablas `IntegrationClient` y `ParishAnnouncement`; 4 columnas nuevas en `Organization` (nulas o con valor por defecto); 3 CHECK |
 | 29 `20261019000100_sigyp_link_events_notices` | Tabla `IntegrationLinkCode`; 5 columnas en `Event` y 5 en `Notification` (nulas o con valor por defecto); 3 índices únicos; 6 CHECK |
 
-Ninguna borra ni modifica datos. Las correcciones de seguridad D1–D4 (2026-10-26) **no agregan migraciones**.
+Ninguna borra ni modifica datos. Las correcciones de seguridad D1–D4 (2026-10-26) **no agregan migraciones** en
+Peregrinos. (SIGyP tiene su propia migración `20261026000000_peregrinos_link_scopes_staff_notices` en su propia base
+local; no afecta a Neon.)
+
+**Riesgos y su control:** migración fallida a mitad → Prisma la marca como fallida y no sigue; restaurar desde la rama
+del paso 2. Código anterior incompatible → descartado por el ensayo (sección 3 de la evidencia). Base equivocada → el
+paso 4 imprime el host. Rama de respaldo con datos reales → queda en Neon: borrarla cuando el piloto esté estable
+(decisión del propietario; contiene datos personales).
 
 ## Evidencia del ensayo (PostgreSQL 18, contenedor desechable)
 
@@ -29,21 +36,44 @@ Además, sobre 29 migraciones en PostgreSQL 18: E2E de seguridad 48/48, sesiones
 ## Procedimiento
 
 **Antes (sin cambios en producción)**
-1. `git ls-remote origin refs/heads/main` = la base de la rama candidata (hoy `1d70547`). Si avanzó, rehacer la integración.
-2. 🔒 Crear en Neon una rama de respaldo desde `main` (p. ej. `pre-migracion-28-29`) y anotar fecha, hora y LSN.
-3. (Recomendado) 🔒 Ensayo sobre una rama de Neon creada desde producción: `migrate deploy` contra esa rama y
-   `migrate status` + `migrate diff --exit-code`.
-4. `prisma migrate status` contra producción (solo lectura): debe decir **27 aplicadas, 2 pendientes** (exactamente
-   `20261019000000_sigyp_integration` y `20261019000100_sigyp_link_events_notices`). Cualquier otra cosa: **detenerse**.
+1. `git ls-remote origin refs/heads/main` = la base de la rama candidata (2026-10-26: `1d70547`). Si avanzó, rehacer la
+   integración y repetir las pruebas.
+2. 🔒 **Respaldo de Neon** (lo ejecuta el propietario; crea una copia de los datos reales):
+   - Consola de Neon → proyecto de Peregrinos → *Branches* → *Create branch* → padre `main`, nombre
+     `pre-migracion-28-29`, «Current data». Anotar fecha, hora y el LSN que muestra la rama.
+   - O con la CLI (si se instala `neonctl` y se inicia sesión):
+     `neonctl branches create --project-id <id> --name pre-migracion-28-29 --parent main`
+   - Además (recomendado), una copia fuera de Neon, cifrada y guardada fuera del repositorio:
+     `pg_dump --format=custom --no-owner --dbname "<URL directa de producción>" --file peregrinos-pre-28-29.dump`
+     y `pg_restore --list peregrinos-pre-28-29.dump` para comprobar que se puede leer.
+3. (Recomendado) 🔒 Ensayo sobre la rama `pre-migracion-28-29` (NO sobre `main`), en PowerShell, sin `.env`:
+   ```powershell
+   $env:DATABASE_URL = "<URL directa de la rama pre-migracion-28-29>"
+   npx prisma migrate status --schema apps/api/prisma/schema.prisma      # debe: 27 aplicadas, 2 pendientes
+   npx prisma migrate deploy --schema apps/api/prisma/schema.prisma
+   npx prisma migrate diff --from-url $env:DATABASE_URL --to-schema-datamodel apps/api/prisma/schema.prisma --exit-code   # 0 = sin deriva
+   Remove-Item Env:DATABASE_URL
+   ```
+   Si algo falla, se descarta la rama: producción no se tocó.
+4. Control de solo lectura contra producción:
+   `$env:DATABASE_URL = "<URL directa de producción>"; npx prisma migrate status --schema apps/api/prisma/schema.prisma`
+   Debe decir **27 aplicadas y 2 pendientes**, exactamente `20261019000000_sigyp_integration` y
+   `20261019000100_sigyp_link_events_notices`. Cualquier otra cosa (otra migración pendiente, una fallida, otro host):
+   **detenerse**. Confirmar que el host que imprime es el endpoint de producción.
 
 **Migrar (el código de producción todavía es el anterior)**
-5. 🔒 `npm run db:deploy -w @peregrinos/api` con `DATABASE_URL` de producción (la conexión directa si el pooler la
-   rechaza). Lo ejecuta el propietario.
-6. `prisma migrate status` → «Database schema is up to date». Comprobar que producción (código anterior) sigue
-   respondiendo: `/api/health`, `/api/public/parishes`, ingreso del personal.
+5. 🔒 Con la misma variable: `npm run db:deploy -w @peregrinos/api` (= `prisma migrate deploy`). Si el pooler la
+   rechaza, usar la URL directa (sin `-pooler`). Lo ejecuta el propietario (bloqueado para Claude en
+   `.claude/settings.json`).
+6. `npx prisma migrate status --schema apps/api/prisma/schema.prisma` → «Database schema is up to date» y
+   `migrate diff … --exit-code` → 0. Comprobar que producción (código anterior) sigue respondiendo:
+   `/api/health` (200), `/api/public/parishes` (200), ingreso del personal en la web. Borrar la variable
+   (`Remove-Item Env:DATABASE_URL`).
 
 **Publicar**
-7. 🔒 Push de la rama candidata a `main` (Render despliega solo; Render **no** migra).
+7. 🔒 Push de la rama candidata a `main` (Render despliega solo; Render **no** migra):
+   `git push origin piloto-2026-11:main` (avance rápido desde `1d70547`; si Git lo rechaza por no ser avance rápido,
+   **no forzar**: alguien publicó en `main` y hay que integrar primero). Lo ejecuta el propietario.
 8. Verificación de solo lectura en producción: rutas nuevas responden 401/403 sin credencial
    (`/api/integrations/sigyp/v1/whoami`, `/api/organization/integrations/sigyp`), perfil público con `announcements`,
    registros sin 500 ni errores de Prisma.

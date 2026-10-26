@@ -54,7 +54,7 @@ import certificateRoutes, { certificatePublicRoutes } from "./routes/certificate
 import inventoryRoutes from "./routes/inventory";
 import groupRoutes from "./routes/groups";
 import { requiresCsrfHeader } from "./lib/csrf";
-import { fastifyTrustProxy, trustProxyWarning } from "./lib/proxy";
+import { fastifyTrustProxy, registerProxyDiagnostics, trustProxyWarning } from "./lib/proxy";
 
 export async function buildApp() {
   const app = Fastify({
@@ -121,6 +121,9 @@ export async function buildApp() {
     req.log.info(`Route ${req.method}:${url} not found`);
     return reply.status(404).send({ message: `Route ${req.method}:${url} not found`, error: "Not Found", statusCode: 404 });
   });
+
+  // Medición temporal de TRUST_PROXY (docs/MEDICION-TRUST-PROXY.md): solo existe con PROXY_DIAG_TOKEN definido.
+  if (cfg.PROXY_DIAG_TOKEN) registerProxyDiagnostics(app, cfg.PROXY_DIAG_TOKEN);
 
   app.get("/api/health", async () => {
     await prisma.$queryRaw`SELECT 1`;

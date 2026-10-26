@@ -16,6 +16,9 @@
  * se fija en `TRUST_PROXY`. Sin la variable se conserva `true` para no cambiar el comportamiento vigente sin medirlo; en
  * producción la API lo advierte al iniciar (`trustProxyWarning`).
  */
+import { timingSafeEqual } from "node:crypto";
+import type { FastifyInstance } from "fastify";
+
 export type TrustProxy = boolean | number | string;
 
 export function parseTrustProxy(raw: string | undefined): TrustProxy {
@@ -40,6 +43,23 @@ export const trustProxyWarning = (nodeEnv: string, t: TrustProxy) =>
   nodeEnv === "production" && t === true
     ? "TRUST_PROXY no está fijado: se cree cualquier X-Forwarded-For y el límite de intentos por IP puede eludirse. Fija los proxies propios medidos en el entorno (lista de IP/CIDR o cantidad de saltos; lib/proxy.ts)."
     : null;
+
+/**
+ * Diagnóstico TEMPORAL para medir TRUST_PROXY en un alojamiento real (docs/MEDICION-TRUST-PROXY.md), sin suponer.
+ * Desactivado salvo que PROXY_DIAG_TOKEN (≥ 32 caracteres) esté definido; aun así responde 404 si la petición no trae
+ * ese mismo token en `x-diag-token` (comparación en tiempo constante). Devuelve SOLO lo que vio esta conexión (IP del
+ * socket, X-Forwarded-For recibido, req.ip/req.ips con la configuración vigente): nada de otras personas ni secretos.
+ * Sin efectos y sin caché. Se quita la variable al terminar la medición.
+ */
+export function registerProxyDiagnostics(app: FastifyInstance, token: string | undefined) {
+  app.get("/api/diag/proxy", { config: { rateLimit: { max: 20, timeWindow: "1 minute" } } }, async (req, reply) => {
+    const got = req.headers["x-diag-token"];
+    const ok = !!token && typeof got === "string" && got.length === token.length && timingSafeEqual(Buffer.from(got), Buffer.from(token));
+    if (!ok) return reply.status(404).send({ error: "NOT_FOUND", message: "Not Found" });
+    reply.header("Cache-Control", "no-store");
+    return { socket: req.socket.remoteAddress ?? null, xForwardedFor: req.headers["x-forwarded-for"] ?? null, ip: req.ip, ips: req.ips ?? [req.ip] };
+  });
+}
 
 /** Forma que aceptan los tipos de Fastify: N saltos = confiar en los N más cercanos al socket (misma semántica). */
 export function fastifyTrustProxy(t: TrustProxy): boolean | string | ((address: string, hop: number) => boolean) {
