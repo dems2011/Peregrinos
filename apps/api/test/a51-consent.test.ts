@@ -16,7 +16,8 @@ import {
 import { formatCode, hashAccess } from "../src/lib/pilgrim";
 
 const root = path.resolve(__dirname, "..");
-const read = (p: string) => fs.readFileSync(path.join(root, p), "utf8");
+// Saltos de línea normalizados: con core.autocrlf=true la copia de trabajo puede tener CRLF y las expresiones usan \n.
+const read = (p: string) => fs.readFileSync(path.join(root, p), "utf8").replace(/\r\n/g, "\n");
 const stripComments = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
 
 /* ---------- Transacción en memoria: solo lo que usa lib/volunteerConsent ---------- */
