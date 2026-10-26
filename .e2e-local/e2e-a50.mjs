@@ -182,7 +182,10 @@ check("todas las participaciones de A vuelven a sus registros", (await prisma.pa
 check("la cuenta conserva su Person (nunca queda sin identidad)", (await prisma.user.findUniqueOrThrow({ where: { id: me.id } })).personId === ana.personId);
 check("auditoría PERSON_ACCOUNT_UNLINKED ×2 y PERSON_MERGED ×1", (await prisma.auditLog.count({ where: { action: "PERSON_ACCOUNT_UNLINKED" } })) === 2 && (await prisma.auditLog.count({ where: { action: "PERSON_MERGED" } })) === 1);
 const codeB2 = (await B.post(`/persons/${pB}/claim-code`)).body.code;
-check("canje de nuevo después del unlink", (await acc.post("/auth/account/claim-person", { code: codeB2, confirm: true })).status === 200);
+// La misma sesión desde otro dispositivo (otra IP): esta prueba ya hizo más canjes que el límite por IP (5 cada
+// 15 min, que responde 429 y es correcto); aquí se verifica el canje después del unlink, no el límite.
+const acc2 = client(); for (const [k, v] of acc.jar) acc2.jar.set(k, v);
+check("canje de nuevo después del unlink", (await acc2.post("/auth/account/claim-person", { code: codeB2, confirm: true })).status === 200);
 
 console.log("— Rate limit");
 let limited = false;
