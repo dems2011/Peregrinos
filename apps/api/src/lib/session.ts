@@ -1,5 +1,6 @@
 
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import type { Prisma } from "@prisma/client";
 import {
   effectivePermissions,
   type AssignmentView,
@@ -8,12 +9,13 @@ import {
 } from "@peregrinos/shared";
 import { cfg } from "../config";
 import { prisma } from "./prisma";
-import { newOpaqueToken } from "./tokens";
+import { newOpaqueToken, sha256 } from "./tokens";
 import { MFA_CHALLENGE_MINUTES, STEP_UP_MINUTES, isRecentMfa, mfaApplies } from "./mfa";
 import {
   ACCESS_COOKIE,
   REFRESH_COOKIE,
   PILGRIM_ACCOUNT_COOKIE,
+  PILGRIM_COOKIE,
   PLATFORM_COOKIE,
 } from "../plugins/auth";
 
@@ -178,6 +180,67 @@ export function clearSession(reply: FastifyReply) {
 export function clearPilgrimAccountSession(reply: FastifyReply) {
   reply.clearCookie(PILGRIM_ACCOUNT_COOKIE, { path: "/" });
 }
+
+/** Ruta de la cookie de la sesión del evento (/p, pg_pt): solo viaja a /api/pilgrim. */
+export const PILGRIM_COOKIE_PATH = "/api/pilgrim";
+
+export function clearPilgrimEventSession(reply: FastifyReply) {
+  reply.clearCookie(PILGRIM_COOKIE, { path: PILGRIM_COOKIE_PATH });
+}
+
+/**
+ * A5.0: cuenta a cerrar según la cookie pg_pa de la petición (JWT válido de una cuenta PILGRIM), o null si no hay
+ * una sesión de cuenta verificable (sin cookie, vencida o inválida): en ese caso solo se borra la cookie.
+ */
+export function pilgrimAccountToClose(app: FastifyInstance, req: FastifyRequest): { sub: string; sv: number } | null {
+  const token = req.cookies[PILGRIM_ACCOUNT_COOKIE];
+  if (!token) return null;
+  try {
+    const d = app.jwt.verify<{ sub: string; accountType: string; sv?: number }>(token);
+    return d.accountType === "PILGRIM" && d.sub ? { sub: d.sub, sv: d.sv ?? 0 } : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * A5.0: logout efectivo de la cuenta. Incrementa sessionVersion de forma condicional sobre la versión del token:
+ * cualquier copia del JWT deja de servir. La versión es por cuenta, así que cierra todas las sesiones de esa CUENTA
+ * (no toca las sesiones de evento de /p). Devuelve true si la cerró ahora (false si ya estaba cerrada).
+ */
+export async function revokePilgrimAccount(db: Pick<Prisma.TransactionClient, "user">, target: { sub: string; sv: number }) {
+  const r = await db.user.updateMany({
+    where: { id: target.sub, accountType: "PILGRIM", sessionVersion: target.sv },
+    data: { sessionVersion: { increment: 1 } },
+  });
+  return r.count === 1;
+}
+
+/** Revoca SOLO la sesión de evento cuyo token trae este navegador (las de otros dispositivos no se tocan). */
+export async function revokePilgrimEventSession(db: Pick<Prisma.TransactionClient, "pilgrimSession">, raw: string | undefined) {
+  if (!raw) return false;
+  const r = await db.pilgrimSession.updateMany({ where: { tokenHash: sha256(raw), revokedAt: null }, data: { revokedAt: new Date() } });
+  return r.count > 0;
+}
+
+/**
+ * Una cookie pg_pt nueva REEMPLAZA a la anterior en este navegador (mismo nombre y ruta): sin esto, la sesión anterior
+ * seguiría vigente hasta vencer sin que el navegador pudiera revocarla. Se revoca SOLO la sesión que identifica el token
+ * recibido (quien la presenta la posee; es la misma regla que «Salir de este dispositivo»), si sigue vigente y no venció.
+ * Un token desconocido no revoca nada. Las demás sesiones (de esa persona o de otras, en otros dispositivos) no se tocan.
+ */
+export async function revokeReplacedPilgrimSession(db: Pick<Prisma.TransactionClient, "pilgrimSession">, raw: string | undefined) {
+  if (!raw) return false;
+  const r = await db.pilgrimSession.updateMany({
+    where: { tokenHash: sha256(raw), revokedAt: null, expiresAt: { gt: new Date() } },
+    data: { revokedAt: new Date() },
+  });
+  return r.count > 0;
+}
+
+/** Registro de auditoría del cierre de la cuenta (mismo formato en todos los endpoints). */
+export const pilgrimLogoutAudit = (userId: string) =>
+  ({ action: "LOGOUT", entityType: "User", entityId: userId, userId, organizationId: null, metadata: { accountType: "PILGRIM" } });
 
 /** Devuelve los datos básicos de la cuenta personal del peregrino. */
 export async function buildPilgrimAccountMe(userId: string) {

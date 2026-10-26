@@ -7,17 +7,19 @@ import {
 } from "@peregrinos/shared";
 import { cfg } from "../config";
 import { prisma } from "../lib/prisma";
-import { audit } from "../lib/audit";
+import { audit, auditTx } from "../lib/audit";
 import { AppError, unauthorized } from "../lib/errors";
-import { newOpaqueToken, sha256 } from "../lib/tokens";
+import { newOpaqueToken } from "../lib/tokens";
 import { hashAccess, normalizeCode } from "../lib/pilgrim";
-import { cookieBase } from "../lib/session";
+import {
+  PILGRIM_COOKIE_PATH, clearPilgrimAccountSession, clearPilgrimEventSession, cookieBase, pilgrimAccountToClose, pilgrimLogoutAudit,
+  revokePilgrimAccount, revokePilgrimEventSession, revokeReplacedPilgrimSession,
+} from "../lib/session";
 import { prepareProof } from "../lib/storage";
 import { assertEventCapability } from "../lib/eventLifecycle";
 import { eventContacts, participantRoute } from "../lib/routeProgress";
 import { PILGRIM_COOKIE } from "../plugins/auth";
 
-const COOKIE_PATH = "/api/pilgrim";
 const maskDoc = (d: string) => (d.length > 3 ? `${"•".repeat(d.length - 3)}${d.slice(-3)}` : d);
 
 const contactsOf = eventContacts;
@@ -81,13 +83,18 @@ export default async function pilgrimRoutes(app: FastifyInstance) {
     if (!participantId && !registrationId) throw unauthorized("Enlace o código no válido. Pide uno nuevo a la organización.");
 
     const s = newOpaqueToken();
-    await prisma.pilgrimSession.create({
-      data: {
-        participantId, registrationId, tokenHash: s.hash, expiresAt: new Date(Date.now() + cfg.PILGRIM_SESSION_DAYS * 86_400_000),
-        userAgent: req.headers["user-agent"]?.slice(0, 300), ip: req.ip,
-      },
+    // Solo después de validar el enlace o código: la sesión nueva y la revocación de la que reemplaza la cookie de este
+    // navegador van en UNA transacción. Si algo falla, no se crea nada, no se revoca nada y no se entrega cookie.
+    await prisma.$transaction(async (tx) => {
+      await tx.pilgrimSession.create({
+        data: {
+          participantId, registrationId, tokenHash: s.hash, expiresAt: new Date(Date.now() + cfg.PILGRIM_SESSION_DAYS * 86_400_000),
+          userAgent: req.headers["user-agent"]?.slice(0, 300), ip: req.ip,
+        },
+      });
+      await revokeReplacedPilgrimSession(tx, req.cookies[PILGRIM_COOKIE]);
     });
-    reply.setCookie(PILGRIM_COOKIE, s.raw, { ...cookieBase, path: COOKIE_PATH, maxAge: cfg.PILGRIM_SESSION_DAYS * 86_400 });
+    reply.setCookie(PILGRIM_COOKIE, s.raw, { ...cookieBase, path: PILGRIM_COOKIE_PATH, maxAge: cfg.PILGRIM_SESSION_DAYS * 86_400 });
     reply.header("Cache-Control", "no-store");
     return me({ participantId, registrationId });
   });
@@ -172,10 +179,34 @@ export default async function pilgrimRoutes(app: FastifyInstance) {
     return reply.status(201).send(await postMessage(eventId, { kind: "PILGRIM", personId }, req.body));
   });
 
+  /** «Salir de este dispositivo» en /p: solo la sesión de evento de este navegador. */
   app.post("/logout", async (req, reply) => {
-    const raw = req.cookies[PILGRIM_COOKIE];
-    if (raw) await prisma.pilgrimSession.updateMany({ where: { tokenHash: sha256(raw), revokedAt: null }, data: { revokedAt: new Date() } });
-    reply.clearCookie(PILGRIM_COOKIE, { path: COOKIE_PATH });
+    await revokePilgrimEventSession(prisma, req.cookies[PILGRIM_COOKIE]);
+    clearPilgrimEventSession(reply);
     return reply.status(204).send();
+  });
+
+  /**
+   * «Salir» de la cuenta: cierra en UNA petición las dos sesiones de peregrino de este navegador. Vive bajo
+   * /api/pilgrim porque es la única ruta a la que el navegador envía las dos cookies (pg_pt tiene ruta /api/pilgrim;
+   * pg_pa, ruta /). Las dos revocaciones van en una transacción y las cookies se borran solo si la base confirmó: si
+   * algo falla, la respuesta es un error, nada cambia y el cliente puede reintentar.
+   * - Cuenta: la misma lógica que POST /auth/account/logout (sessionVersion, por cuenta).
+   * - Evento: solo la sesión cuyo token trae este navegador; las de /p en otros dispositivos no se tocan.
+   */
+  app.post("/logout-browser", async (req, reply) => {
+    const account = pilgrimAccountToClose(app, req);
+    const raw = req.cookies[PILGRIM_COOKIE];
+    const result = await prisma.$transaction(async (tx) => {
+      const accountClosed = account ? await revokePilgrimAccount(tx, account) : false;
+      const eventRevoked = await revokePilgrimEventSession(tx, raw);
+      if (accountClosed && account) await auditTx(tx, req, pilgrimLogoutAudit(account.sub));
+      return { accountClosed, eventRevoked };
+    });
+    clearPilgrimAccountSession(reply);
+    clearPilgrimEventSession(reply);
+    reply.header("Cache-Control", "no-store");
+    // true = se cerró ahora; false = no había sesión vigente que cerrar (en ambos casos quedan cerradas).
+    return result;
   });
 }

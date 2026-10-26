@@ -16,7 +16,7 @@ const NAV = [
 
 function Nav() {
   const path = usePathname();
-  const { logout } = useAccount();
+  const { logout, logoutState } = useAccount();
   // B1: avisos sin leer (se actualiza al navegar).
   const [unread, setUnread] = useState(0);
   // Se actualiza al navegar y cuando llega un push con la app abierta.
@@ -36,8 +36,21 @@ function Nav() {
           <span>{label}{href === "/cuenta/avisos" && unread > 0 && <> <span className="badge-dot" aria-label={`${unread} sin leer`}>{unread}</span></>}</span>
         </Link>
       ))}
-      <button type="button" onClick={() => void logout()}><LogOut size={20} /><span>Salir</span></button>
+      <button type="button" disabled={logoutState === "busy"} onClick={() => void logout()}><LogOut size={20} /><span>{logoutState === "busy" ? "Saliendo…" : "Salir"}</span></button>
     </nav>
+  );
+}
+
+/** Si el servidor no confirmó el cierre, se dice tal cual (la sesión puede seguir abierta) y se ofrece reintentar. */
+function LogoutNotice() {
+  const { logout, logoutState } = useAccount();
+  if (logoutState !== "failed") return null;
+  return (
+    <div className="alert err" role="alert">
+      No se pudo confirmar el cierre de sesión. Es posible que tu sesión siga abierta en este dispositivo. Revisa tu
+      conexión y vuelve a intentarlo.{" "}
+      <button type="button" className="btn btn-sm" onClick={() => void logout()}>Reintentar</button>
+    </div>
   );
 }
 
@@ -46,6 +59,7 @@ export default function PrivadoLayout({ children }: { children: React.ReactNode 
   return (
     <AccountProvider>
       <Nav />
+      <LogoutNotice />
       <div className="stack">{children}</div>
     </AccountProvider>
   );

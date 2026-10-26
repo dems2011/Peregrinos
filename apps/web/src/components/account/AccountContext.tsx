@@ -1,7 +1,8 @@
 "use client";
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ApiError, api, post } from "@/lib/api";
+import { ApiError, api } from "@/lib/api";
+import { closeBrowserSessions } from "@/lib/pilgrimLogout";
 import { disablePushForAccount, enablePushForAccount } from "@/lib/pushNotifications";
 
 /** Respuesta de GET /api/auth/account/me (la fuente de los datos: no se duplican en el navegador). */
@@ -11,7 +12,9 @@ export interface AccountMe {
   person: { id: string; firstName: string; lastName: string | null; documentType: string | null; documentNumber: string | null; phone: string | null } | null;
 }
 
-interface Ctx { me: AccountMe; reload: () => Promise<void>; logout: () => Promise<void> }
+/** Estado del cierre de sesión: «failed» = el servidor no confirmó el cierre (la sesión puede seguir abierta). */
+export type LogoutState = "idle" | "busy" | "failed";
+interface Ctx { me: AccountMe; reload: () => Promise<void>; logout: () => Promise<void>; logoutState: LogoutState }
 const AccountCtx = createContext<Ctx | null>(null);
 
 /** Sesión de la cuenta del peregrino. Sin sesión → /login (ingreso único: personal y peregrinos). */
@@ -19,6 +22,7 @@ export function AccountProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const [me, setMe] = useState<AccountMe | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [logoutState, setLogoutState] = useState<LogoutState>("idle");
   const reload = useCallback(async () => {
     try { setError(null); setMe(await api<AccountMe>("/auth/account/me")); }
     catch (e) {
@@ -32,10 +36,18 @@ export function AccountProvider({ children }: { children: React.ReactNode }) {
   const userId = me?.user.id;
   useEffect(() => { if (userId) void enablePushForAccount(); }, [userId]);
   const logout = useCallback(async () => {
+    setLogoutState("busy");
     // Primero la baja del dispositivo (necesita la sesión); nunca bloquea ni impide el cierre de sesión.
     await disablePushForAccount();
-    await post("/auth/account/logout").catch(() => undefined);
-    router.replace("/login");
+    // Solo se sale a /login si el servidor confirmó el cierre de las dos sesiones de este navegador. Si no, se avisa
+    // y se puede reintentar: nunca se aparenta un cierre que no ocurrió. Otros dispositivos con /p no se tocan.
+    if (await closeBrowserSessions()) {
+      router.replace("/login");
+      return;
+    }
+    setLogoutState("failed");
+    // La sesión puede seguir abierta: el dispositivo vuelve a recibir los avisos de la cuenta (solo en la app).
+    void enablePushForAccount();
   }, [router]);
   if (!me && error) {
     return (
@@ -48,7 +60,7 @@ export function AccountProvider({ children }: { children: React.ReactNode }) {
     );
   }
   if (!me) return <div className="acct-loading" role="status">Cargando…</div>;
-  return <AccountCtx.Provider value={{ me, reload, logout }}>{children}</AccountCtx.Provider>;
+  return <AccountCtx.Provider value={{ me, reload, logout, logoutState }}>{children}</AccountCtx.Provider>;
 }
 
 export function useAccount() {

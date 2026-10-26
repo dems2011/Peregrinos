@@ -12,7 +12,8 @@ import {
 import { assertEditableBy, personData, personScope, personView, personVisibleWhere } from "../src/lib/persons";
 
 const root = path.resolve(__dirname, "..");
-const read = (p: string) => fs.readFileSync(path.join(root, p), "utf8");
+// Saltos de línea normalizados: con core.autocrlf=true la copia de trabajo puede tener CRLF y las expresiones usan \n.
+const read = (p: string) => fs.readFileSync(path.join(root, p), "utf8").replace(/\r\n/g, "\n");
 const MIG = "prisma/migrations/20261009000000_person_identity/migration.sql";
 
 describe("A4a: esquemas", () => {

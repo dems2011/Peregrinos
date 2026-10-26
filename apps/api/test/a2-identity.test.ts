@@ -9,7 +9,8 @@ import path from "node:path";
 import { registerPilgrimSchema } from "@peregrinos/shared";
 
 const root = path.resolve(__dirname, "..");
-const read = (p: string) => fs.readFileSync(path.join(root, p), "utf8");
+// Saltos de línea normalizados: con core.autocrlf=true la copia de trabajo puede tener CRLF y las expresiones usan \n.
+const read = (p: string) => fs.readFileSync(path.join(root, p), "utf8").replace(/\r\n/g, "\n");
 const migration = read("prisma/migrations/20261006000000_pilgrim_identity_separation/migration.sql");
 const schema = read("prisma/schema.prisma");
 const authRoutes = read("src/routes/auth.ts");

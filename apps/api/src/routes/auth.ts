@@ -21,7 +21,7 @@ import {
 } from "../lib/password";
 import { newOpaqueToken, sha256 } from "../lib/tokens";
 import { mfaApplies } from "../lib/mfa";
-import { PILGRIM_ACCOUNT_COOKIE, REFRESH_COOKIE } from "../plugins/auth";
+import { REFRESH_COOKIE } from "../plugins/auth";
 import {
   buildMe,
   buildPilgrimAccountMe,
@@ -30,6 +30,9 @@ import {
   issueMfaChallenge,
   issuePilgrimAccountSession,
   issueSession,
+  pilgrimAccountToClose,
+  pilgrimLogoutAudit,
+  revokePilgrimAccount,
 } from "../lib/session";
 import { sendAccountExistsNotice, sendEmailVerification, sendRegistrationNotCompleted } from "../lib/mailer";
 
@@ -511,22 +514,13 @@ export default async function authRoutes(app: FastifyInstance) {
   app.post(
     "/account/logout",
     async (req, reply) => {
-      // A5.0: logout efectivo. Si la sesión es válida, se incrementa sessionVersion (condicional sobre la versión del
-      // token): cualquier copia del JWT deja de servir. Afecta solo a cuentas PILGRIM; STAFF y PLATFORM no cambian.
-      // La versión es por cuenta: cerrar sesión cierra todas las sesiones de esa cuenta.
-      const token = req.cookies[PILGRIM_ACCOUNT_COOKIE];
-      if (token) {
-        try {
-          const d = app.jwt.verify<{ sub: string; accountType: string; sv?: number }>(token);
-          if (d.accountType === "PILGRIM" && d.sub) {
-            const r = await prisma.user.updateMany({
-              where: { id: d.sub, accountType: "PILGRIM", sessionVersion: d.sv ?? 0 },
-              data: { sessionVersion: { increment: 1 } },
-            });
-            if (r.count === 1) await audit(req, { action: "LOGOUT", entityType: "User", entityId: d.sub, userId: d.sub, organizationId: null, metadata: { accountType: "PILGRIM" } });
-          }
-        } catch { /* token inválido o vencido: solo se borra la cookie */ }
-      }
+      // A5.0: logout efectivo de la cuenta (lib/session.ts). Token inválido o vencido: solo se borra la cookie. Si la
+      // base falla, la petición falla y la cookie NO se borra (el cliente no recibe un cierre que no ocurrió).
+      // La web usa POST /api/pilgrim/logout-browser (cuenta + evento en una sola petición); este endpoint se mantiene.
+      // NO borra la cookie de la sesión del evento (pg_pt): su ruta es /api/pilgrim, no llega a esta petición y aquí no
+      // puede revocarse; borrarla dejaría una sesión vigente que el navegador ya no podría revocar.
+      const target = pilgrimAccountToClose(app, req);
+      if (target && (await revokePilgrimAccount(prisma, target))) await audit(req, pilgrimLogoutAudit(target.sub));
       clearPilgrimAccountSession(reply);
 
       return reply.status(204).send();

@@ -99,9 +99,11 @@ describe("A5.0: migración", () => {
 describe("A5.0: cierre (logout efectivo, registro sin enumeración, identidad global)", () => {
   const auth = read("src/routes/auth.ts");
   it("logout de la cuenta incrementa sessionVersion de forma condicional antes de borrar la cookie", () => {
+    // La regla vive en lib/session.ts (la comparten /auth/account/logout y /pilgrim/logout-browser: a52).
+    assert.match(read("src/lib/session.ts"), /where: \{ id: target\.sub, accountType: "PILGRIM", sessionVersion: target\.sv \},\s*data: \{ sessionVersion: \{ increment: 1 \} \}/);
     const lo = auth.slice(auth.indexOf('"/account/logout"'));
-    assert.match(lo, /where: \{ id: d\.sub, accountType: "PILGRIM", sessionVersion: d\.sv \?\? 0 \},\s*data: \{ sessionVersion: \{ increment: 1 \} \}/);
-    assert.ok(lo.indexOf("sessionVersion: { increment: 1 }") < lo.indexOf("clearPilgrimAccountSession(reply)"));
+    assert.ok(lo.indexOf("revokePilgrimAccount(prisma, target)") > 0);
+    assert.ok(lo.indexOf("revokePilgrimAccount(prisma, target)") < lo.indexOf("clearPilgrimAccountSession(reply)"));
   });
   it("registro: una sola respuesta (202) para cuenta nueva, correo existente o documento existente; sin códigos que enumeren", () => {
     const reg = auth.slice(auth.indexOf('"/register-pilgrim"'), auth.indexOf('"/account/claim-person"'));
