@@ -8,7 +8,7 @@ nada. Cada paso del procedimiento requiere autorización expresa del propietario
 | Dato | Fuente | Verificado |
 |---|---|---|
 | Hoy: API y web en Render, base en Neon (PostgreSQL 18.6), despliegue desde `main` configurado en el panel (no hay `render.yaml`, Dockerfile ni CI en el repositorio) | `docs/DESPLIEGUE-A4-A6.md`, inspección del repositorio | Sí (repositorio); el panel de Render no se consultó |
-| `origin/main` = `1d70547`; la rama local `sigyp-integracion` lleva 5 commits más, sin publicar (integración SIGyP, CSRF, tarjeta de evento) con 2 migraciones aditivas nuevas (`20261019000000_sigyp_integration`, `20261019000100_sigyp_link_events_notices`) | `git log` / `git diff` locales | Sí |
+| `origin/main` = `1d70547` (confirmado con `git ls-remote` el 2026-10-26); la rama local `sigyp-integracion` (sobre `sesiones-peregrino`) lleva la integración SIGyP, sus correcciones de seguridad D1–D4, CSP, `TRUST_PROXY` y Android, sin publicar, con 2 migraciones aditivas nuevas (`20261019000000_sigyp_integration`, `20261019000100_sigyp_link_events_notices`) | `git log` / `git diff` locales | Sí |
 | Comprobantes, imágenes de contenido y portadas se guardan **en la base** (columnas `data`); `UPLOAD_DIR` solo se lee para comprobantes antiguos | `lib/storage.ts`, `lib/contentImages.ts` | Sí |
 | Railway Hobby: 5 USD/mes que **incluyen** 5 USD de consumo; si el consumo supera 5 USD se cobra el **total** del consumo. RAM ≈ 10 USD/GB·mes, vCPU ≈ 20 USD/vCPU·mes, salida de red 0,05 USD/GB, volumen 0,15 USD/GB·mes, volumen máx. 5 GB, 2 dominios propios | railway.com/pricing (consultado 2026-10-19) | Sí, a esa fecha (los precios pueden cambiar) |
 | Consumo real de RAM/CPU de API y web en producción | — | **No**: hay que medirlo (Render no se consultó) |
@@ -79,15 +79,18 @@ se copian a ciegas**: cada una se revisa contra `apps/api/src/config.ts` (valida
 - **`TRUST_PROXY` (corregido en código 2026-10-19, `lib/proxy.ts`, prueba `s2`):** antes `trustProxy: true` creía
   cualquier `X-Forwarded-For` del cliente (límite de intentos por IP eludible; también en Render hoy). Ahora se
   configura: número de saltos de los proxies propios o lista de IP/CIDR. Sin la variable se conserva `true` (para no
-  cambiar Render sin medir) y la API **advierte al iniciar en producción**. Valor esperado con la web reenviando `/api`:
-  **2** (borde del alojamiento + Next). **Medirlo antes de fijarlo**: en el entorno de prueba, registrar temporalmente
-  `X-Forwarded-For` y la IP del socket en `/api/health` (o en el log) desde un cliente con IP conocida, y elegir el
-  número que devuelva esa IP; luego verificar que un `X-Forwarded-For` falso no la cambie. Un valor demasiado alto
-  vuelve a ser eludible; uno demasiado bajo hace que todos compartan la IP del proxy (bloqueos cruzados).
+  cambiar Render sin medir) y la API **advierte al iniciar en producción**. **Medido el 2026-10-26** (Next 15.5.27,
+  `scripts/medir-xff-next.mjs`): la reescritura `/api` de Next reenvía `X-Forwarded-For` tal cual y **no agrega
+  ninguna entrada**, así que la web NO cuenta como salto (el «2 = borde + Next» que figuraba aquí era incorrecto).
+  Consecuencias: (a) si la API está en la red privada y solo la web la llama, el valor es la cantidad de bordes del
+  alojamiento delante de la web (probablemente 1, a medir); (b) si la API es pública (hoy en Render), contar saltos es
+  eludible por llamada directa (prueba `s2`): usar una **lista de IP/CIDR** de los proxies propios, si el alojamiento
+  la publica, o dejar la API solo en la red privada. **Medirlo en el entorno antes de fijarlo** (§12). Un valor
+  demasiado alto vuelve a ser eludible; uno demasiado bajo hace que todos compartan la IP del proxy (bloqueos cruzados).
 - `COOKIE_SECURE=true` (HTTPS), `SameSite=Lax` (actual), CORS limitado a `WEB_ORIGIN`, CSRF por encabezado
   `X-PG-Client` (con la excepción por patrón para `/api/integrations/sigyp/v1/*`, commit `8609f18`).
-- CSP/HSTS en la web de Peregrinos: hoy no hay una CSP explícita (sí en SIGyP); proponerla con el mismo enfoque de nonce
-  antes del despliegue definitivo. HSTS solo cuando el dominio definitivo sirva siempre por HTTPS.
+- CSP: implementada con nonce por petición (`190d2da`, `src/middleware.ts`, `src/lib/csp.ts`); por defecto solo informa
+  (`CSP_MODE`), ver §3. HSTS solo cuando el dominio definitivo sirva siempre por HTTPS.
 - Tamaño de petición: la API limita a 1 MB (subidas con `multipart`, 10 MB por archivo); verificar que la reescritura de
   Next no recorte cuerpos mayores (portadas e imágenes).
 
@@ -163,8 +166,8 @@ En el dominio temporal de Railway (nunca en producción), con una sola instancia
 3. Leer en el registro de la petición la IP que Fastify registró (`remoteAddress`) y la cadena completa de
    `X-Forwarded-For` que llegó (registro temporal de diagnóstico, sin cookies ni encabezados de autorización; se quita al
    terminar).
-4. Contar cuántos saltos propios hay a la derecha de la IP real (borde de Railway, y Next si reenvía `/api`): ese es el
-   valor. Fijar `TRUST_PROXY=<n>` y repetir el paso 2: con y sin el encabezado falso debe registrarse **la misma IP
+4. Contar cuántos saltos propios hay a la derecha de la IP real (bordes del alojamiento; Next no agrega ninguno, medido
+   el 2026-10-26): ese es el valor. Fijar `TRUST_PROXY=<n>` y repetir el paso 2: con y sin el encabezado falso debe registrarse **la misma IP
    real**. Si con el falso aparece 203.0.113.7, el valor es demasiado alto; si aparece una IP interna para todos, es
    demasiado bajo.
 5. Anotar el valor y la evidencia (sin IPs personales) en este documento.
