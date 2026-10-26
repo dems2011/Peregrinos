@@ -1,0 +1,4 @@
+node_modules/
+*.log
+# Reemplazado por scripts/csp-navegador.mjs (intercepta todo origen externo y prueba los dos modos).
+e2e-csp.mjs
