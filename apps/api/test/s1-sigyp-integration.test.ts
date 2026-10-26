@@ -16,7 +16,8 @@ import { CSRF_EXEMPT_ROUTE_PREFIX, requiresCsrfHeader } from "../src/lib/csrf";
 import { bearerSigypToken, hashLinkCode, hashSigypToken, newLinkCode, newSigypToken, sameHash, versionOutcome } from "../src/lib/sigyp";
 
 const root = path.resolve(__dirname, "..");
-const read = (p: string) => fs.readFileSync(path.join(root, p), "utf8");
+// Saltos de línea normalizados: con core.autocrlf=true la copia de trabajo puede tener CRLF.
+const read = (p: string) => fs.readFileSync(path.join(root, p), "utf8").replace(/\r\n/g, "\n");
 const id = randomUUID();
 const ann = { contract: 1, sourceId: id, version: 1, title: "Misa", body: "Domingo 10 h", category: "LITURGIA", startsAt: "2026-10-18T10:00:00.000Z", endsAt: null, publishedAt: "2026-10-17T09:00:00.000Z" };
 
@@ -130,8 +131,10 @@ describe("S1: vinculación con código de un solo uso", () => {
     assert.equal(sigypLinkCompleteSchema.safeParse({ code: "PGV-ABCDE-FGHJK-MNPQR-STUVW", installation: { parishCode: "PAR01", label: "Secretaría" }, organizationId: randomUUID() }).success, false);
   });
   it("la fuente: solo el SUPERADMIN genera códigos; se consume en la misma sentencia y una sola vez", () => {
+    // D1/D2: conceder (código o credencial directa) es solo del SUPERADMIN, con contraseña y alcances explícitos (s6).
     const adm = read("src/routes/organizationIntegrations.ts");
-    assert.match(adm, /req\.auth\.role !== "SUPERADMIN"/);
+    assert.match(adm, /if \(req\.auth\.role === "SUPERADMIN"\) return;/);
+    assert.match(adm, /requireOwner\(req, "link-code:create"\)/);
     const r = read("src/routes/sigypIntegration.ts");
     assert.match(r, /integrationLinkCode\.updateMany\(\{ where: \{ codeHash: hash, usedAt: null, revokedAt: null, expiresAt: \{ gt: new Date\(\) \} \}/);
     assert.match(r, /Código de vinculación inválido, vencido o ya usado/);
@@ -182,13 +185,15 @@ describe("S1: avisos multigrupo", () => {
   it("la fuente: permisos en el servidor, total confirmado, sin listas de personas y una vez por sourceId", () => {
     const org = read("src/routes/organization.ts");
     assert.match(org, /AUDIENCE_NOT_ALLOWED/);
-    assert.match(org, /"user:manage"/);
+    // D3: el personal exige un permiso propio (notice:staff), no la gestión de usuarios ni la del perfil.
+    assert.match(org, /hasPermission\(req\.auth\.role, req\.auth\.extraPermissions, "notice:staff"\)/);
+    assert.doesNotMatch(org.slice(org.indexOf("const allowedAudiences"), org.indexOf("/** Resumen antes de enviar")), /user:manage|parish:profile/);
     assert.match(org, /RECIPIENTS_CHANGED/);
     assert.match(org, /URGENT_NOT_ALLOWED/);
     assert.match(read("src/lib/notifications.ts"), /uniqueRecipients\(/);
     const r = read("src/routes/sigypIntegration.ts");
     const aud = r.slice(r.indexOf('app.get("/notices/audiences"'), r.indexOf('app.post("/notices/:sourceId"'));
-    assert.match(aud, /return \{ counts: r\.counts, uniqueRecipients \}/, "solo cantidades");
+    assert.match(aud, /return \{ allowed, counts: r\.counts, uniqueRecipients \}/, "solo cantidades, y solo de los grupos permitidos");
     assert.match(r, /organizationId_sourceSystem_sourceId/);
   });
   it("CSRF: la integración servidor a servidor no exige el encabezado del navegador; todo lo demás sí", () => {
@@ -212,7 +217,7 @@ describe("S1: avisos multigrupo", () => {
   it("tarjeta de evento: uno sin inscripción (los informativos de SIGyP) no muestra costo ni «la inscripción no está abierta»", () => {
     // Regresión de la revisión visual 2026-10-19: «Sin inscripción», «Inscripción sin costo» y «La inscripción no está
     // abierta» aparecían juntos en el muro para los eventos que publica SIGyP (solo INFO/LOCATION).
-    const v = fs.readFileSync(path.join(root, "..", "web", "src", "components", "ParishProfileView.tsx"), "utf8");
+    const v = read("../web/src/components/ParishProfileView.tsx");
     assert.ok(v.includes('e.phase !== "FINISHED" && e.registrationState !== "DISABLED" && (\n        <div className="muted small">'), "línea de costo y cupo");
     assert.ok(v.includes('e.phase !== "FINISHED" && e.registrationState !== "DISABLED" && <span className="muted small">'), "mensaje de inscripción");
   });

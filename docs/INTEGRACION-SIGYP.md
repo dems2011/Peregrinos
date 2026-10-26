@@ -19,7 +19,8 @@ SIGyP (el sistema de gestión instalado en la parroquia) publica en Peregrinos:
 - Entrada en `/api/integrations/sigyp/v1/*` **sin sesión de usuario**: credencial `pgsig_…` por organización
   (`IntegrationClient`), guardada solo como SHA-256. La organización sale de la credencial, nunca del cuerpo.
 - Esquemas estrictos del paquete compartido (`packages/shared/src/sigyp.ts`); campos de más → `400`.
-- Escrituras solo con alcance (`announcements:write`, `profile:write`) y organización `APPROVED`.
+- Escrituras solo con alcance (`announcements:write`, `profile:write`, `events:write`, `notices:send`, `notices:staff`)
+  y organización `APPROVED`.
 - Idempotencia: se aplica solo una versión mayor que la guardada (condición en la propia sentencia `updateMany`).
 - Auditoría: `SIGYP_ANNOUNCEMENT_APPLIED`, `SIGYP_ANNOUNCEMENT_WITHDRAWN`, `SIGYP_PROFILE_APPLIED`,
   `SIGYP_CLIENT_CREATED`, `SIGYP_CLIENT_REVOKED`, `SIGYP_PROFILE_RELEASED`.
@@ -27,10 +28,15 @@ SIGyP (el sistema de gestión instalado en la parroquia) publica en Peregrinos:
 
 ## Administración (panel de la organización)
 
-«Perfil de la parroquia» → «Conexión con SIGyP»: crear una credencial (máximo 3 activas; se muestra una sola vez),
-revocarla (corta de inmediato) y «Volver a editar el perfil aquí» (libera los nueve campos). Requiere `parish:profile`
-y segundo factor reciente. API: `GET|POST /api/organization/integrations/sigyp`, `POST …/:id/revoke`,
-`POST …/release-profile`.
+«Perfil de la parroquia» → «Conexión con SIGyP». **Actualizado 2026-10-26 (ver «Correcciones de seguridad»):**
+- **Conceder** (código de vinculación o credencial directa): **solo el SUPERADMIN**, eligiendo los alcances y escribiendo
+  su **contraseña** en la misma operación. Máximo 3 credenciales activas y 3 códigos vigentes; se muestran una sola vez.
+- **Liberar el perfil** («Volver a editar el perfil aquí»): `parish:profile` + contraseña.
+- **Revocar** (credencial o código): `parish:profile`, sin contraseña (solo quita acceso y debe poder hacerse en el acto).
+- Todas: segundo factor reciente **además**, si la cuenta lo tiene activo.
+
+API: `GET|POST /api/organization/integrations/sigyp`, `GET|POST …/link-codes`, `POST …/link-codes/:id/revoke`,
+`POST …/:id/revoke`, `POST …/release-profile`.
 
 ## Migración
 
@@ -82,3 +88,24 @@ detectaban (simulado y conformidad de esquemas). Ahora `lib/csrf.ts` exceptúa s
 `/api/integrations/sigyp/v1/`, decidido por el **patrón de ruta** (no por la URL cruda). Es seguro porque esas rutas no
 usan cookies ni sesión (Bearer `pgsig_…` o código de un solo uso en el cuerpo); `s1` lo fija por la fuente. Resultado:
 e2e real 5/5 en SIGyP + 13/13 verificaciones en esta base; suite de la API 463/463.
+
+## Correcciones de seguridad (2026-10-26, decisiones D1–D4 del propietario)
+
+Origen: la auditoría del 26/10 encontró que (a) `requireRecentMfa` no exige nada a una cuenta sin segundo factor, y el
+SUPERADMIN entra sin él desde `60d9488`; (b) cualquiera con `parish:profile` creaba una credencial con **todos** los
+alcances; (c) `notices:send` permitía avisar al personal; (d) los límites se contaban sin bloqueo.
+
+| Decisión | Implementación | Evidencia |
+|---|---|---|
+| **D1** reautenticación | `lib/reauth.ts`: la contraseña viaja en el cuerpo de la MISMA petición (crear código, crear credencial, liberar perfil) y se verifica contra la cuenta autenticada en ese momento. Vigencia = esa petición: no hay permiso reutilizable que repetir ni trasladar. Nunca se guarda ni se registra; el fallo se audita (`REAUTH_FAILED`, solo el propósito). Límite de frecuencia en las tres rutas. El segundo factor sigue exigiéndose además si la cuenta lo tiene. | `s6` (fuente y esquemas); E2E: incorrecta → 403 sin efectos, la de otra cuenta → 403, auditoría sin la contraseña |
+| **D2** solo SUPERADMIN, alcances mínimos | `requireOwner` antes de leer el cuerpo en las DOS rutas que conceden (credencial directa y código); intento rechazado auditado (`SIGYP_GRANT_DENIED`). Los alcances son **obligatorios y explícitos** (nada de «todos por defecto»); al completar una vinculación la credencial recibe exactamente los del código. Solo el SHA-256 en la base. | `s6`; E2E: ADMIN con `parish:profile` → 403 en ambas; credencial de un alcance no puede usar otro; vista previa = alcances del código |
+| **D3** avisos al personal | Alcance nuevo de SIGyP `notices:staff` (desmarcado por defecto en la pantalla); `notices:send` = solo seguidores. En el panel, permiso nuevo `notice:staff` (del SUPERADMIN, concedible por él; ya no `user:manage`). Rechazos auditados (`SIGYP_NOTICE_DENIED`, `NOTIFICATION_DENIED`); envíos auditados con la credencial. Los recuentos que ve SIGyP son solo de sus grupos permitidos. | `s1`, `s6`; E2E: aviso al personal sin el alcance → 403 sin crear nada y auditado; con el alcance → llega |
+| **D4** límites concurrentes | `lib/integrationLimits.ts`: `SELECT … FOR UPDATE` de la organización y conteo en la misma transacción, en crear credencial, crear código **y completar la vinculación** (antes sin límite). | PostgreSQL 18 real (`run-pg.sh concurrencia-limites.mjs`): control sin bloqueo 10/10 superan el límite; con bloqueo exactamente 3; por HTTP 10 simultáneos → 3×201 + 7×409; completar con cupo 2 → 2×201 + 1×409 sin consumir el código rechazado |
+
+**Compatibilidad con SIGyP:** las respuestas y rutas v1 no cambian, salvo que una credencial ahora puede tener menos
+alcances (403 en lo no concedido) y `GET /notices/audiences` agrega `allowed`. El panel de Peregrinos (no SIGyP) es quien
+pide la contraseña y los alcances. **Pendiente de verificar en GestionParroquial** (no legible desde este entorno): que
+su prueba `x1` y su pantalla de vinculación toleren alcances parciales y el aviso al personal rechazado.
+
+**Pendiente de decisión (no implementado aquí):** política general de MFA obligatorio para el SUPERADMIN en todos los
+accesos. D1 no depende de ella: la contraseña se pide igual.

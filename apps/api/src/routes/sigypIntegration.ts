@@ -2,26 +2,23 @@ import type { FastifyInstance, FastifyRequest } from "fastify";
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import {
-  NOTICE_AUDIENCES, SIGYP_CONTRACT_VERSION, sigypAnnouncementSchema, sigypEventSchema, sigypEventWithdrawSchema, sigypLinkCompleteSchema,
-  sigypLinkPreviewSchema, sigypNoticeSchema, sigypProfileSchema, sigypWithdrawSchema, type NoticeAudience, type SigypScope,
+  NOTICE_AUDIENCES, SIGYP_CONTRACT_VERSION, SIGYP_SCOPE_LABEL, sigypAllowedAudiences, sigypAnnouncementSchema, sigypEventSchema,
+  sigypEventWithdrawSchema, sigypLinkCompleteSchema, sigypLinkPreviewSchema, sigypNoticeSchema, sigypProfileSchema, sigypWithdrawSchema,
+  type NoticeAudience, type SigypScope,
 } from "@peregrinos/shared";
 import { prisma } from "../lib/prisma";
-import { auditTx } from "../lib/audit";
+import { audit, auditTx } from "../lib/audit";
 import { AppError, forbidden, notFound, unauthorized } from "../lib/errors";
 import { bearerSigypToken, hashLinkCode, hashSigypToken, newSigypToken, sameHash, versionOutcome } from "../lib/sigyp";
 import { notifyAudiences, pushNotification, resolveAudiences } from "../lib/notifications";
 import { readSingleFile } from "../lib/image";
 import { contentImageUrls, prepareContentImage, replaceContentImage } from "../lib/contentImages";
+import { MAX_ACTIVE_SIGYP_CLIENTS, lockOrganization } from "../lib/integrationLimits";
 
 const sourceParam = z.object({ sourceId: z.string().uuid() });
 const SOURCE = "SIGYP";
 /** Lo que se comparte con cada alcance (se muestra antes de confirmar la vinculación, en ambos sistemas). */
-const SHARES: Record<string, string> = {
-  "announcements:write": "Cartelera: avisos públicos con vigencia",
-  "profile:write": "Datos públicos del perfil (descripción, contacto, canales y horarios)",
-  "events:write": "Eventos públicos de la parroquia (sin inscripciones ni datos de participantes)",
-  "notices:send": "Avisos a seguidores y al personal de la parroquia (sin acceso a sus datos)",
-};
+const SHARES: Record<string, string> = SIGYP_SCOPE_LABEL;
 
 interface SigypClient { id: string; organizationId: string; scopes: string[]; createdById: string | null; organization: { id: string; code: string; name: string; status: string; timezone: string } }
 
@@ -35,7 +32,8 @@ interface SigypClient { id: string; organizationId: string; scopes: string[]; cr
 export default async function sigypIntegrationRoutes(app: FastifyInstance) {
   const rl = (max: number) => ({ config: { rateLimit: { max, timeWindow: "1 minute" } } });
 
-  async function client(req: FastifyRequest, scope?: SigypScope): Promise<SigypClient> {
+  /** Credencial válida; con `scope`, exige ese alcance (o cualquiera de la lista) y la organización aprobada. */
+  async function client(req: FastifyRequest, scope?: SigypScope | SigypScope[]): Promise<SigypClient> {
     const token = bearerSigypToken(req.headers.authorization);
     if (!token) throw unauthorized("Credencial de integración ausente o con formato inválido.");
     const hash = hashSigypToken(token);
@@ -44,7 +42,7 @@ export default async function sigypIntegrationRoutes(app: FastifyInstance) {
       select: { id: true, tokenHash: true, organizationId: true, scopes: true, revokedAt: true, kind: true, lastUsedAt: true, createdById: true, organization: { select: { id: true, code: true, name: true, status: true, timezone: true } } },
     });
     if (!c || c.revokedAt || c.kind !== SOURCE || !sameHash(c.tokenHash, hash)) throw unauthorized("Credencial de integración inválida o revocada.");
-    if (scope && !c.scopes.includes(scope)) throw forbidden("La credencial no tiene permiso para esta operación.");
+    if (scope && ![scope].flat().some((s) => c.scopes.includes(s))) throw forbidden("La credencial no tiene permiso para esta operación.");
     if (scope && c.organization.status !== "APPROVED") throw new AppError(403, "ORG_NOT_APPROVED", "La organización no está aprobada en Peregrinos.");
     if (!c.lastUsedAt || Date.now() - c.lastUsedAt.getTime() > 5 * 60_000) {
       await prisma.integrationClient.update({ where: { id: c.id }, data: { lastUsedAt: new Date() } }).catch(() => undefined);
@@ -79,6 +77,10 @@ export default async function sigypIntegrationRoutes(app: FastifyInstance) {
     const t = newSigypToken();
     const label = `SIGyP ${v.installation.parishCode} — ${v.installation.label}`.slice(0, 80);
     const result = await prisma.$transaction(async (tx) => {
+      // D4: el límite de credenciales activas también rige aquí (bajo el mismo bloqueo que el panel).
+      await lockOrganization(tx, code.organizationId);
+      const active = await tx.integrationClient.count({ where: { organizationId: code.organizationId, kind: SOURCE, revokedAt: null } });
+      if (active >= MAX_ACTIVE_SIGYP_CLIENTS) throw new AppError(409, "TOO_MANY_CLIENTS", `La parroquia ya tiene ${MAX_ACTIVE_SIGYP_CLIENTS} credenciales activas: debe revocar una en Peregrinos antes de vincular.`);
       const claimed = await tx.integrationLinkCode.updateMany({ where: { codeHash: hash, usedAt: null, revokedAt: null, expiresAt: { gt: new Date() } }, data: { usedAt: new Date(), usedLabel: label } });
       if (claimed.count !== 1) throw notFound("Código de vinculación inválido, vencido o ya usado.");
       const c = await tx.integrationClient.create({
@@ -254,30 +256,41 @@ export default async function sigypIntegrationRoutes(app: FastifyInstance) {
 
   /* ---------- Avisos multigrupo ---------- */
 
-  /** Cuántas personas hay en cada grupo (solo números: nunca nombres, correos ni dispositivos). */
+  /**
+   * Cuántas personas hay en cada grupo que ESTA credencial puede usar (solo números: nunca nombres, correos ni
+   * dispositivos). Seguidores con notices:send; personal solo con notices:staff (D3).
+   */
   app.get("/notices/audiences", rl(30), async (req) => {
-    const c = await client(req, "notices:send");
-    const r = await resolveAudiences(prisma, c.organizationId, ["FOLLOWERS", "STAFF:SUPERADMIN", "STAFF:ADMIN", "STAFF:OPERATOR"]);
-    // Total único de los grupos elegidos (?audiences=A,B): sigue siendo solo un número.
+    const c = await client(req, ["notices:send", "notices:staff"]);
+    const allowed = sigypAllowedAudiences(c.scopes);
+    const r = await resolveAudiences(prisma, c.organizationId, allowed);
+    // Total único de los grupos elegidos (?audiences=A,B) entre los permitidos: sigue siendo solo un número.
     const q = z.object({ audiences: z.string().max(200).optional() }).parse(req.query);
-    const chosen = (q.audiences ?? "").split(",").filter((x): x is NoticeAudience => (NOTICE_AUDIENCES as readonly string[]).includes(x));
+    const chosen = (q.audiences ?? "").split(",").filter((x): x is NoticeAudience => (allowed as readonly string[]).includes(x));
     const uniqueRecipients = chosen.length ? (await resolveAudiences(prisma, c.organizationId, chosen)).userIds.length : 0;
-    return { counts: r.counts, uniqueRecipients };
+    return { allowed, counts: r.counts, uniqueRecipients };
   });
 
   /** Enviar un aviso: se crea UNA vez por (organización, sourceId); un reintento devuelve el ya creado sin reenviar. */
   app.post("/notices/:sourceId", rl(10), async (req) => {
-    const c = await client(req, "notices:send");
+    const c = await client(req, ["notices:send", "notices:staff"]);
     const { sourceId } = sourceParam.parse(req.params);
     const v = sigypNoticeSchema.parse(req.body);
     if (v.sourceId !== sourceId) throw new AppError(409, "SOURCE_MISMATCH", "El identificador del aviso no coincide con la ruta.");
+    // D3: cada grupo exige su alcance (el personal, notices:staff concedido por el titular). El rechazo queda auditado.
+    const allowed = sigypAllowedAudiences(c.scopes);
+    const denied = v.audiences.filter((a) => !allowed.includes(a));
+    if (denied.length) {
+      await audit(req, { action: "SIGYP_NOTICE_DENIED", entityType: "IntegrationClient", entityId: c.id, organizationId: c.organizationId, userId: null, metadata: { sourceId, audiences: v.audiences, denied, clientId: c.id, scopes: c.scopes } });
+      throw new AppError(403, "AUDIENCE_NOT_ALLOWED", `La credencial no tiene permiso para enviar a: ${denied.join(", ")}.`);
+    }
     const existing = await prisma.notification.findUnique({ where: { organizationId_sourceSystem_sourceId: { organizationId: c.organizationId, sourceSystem: SOURCE, sourceId } }, select: { id: true, recipientCount: true } });
     if (existing) return { status: "stale", recipientCount: existing.recipientCount };
     let created;
     try {
       created = await prisma.$transaction(async (tx) => {
         const r = await notifyAudiences(tx, { organizationId: c.organizationId, audiences: v.audiences, title: v.title, body: v.body, delivery: v.delivery, sourceSystem: SOURCE, sourceId });
-        await auditTx(tx, req, { action: "SIGYP_NOTICE_SENT", entityType: "Notification", entityId: r.notification.id, organizationId: c.organizationId, userId: null, metadata: { sourceId, audiences: v.audiences, delivery: v.delivery, recipients: r.notification.recipientCount, counts: r.counts } });
+        await auditTx(tx, req, { action: "SIGYP_NOTICE_SENT", entityType: "Notification", entityId: r.notification.id, organizationId: c.organizationId, userId: null, metadata: { sourceId, audiences: v.audiences, delivery: v.delivery, recipients: r.notification.recipientCount, counts: r.counts, clientId: c.id } });
         return r.notification;
       });
     } catch (e) {

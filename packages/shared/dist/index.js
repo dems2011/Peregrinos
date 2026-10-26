@@ -139,7 +139,7 @@ const ADMIN = [
 const SUPERADMIN = [
     ...ADMIN, "event:create", "event:update", "user:manage", "backup:run", "audit:read",
     "parish:profile", "notice:send", "post:manage", "stream:manage", "tracking:read",
-    "certificate:manage", "agenda:manage", "donation:manage", "inventory:manage", "group:manage",
+    "certificate:manage", "agenda:manage", "donation:manage", "inventory:manage", "group:manage", "notice:staff",
 ];
 exports.ROLE_PERMISSIONS = {
     SUPERADMIN: new Set(SUPERADMIN),
@@ -624,6 +624,7 @@ exports.PERMISSION_CATALOG = [
     { id: "parish:profile", group: "Perfil y publicaciones", label: "Perfil de la parroquia", description: "Ver y editar el perfil público, el logo y el cartel" },
     { id: "post:manage", group: "Perfil y publicaciones", label: "Publicaciones y fotografías", description: "Portadas y fotos de los eventos publicados" },
     { id: "notice:send", group: "Perfil y publicaciones", label: "Avisos y boletín", description: "Enviar avisos a los seguidores y publicar el boletín" },
+    { id: "notice:staff", group: "Perfil y publicaciones", label: "Avisos al personal", description: "Enviar avisos a la administración y a los operadores de la parroquia (requiere también «Avisos y boletín»)" },
     { id: "stream:manage", group: "Perfil y publicaciones", label: "Transmisiones en vivo", description: "Cargar la transmisión de YouTube, iniciarla y finalizarla" },
     { id: "event:create", group: "Eventos y seguimiento", label: "Crear eventos", description: "Dar de alta eventos nuevos" },
     { id: "event:update", group: "Eventos y seguimiento", label: "Administrar eventos", description: "Editar datos, estado, inscripción y formulario" },

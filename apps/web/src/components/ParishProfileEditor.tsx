@@ -1,7 +1,9 @@
 "use client";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Copy, Download, Trash2, Upload } from "lucide-react";
-import { PARISH_IMAGE_SPEC, PARISH_POSTER_SIZES, SIGYP_PROFILE_FIELDS, type ParishPosterSize } from "@peregrinos/shared";
+import {
+  PARISH_IMAGE_SPEC, PARISH_POSTER_SIZES, SIGYP_DEFAULT_SCOPES, SIGYP_PROFILE_FIELDS, SIGYP_SCOPES, SIGYP_SCOPE_LABEL, type ParishPosterSize, type SigypScope,
+} from "@peregrinos/shared";
 import { ApiError, api, del, download, patch, post, upload } from "@/lib/api";
 import { useLoad } from "@/lib/hooks";
 import { fmtDateMedium, fmtDateTimeMedium } from "@/lib/format";
@@ -151,7 +153,24 @@ function SigypCard({ onChanged }: { onChanged: () => void }) {
   };
   const active = data.data?.items.filter((i) => !i.revokedAt) ?? [];
   const { me } = useApp();
+  const owner = me.user.role === "SUPERADMIN";
   const [link, setLink] = useState<{ code: string; expiresAt: string; scopes: string[] } | null>(null);
+  // Lo que el titular concede y su contraseña (se pide en cada operación que concede o libera; nunca se guarda).
+  const [scopes, setScopes] = useState<SigypScope[]>([...SIGYP_DEFAULT_SCOPES]);
+  const [password, setPassword] = useState("");
+  const toggle = (s: SigypScope) => setScopes((cur) => (cur.includes(s) ? cur.filter((x) => x !== s) : [...cur, s]));
+  const withPassword = (fn: (pw: string) => Promise<unknown>) => () => {
+    if (!password) { setErr("Escribe tu contraseña para confirmar."); return; }
+    const pw = password;
+    setPassword("");
+    void act(() => fn(pw));
+  };
+  const passwordField = (
+    <label className="stack-xs">
+      <span className="small">Tu contraseña (para confirmar)</span>
+      <input type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} maxLength={128} />
+    </label>
+  );
   return (
     <section className="card stack-sm" data-testid="sigyp-card">
       <h2>Conexión con SIGyP (Gestión Parroquial)</h2>
@@ -171,24 +190,36 @@ function SigypCard({ onChanged }: { onChanged: () => void }) {
           <button type="button" className="btn btn-sm" disabled={busy} onClick={() => void act(() => post(`/organization/integrations/sigyp/${c.id}/revoke`, {}))}>Revocar</button>
         </p>
       ))}
-      {me.user.role === "SUPERADMIN" && (
+      {owner && (
         <div className="stack-sm" style={{ borderTop: "1px solid var(--border, #e5e7eb)", paddingTop: 8 }}>
           <b>Vincular con un código (recomendado)</b>
           <p className="muted small" style={{ margin: 0 }}>Genera un código de un solo uso y escríbelo en SIGyP («Integración con Peregrinos»). Vence en 15 minutos. SIGyP te mostrará esta parroquia y lo que se compartirá antes de confirmar.</p>
+          <fieldset className="stack-xs" data-testid="sigyp-scopes">
+            <legend className="small">Qué podrá hacer SIGyP</legend>
+            {SIGYP_SCOPES.map((s) => (
+              <label key={s} className="small"><input type="checkbox" checked={scopes.includes(s)} onChange={() => toggle(s)} /> {SIGYP_SCOPE_LABEL[s]}</label>
+            ))}
+          </fieldset>
+          {passwordField}
           {link && (
             <div className="alert ok" role="status">
               <p style={{ margin: 0 }}>Código: <b style={{ letterSpacing: 1, overflowWrap: "anywhere" }}>{link.code}</b> · vence {fmtDateTimeMedium(link.expiresAt)}</p>
-              <p className="small" style={{ margin: "6px 0 0" }}>Se compartirá: cartelera, datos públicos del perfil, eventos públicos y avisos a los grupos que elija la parroquia. No da acceso a datos de personas ni a la administración de Peregrinos.</p>
+              <p className="small" style={{ margin: "6px 0 0" }}>Se compartirá: {link.scopes.map((s) => SIGYP_SCOPE_LABEL[s as SigypScope] ?? s).join("; ")}. No da acceso a datos de personas ni a la administración de Peregrinos.</p>
               <button type="button" className="btn btn-sm" onClick={() => copyText(link.code)}><Copy size={16} /> Copiar código</button>
             </div>
           )}
-          <div className="btn-row"><button type="button" className="btn btn-primary" disabled={busy} onClick={() => void act(async () => { setLink(await post<{ code: string; expiresAt: string; scopes: string[] }>("/organization/integrations/sigyp/link-codes", {})); })}>Generar código de vinculación</button></div>
+          <div className="btn-row">
+            <button type="button" className="btn btn-primary" disabled={busy || !scopes.length} onClick={withPassword(async (pw) => { setLink(await post<{ code: string; expiresAt: string; scopes: string[] }>("/organization/integrations/sigyp/link-codes", { scopes, password: pw })); })}>Generar código de vinculación</button>
+            <button type="button" className="btn" disabled={busy || !scopes.length} onClick={withPassword(async (pw) => { const r = await post<{ token: string }>("/organization/integrations/sigyp", { label: "SIGyP", scopes, password: pw }); setToken(r.token); })}>Crear credencial (avanzado)</button>
+          </div>
         </div>
       )}
-      <div className="btn-row">
-        <button type="button" className="btn" disabled={busy} onClick={() => void act(async () => { const r = await post<{ token: string }>("/organization/integrations/sigyp", { label: "SIGyP" }); setToken(r.token); })}>Crear credencial (avanzado)</button>
-        {data.data?.profileSource === "SIGYP" && <button type="button" className="btn" disabled={busy} onClick={() => void act(() => post("/organization/integrations/sigyp/release-profile", {}))}>Volver a editar el perfil aquí</button>}
-      </div>
+      {data.data?.profileSource === "SIGYP" && (
+        <div className="stack-sm">
+          {!owner && passwordField}
+          <div className="btn-row"><button type="button" className="btn" disabled={busy} onClick={withPassword((pw) => post("/organization/integrations/sigyp/release-profile", { password: pw }))}>Volver a editar el perfil aquí</button></div>
+        </div>
+      )}
     </section>
   );
 }

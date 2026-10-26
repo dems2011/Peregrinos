@@ -14,8 +14,31 @@ export const SIGYP_EVENT_TYPES = [
  * versión creciente: una versión no mayor que la guardada se ignora (reintentar nunca duplica ni retrocede).
  */
 export const SIGYP_CONTRACT_VERSION = 1;
-export const SIGYP_SCOPES = ["announcements:write", "profile:write", "events:write", "notices:send"] as const;
+/**
+ * Alcances de una credencial. `notices:send` = avisos a los SEGUIDORES; `notices:staff` = avisos al PERSONAL de la
+ * parroquia: es un permiso aparte que el titular (SUPERADMIN) concede de forma explícita al vincular (D3).
+ */
+export const SIGYP_SCOPES = ["announcements:write", "profile:write", "events:write", "notices:send", "notices:staff"] as const;
 export type SigypScope = (typeof SIGYP_SCOPES)[number];
+/** Propuesta inicial de la pantalla de vinculación: todo menos los avisos al personal. */
+export const SIGYP_DEFAULT_SCOPES: readonly SigypScope[] = ["announcements:write", "profile:write", "events:write", "notices:send"];
+export const SIGYP_SCOPE_LABEL: Record<SigypScope, string> = {
+  "announcements:write": "Cartelera: avisos públicos con vigencia",
+  "profile:write": "Datos públicos del perfil (descripción, contacto, canales y horarios)",
+  "events:write": "Eventos públicos de la parroquia (sin inscripciones ni datos de participantes)",
+  "notices:send": "Avisos a los seguidores de la parroquia (sin acceso a sus datos)",
+  "notices:staff": "Avisos al personal de la parroquia (administración y operadores)",
+};
+const scopeList = z.array(z.enum(SIGYP_SCOPES)).min(1, "Elige al menos un permiso").max(SIGYP_SCOPES.length)
+  .refine((s) => new Set(s).size === s.length, "Permisos repetidos");
+/** Reautenticación (D1): la contraseña de quien opera, en la misma petición; nunca se guarda ni se registra. */
+const reauthPassword = z.string().min(1, "Escribe tu contraseña").max(128);
+/** Código de vinculación: alcances elegidos explícitamente por el titular + su contraseña. */
+export const sigypLinkCodeCreateSchema = z.object({ scopes: scopeList, password: reauthPassword }).strict();
+/** Credencial directa (solo SUPERADMIN): nombre, alcances explícitos y contraseña. */
+export const sigypClientCreateSchema = z.object({ label: z.string().trim().min(3).max(80).default("SIGyP"), scopes: scopeList, password: reauthPassword }).strict();
+/** Liberar el perfil (volver a editarlo en Peregrinos): solo la contraseña. */
+export const sigypReauthSchema = z.object({ password: reauthPassword }).strict();
 
 export const SIGYP_CATEGORIES = ["GENERAL", "LITURGIA", "SACRAMENTOS", "CATEQUESIS", "CARIDAD", "ACTIVIDADES", "SECRETARIA"] as const;
 export const SIGYP_CATEGORY_LABEL: Record<(typeof SIGYP_CATEGORIES)[number], string> = {
@@ -161,6 +184,11 @@ export const sigypNoticeSchema = z.object({
   audiences: noticeAudiencesSchema,
   delivery: z.enum(["PUSH", "INBOX"]),
 }).strict();
+
+/** Grupos a los que puede enviar una credencial de SIGyP según sus alcances (seguidores y personal van por separado). */
+export function sigypAllowedAudiences(scopes: readonly string[]): NoticeAudience[] {
+  return NOTICE_AUDIENCES.filter((a) => (a === "FOLLOWERS" ? scopes.includes("notices:send") : scopes.includes("notices:staff")));
+}
 
 /** Destinatarios únicos de varios grupos: una persona en dos grupos recibe UN aviso. */
 export function uniqueRecipients(groups: readonly (readonly string[])[]): string[] {

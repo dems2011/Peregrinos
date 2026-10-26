@@ -123,7 +123,9 @@ export type Permission =
   | "volunteer:manage"
   /** B5: herramientas parroquiales. Por defecto solo las tiene el SUPERADMIN; se otorgan una a una (PERMISSION_CATALOG). */
   | "parish:profile" | "notice:send" | "post:manage" | "stream:manage" | "chat:moderate" | "tracking:read"
-  | "certificate:manage" | "agenda:manage" | "donation:manage" | "inventory:manage" | "group:manage";
+  | "certificate:manage" | "agenda:manage" | "donation:manage" | "inventory:manage" | "group:manage"
+  /** Avisos al personal de la parroquia: permiso propio, distinto de notice:send (seguidores) y de user:manage. */
+  | "notice:staff";
 
 const OPERATOR: Permission[] = ["event:read", "participant:read", "checkpoint:read", "checkin:create"];
 const ADMIN: Permission[] = [
@@ -136,7 +138,7 @@ const ADMIN: Permission[] = [
 const SUPERADMIN: Permission[] = [
   ...ADMIN, "event:create", "event:update", "user:manage", "backup:run", "audit:read",
   "parish:profile", "notice:send", "post:manage", "stream:manage", "tracking:read",
-  "certificate:manage", "agenda:manage", "donation:manage", "inventory:manage", "group:manage",
+  "certificate:manage", "agenda:manage", "donation:manage", "inventory:manage", "group:manage", "notice:staff",
 ];
 
 export const ROLE_PERMISSIONS: Record<Role, ReadonlySet<Permission>> = {
@@ -684,6 +686,7 @@ export const PERMISSION_CATALOG = [
   { id: "parish:profile", group: "Perfil y publicaciones", label: "Perfil de la parroquia", description: "Ver y editar el perfil público, el logo y el cartel" },
   { id: "post:manage", group: "Perfil y publicaciones", label: "Publicaciones y fotografías", description: "Portadas y fotos de los eventos publicados" },
   { id: "notice:send", group: "Perfil y publicaciones", label: "Avisos y boletín", description: "Enviar avisos a los seguidores y publicar el boletín" },
+  { id: "notice:staff", group: "Perfil y publicaciones", label: "Avisos al personal", description: "Enviar avisos a la administración y a los operadores de la parroquia (requiere también «Avisos y boletín»)" },
   { id: "stream:manage", group: "Perfil y publicaciones", label: "Transmisiones en vivo", description: "Cargar la transmisión de YouTube, iniciarla y finalizarla" },
   { id: "event:create", group: "Eventos y seguimiento", label: "Crear eventos", description: "Dar de alta eventos nuevos" },
   { id: "event:update", group: "Eventos y seguimiento", label: "Administrar eventos", description: "Editar datos, estado, inscripción y formulario" },

@@ -149,11 +149,12 @@ export default async function organizationRoutes(app: FastifyInstance) {
 
   /**
    * Grupos que ESTA persona puede usar (se comprueba en el servidor): seguidores con notice:send; personal
-   * (administración y operadores) con notice:send + user:manage. Alertas urgentes: solo el SUPERADMIN.
+   * (administración y operadores) con notice:send + notice:staff, un permiso propio que solo concede el titular (D3).
+   * Alertas urgentes: solo el SUPERADMIN.
    */
   const allowedAudiences = (req: { auth: { role: Parameters<typeof hasPermission>[0]; extraPermissions: Parameters<typeof hasPermission>[1] } }): NoticeAudience[] => {
     const send = hasPermission(req.auth.role, req.auth.extraPermissions, "notice:send");
-    const staff = send && hasPermission(req.auth.role, req.auth.extraPermissions, "user:manage");
+    const staff = send && hasPermission(req.auth.role, req.auth.extraPermissions, "notice:staff");
     return NOTICE_AUDIENCES.filter((a) => (a === "FOLLOWERS" ? send : staff));
   };
 
@@ -173,7 +174,10 @@ export default async function organizationRoutes(app: FastifyInstance) {
     assertOrgCan(req.auth.organizationStatus, "PUBLISH_EVENT");
     const allowed = allowedAudiences(req);
     const denied = body.audiences.filter((a) => !allowed.includes(a));
-    if (denied.length) throw new AppError(403, "AUDIENCE_NOT_ALLOWED", `No tienes permiso para enviar a: ${denied.join(", ")}.`);
+    if (denied.length) {
+      await audit(req, { action: "NOTIFICATION_DENIED", entityType: "Organization", entityId: req.auth.organizationId, metadata: { audiences: body.audiences, denied } });
+      throw new AppError(403, "AUDIENCE_NOT_ALLOWED", `No tienes permiso para enviar a: ${denied.join(", ")}.`);
+    }
     if (body.urgent && req.auth.role !== "SUPERADMIN") throw new AppError(403, "URGENT_NOT_ALLOWED", "Solo el titular de la parroquia puede enviar alertas urgentes.");
     if (body.eventId) {
       const ev = await prisma.event.findFirst({ where: { id: body.eventId, organizationId: req.auth.organizationId }, select: { id: true } });

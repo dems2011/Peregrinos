@@ -9,8 +9,48 @@ export declare const SIGYP_EVENT_TYPES: readonly ["PILGRIMAGE", "PROCESSION", "P
  * versión creciente: una versión no mayor que la guardada se ignora (reintentar nunca duplica ni retrocede).
  */
 export declare const SIGYP_CONTRACT_VERSION = 1;
-export declare const SIGYP_SCOPES: readonly ["announcements:write", "profile:write", "events:write", "notices:send"];
+/**
+ * Alcances de una credencial. `notices:send` = avisos a los SEGUIDORES; `notices:staff` = avisos al PERSONAL de la
+ * parroquia: es un permiso aparte que el titular (SUPERADMIN) concede de forma explícita al vincular (D3).
+ */
+export declare const SIGYP_SCOPES: readonly ["announcements:write", "profile:write", "events:write", "notices:send", "notices:staff"];
 export type SigypScope = (typeof SIGYP_SCOPES)[number];
+/** Propuesta inicial de la pantalla de vinculación: todo menos los avisos al personal. */
+export declare const SIGYP_DEFAULT_SCOPES: readonly SigypScope[];
+export declare const SIGYP_SCOPE_LABEL: Record<SigypScope, string>;
+/** Código de vinculación: alcances elegidos explícitamente por el titular + su contraseña. */
+export declare const sigypLinkCodeCreateSchema: z.ZodObject<{
+    scopes: z.ZodEffects<z.ZodArray<z.ZodEnum<["announcements:write", "profile:write", "events:write", "notices:send", "notices:staff"]>, "many">, ("announcements:write" | "profile:write" | "events:write" | "notices:send" | "notices:staff")[], ("announcements:write" | "profile:write" | "events:write" | "notices:send" | "notices:staff")[]>;
+    password: z.ZodString;
+}, "strict", z.ZodTypeAny, {
+    scopes: ("announcements:write" | "profile:write" | "events:write" | "notices:send" | "notices:staff")[];
+    password: string;
+}, {
+    scopes: ("announcements:write" | "profile:write" | "events:write" | "notices:send" | "notices:staff")[];
+    password: string;
+}>;
+/** Credencial directa (solo SUPERADMIN): nombre, alcances explícitos y contraseña. */
+export declare const sigypClientCreateSchema: z.ZodObject<{
+    label: z.ZodDefault<z.ZodString>;
+    scopes: z.ZodEffects<z.ZodArray<z.ZodEnum<["announcements:write", "profile:write", "events:write", "notices:send", "notices:staff"]>, "many">, ("announcements:write" | "profile:write" | "events:write" | "notices:send" | "notices:staff")[], ("announcements:write" | "profile:write" | "events:write" | "notices:send" | "notices:staff")[]>;
+    password: z.ZodString;
+}, "strict", z.ZodTypeAny, {
+    scopes: ("announcements:write" | "profile:write" | "events:write" | "notices:send" | "notices:staff")[];
+    password: string;
+    label: string;
+}, {
+    scopes: ("announcements:write" | "profile:write" | "events:write" | "notices:send" | "notices:staff")[];
+    password: string;
+    label?: string | undefined;
+}>;
+/** Liberar el perfil (volver a editarlo en Peregrinos): solo la contraseña. */
+export declare const sigypReauthSchema: z.ZodObject<{
+    password: z.ZodString;
+}, "strict", z.ZodTypeAny, {
+    password: string;
+}, {
+    password: string;
+}>;
 export declare const SIGYP_CATEGORIES: readonly ["GENERAL", "LITURGIA", "SACRAMENTOS", "CATEQUESIS", "CARIDAD", "ACTIVIDADES", "SECRETARIA"];
 export declare const SIGYP_CATEGORY_LABEL: Record<(typeof SIGYP_CATEGORIES)[number], string>;
 export declare const sigypAnnouncementSchema: z.ZodEffects<z.ZodObject<{
@@ -170,23 +210,23 @@ export declare const sigypLinkCompleteSchema: z.ZodObject<{
         parishCode: z.ZodString;
         label: z.ZodString;
     }, "strict", z.ZodTypeAny, {
-        parishCode: string;
         label: string;
+        parishCode: string;
     }, {
-        parishCode: string;
         label: string;
+        parishCode: string;
     }>;
 }, "strict", z.ZodTypeAny, {
     code: string;
     installation: {
-        parishCode: string;
         label: string;
+        parishCode: string;
     };
 }, {
     code: string;
     installation: {
-        parishCode: string;
         label: string;
+        parishCode: string;
     };
 }>;
 export declare const SIGYP_ATTENDANCE_MODES: readonly ["IN_PERSON", "ONLINE", "HYBRID"];
@@ -433,5 +473,7 @@ export declare const sigypNoticeSchema: z.ZodObject<{
     audiences: ("FOLLOWERS" | "STAFF:SUPERADMIN" | "STAFF:ADMIN" | "STAFF:OPERATOR")[];
     delivery: "PUSH" | "INBOX";
 }>;
+/** Grupos a los que puede enviar una credencial de SIGyP según sus alcances (seguidores y personal van por separado). */
+export declare function sigypAllowedAudiences(scopes: readonly string[]): NoticeAudience[];
 /** Destinatarios únicos de varios grupos: una persona en dos grupos recibe UN aviso. */
 export declare function uniqueRecipients(groups: readonly (readonly string[])[]): string[];
