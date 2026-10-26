@@ -166,7 +166,7 @@ function SigypCard({ onChanged }: { onChanged: () => void }) {
     void act(() => fn(pw));
   };
   const passwordField = (
-    <label className="stack-xs">
+    <label className="field">
       <span className="small">Tu contraseña (para confirmar)</span>
       <input type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} maxLength={128} />
     </label>
@@ -194,10 +194,10 @@ function SigypCard({ onChanged }: { onChanged: () => void }) {
         <div className="stack-sm" style={{ borderTop: "1px solid var(--border, #e5e7eb)", paddingTop: 8 }}>
           <b>Vincular con un código (recomendado)</b>
           <p className="muted small" style={{ margin: 0 }}>Genera un código de un solo uso y escríbelo en SIGyP («Integración con Peregrinos»). Vence en 15 minutos. SIGyP te mostrará esta parroquia y lo que se compartirá antes de confirmar.</p>
-          <fieldset className="stack-xs" data-testid="sigyp-scopes">
+          <fieldset className="stack-sm" data-testid="sigyp-scopes">
             <legend className="small">Qué podrá hacer SIGyP</legend>
             {SIGYP_SCOPES.map((s) => (
-              <label key={s} className="small"><input type="checkbox" checked={scopes.includes(s)} onChange={() => toggle(s)} /> {SIGYP_SCOPE_LABEL[s]}</label>
+              <label key={s} className="check"><input type="checkbox" checked={scopes.includes(s)} onChange={() => toggle(s)} /> {SIGYP_SCOPE_LABEL[s]}</label>
             ))}
           </fieldset>
           {passwordField}
