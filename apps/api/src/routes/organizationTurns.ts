@@ -5,6 +5,7 @@ import { turnDecisionSchema } from "@peregrinos/shared";
 import { prisma } from "../lib/prisma";
 import { auditTx } from "../lib/audit";
 import { AppError, notFound } from "../lib/errors";
+import { lockCursor } from "../lib/integrationLimits";
 
 const idParam = z.object({ id: z.string().uuid() });
 
@@ -19,11 +20,13 @@ export default async function organizationTurnRoutes(app: FastifyInstance) {
   app.get("/", { preHandler: decide }, async (req) => {
     const org = req.auth.organizationId;
     const select = { id: true, version: true, title: true, category: true, startsAt: true, endsAt: true, location: true, note: true, status: true, decidedAt: true, reason: true, pushStatus: true, receivedAt: true } as const;
-    const [pending, recent] = await Promise.all([
+    const [pending, recent, agenda] = await Promise.all([
       prisma.pastoralTurn.findMany({ where: { organizationId: org, status: "PENDING" }, orderBy: { startsAt: "asc" }, take: 200, select }),
       prisma.pastoralTurn.findMany({ where: { organizationId: org, status: { in: ["ACCEPTED", "REJECTED", "WITHDRAWN"] } }, orderBy: { updatedAt: "desc" }, take: 30, select }),
+      // Agenda del sacerdote: lo ya aceptado que todavía no terminó, en orden.
+      prisma.pastoralTurn.findMany({ where: { organizationId: org, status: "ACCEPTED", endsAt: { gte: new Date() } }, orderBy: { startsAt: "asc" }, take: 100, select }),
     ]);
-    return { pending, recent };
+    return { pending, recent, agenda };
   });
 
   /** Cantidad pendiente (para el indicador del menú). */
@@ -38,6 +41,9 @@ export default async function organizationTurnRoutes(app: FastifyInstance) {
     const user = await prisma.user.findUniqueOrThrow({ where: { id: req.auth.id }, select: { name: true } });
     try {
       return await prisma.$transaction(async (tx) => {
+        // Decisiones de una misma organización en fila: el `seq` (cursor de SIGyP) se asigna y se confirma en orden. Sin
+        // esto, dos decisiones simultáneas podían hacerse visibles en orden inverso y SIGyP saltarse la de `seq` menor.
+        await lockCursor(tx, "pastoral-turn-decision", req.auth.organizationId);
         const now = new Date();
         const r = await tx.pastoralTurn.updateMany({
           where: { id, organizationId: req.auth.organizationId, status: "PENDING", version: b.version },

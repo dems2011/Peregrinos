@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
-import { Bell, CalendarDays, Church, LogOut, UserRound } from "lucide-react";
+import { Bell, CalendarDays, Church, FileText, LogOut, UserRound } from "lucide-react";
 import { api } from "@/lib/api";
 import { AccountProvider, useAccount } from "@/components/account/AccountContext";
 import { PUSH_RECEIVED_EVENT } from "@/lib/pushNotifications";
@@ -11,6 +11,7 @@ const NAV = [
   { href: "/cuenta", label: "Inicio", icon: UserRound },
   { href: "/cuenta/eventos", label: "Mis eventos", icon: CalendarDays },
   { href: "/cuenta/avisos", label: "Avisos", icon: Bell },
+  { href: "/cuenta/solicitudes", label: "Solicitudes", icon: FileText },
   { href: "/cuenta/parroquias", label: "Parroquias", icon: Church },
 ];
 

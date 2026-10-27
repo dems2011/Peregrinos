@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.sigypNoticeSchema = exports.multiNoticeSchema = exports.noticeAudiencesSchema = exports.NOTICE_AUDIENCE_LABEL = exports.NOTICE_AUDIENCES = exports.turnDecisionsQuerySchema = exports.turnDecisionSchema = exports.TURN_DECISIONS = exports.sigypTurnSchema = exports.TURN_STATUSES_FROM_SIGYP = exports.sigypEventWithdrawSchema = exports.sigypEventSchema = exports.SIGYP_ATTENDANCE_MODES = exports.sigypLinkCompleteSchema = exports.sigypLinkPreviewSchema = exports.LINK_CODE_ALPHABET = exports.LINK_CODE_TTL_MINUTES = exports.sigypProfileSchema = exports.SIGYP_PROFILE_FIELDS = exports.sigypWithdrawSchema = exports.sigypAnnouncementSchema = exports.SIGYP_CATEGORY_LABEL = exports.SIGYP_CATEGORIES = exports.sigypReauthSchema = exports.sigypClientCreateSchema = exports.sigypLinkCodeCreateSchema = exports.SIGYP_SCOPE_LABEL = exports.SIGYP_DEFAULT_SCOPES = exports.SIGYP_SCOPES = exports.SIGYP_CONTRACT_VERSION = exports.SIGYP_EVENT_TYPES = void 0;
+exports.sigypNoticeSchema = exports.multiNoticeSchema = exports.noticeAudiencesSchema = exports.NOTICE_AUDIENCE_LABEL = exports.NOTICE_AUDIENCES = exports.incomingRequestsQuerySchema = exports.pilgrimRequestCreateSchema = exports.sigypRequestStatusSchema = exports.PILGRIM_REQUEST_OPEN = exports.PILGRIM_REQUEST_STATUS_LABEL = exports.PILGRIM_REQUEST_STATUSES = exports.sigypRequestTypeSchema = exports.turnDecisionsQuerySchema = exports.turnDecisionSchema = exports.TURN_DECISIONS = exports.sigypTurnSchema = exports.TURN_STATUSES_FROM_SIGYP = exports.sigypEventWithdrawSchema = exports.sigypEventSchema = exports.SIGYP_ATTENDANCE_MODES = exports.sigypLinkCompleteSchema = exports.sigypLinkPreviewSchema = exports.LINK_CODE_ALPHABET = exports.LINK_CODE_TTL_MINUTES = exports.sigypProfileSchema = exports.SIGYP_PROFILE_FIELDS = exports.sigypWithdrawSchema = exports.sigypAnnouncementSchema = exports.SIGYP_CATEGORY_LABEL = exports.SIGYP_CATEGORIES = exports.sigypReauthSchema = exports.sigypClientCreateSchema = exports.sigypLinkCodeCreateSchema = exports.SIGYP_SCOPE_LABEL = exports.SIGYP_DEFAULT_SCOPES = exports.SIGYP_SCOPES = exports.SIGYP_CONTRACT_VERSION = exports.SIGYP_EVENT_TYPES = void 0;
 exports.isAnnouncementVisible = isAnnouncementVisible;
 exports.sigypManagedFieldsIn = sigypManagedFieldsIn;
 exports.normalizeLinkCode = normalizeLinkCode;
@@ -25,9 +25,9 @@ exports.SIGYP_CONTRACT_VERSION = 1;
  * Alcances de una credencial. `notices:send` = avisos a los SEGUIDORES; `notices:staff` = avisos al PERSONAL de la
  * parroquia: es un permiso aparte que el titular (SUPERADMIN) concede de forma explícita al vincular (D3).
  */
-exports.SIGYP_SCOPES = ["announcements:write", "profile:write", "events:write", "notices:send", "notices:staff", "turns:write"];
+exports.SIGYP_SCOPES = ["announcements:write", "profile:write", "events:write", "notices:send", "notices:staff", "turns:write", "requests:sync"];
 /** Propuesta inicial de la pantalla de vinculación: todo menos los avisos al personal. */
-exports.SIGYP_DEFAULT_SCOPES = ["announcements:write", "profile:write", "events:write", "notices:send", "turns:write"];
+exports.SIGYP_DEFAULT_SCOPES = ["announcements:write", "profile:write", "events:write", "notices:send", "turns:write", "requests:sync"];
 exports.SIGYP_SCOPE_LABEL = {
     "announcements:write": "Cartelera: avisos públicos con vigencia",
     "profile:write": "Datos públicos del perfil (descripción, contacto, canales y horarios)",
@@ -35,6 +35,7 @@ exports.SIGYP_SCOPE_LABEL = {
     "notices:send": "Avisos a los seguidores de la parroquia (sin acceso a sus datos)",
     "notices:staff": "Avisos al personal de la parroquia (administración y operadores)",
     "turns:write": "Turnos que el sacerdote acepta o rechaza desde Peregrinos (sin datos de contacto)",
+    "requests:sync": "Solicitudes de los fieles: SIGyP recibe el pedido (nombre, contacto y descripción) y publica su estado",
 };
 const scopeList = zod_1.z.array(zod_1.z.enum(exports.SIGYP_SCOPES)).min(1, "Elige al menos un permiso").max(exports.SIGYP_SCOPES.length)
     .refine((s) => new Set(s).size === s.length, "Permisos repetidos");
@@ -174,6 +175,48 @@ exports.turnDecisionSchema = zod_1.z.object({
 }).strict().refine((d) => d.decision !== "REJECTED" || !!d.reason, { message: "Rechazar un turno exige un motivo", path: ["reason"] });
 /** Cursor de decisiones que lee SIGyP (`GET /turns/decisions?after=N`). */
 exports.turnDecisionsQuerySchema = zod_1.z.object({ after: zod_1.z.coerce.number().int().min(0).default(0), limit: zod_1.z.coerce.number().int().min(1).max(200).default(100) });
+/* -------- Solicitudes de los fieles (2026-10-27, alcance requests:sync) -------- */
+/**
+ * Tipo de trámite que la parroquia habilita para pedir desde Peregrinos (lo define SIGyP; Peregrinos no inventa tipos).
+ * WITHDRAWN = ya no se puede pedir en línea (las solicitudes existentes siguen).
+ */
+exports.sigypRequestTypeSchema = zod_1.z.object({
+    contract: zod_1.z.literal(1),
+    sourceId: zod_1.z.string().uuid(),
+    version: zod_1.z.number().int().min(1).max(1_000_000),
+    name: zod_1.z.string().trim().min(3).max(120),
+    description: zod_1.z.string().trim().max(600),
+    status: zod_1.z.enum(["ACTIVE", "WITHDRAWN"]),
+}).strict();
+/** Estados de una solicitud: SENT = enviada, la parroquia todavía no la recibió; el resto los fija SIGyP. */
+exports.PILGRIM_REQUEST_STATUSES = ["SENT", "RECEIVED", "IN_PROGRESS", "PENDING_APPROVAL", "APPROVED", "REJECTED", "CLOSED", "CANCELLED"];
+exports.PILGRIM_REQUEST_STATUS_LABEL = {
+    SENT: "Enviada", RECEIVED: "Recibida por la parroquia", IN_PROGRESS: "En curso", PENDING_APPROVAL: "Pendiente de aprobación",
+    APPROVED: "Aprobada", REJECTED: "Rechazada", CLOSED: "Finalizada", CANCELLED: "Cancelada",
+};
+/** Estados en los que la solicitud sigue abierta (cuentan para el tope por persona). */
+exports.PILGRIM_REQUEST_OPEN = ["SENT", "RECEIVED", "IN_PROGRESS", "PENDING_APPROVAL"];
+/**
+ * Estado que SIGyP publica (versión creciente). `message` es un texto PARA LA PERSONA que escribe expresamente quien
+ * gestiona en SIGyP (nunca las notas internas); `number` es el número de trámite de la parroquia.
+ */
+exports.sigypRequestStatusSchema = zod_1.z.object({
+    contract: zod_1.z.literal(1),
+    sourceId: zod_1.z.string().uuid(),
+    version: zod_1.z.number().int().min(1).max(1_000_000),
+    status: zod_1.z.enum(exports.PILGRIM_REQUEST_STATUSES).exclude(["SENT"]),
+    number: zod_1.z.string().trim().max(40).nullable(),
+    message: zod_1.z.string().trim().max(500).nullable(),
+}).strict();
+/** Lo que pide el fiel (desde su cuenta): nombre y correo salen de la cuenta; el teléfono es opcional. */
+exports.pilgrimRequestCreateSchema = zod_1.z.object({
+    organizationId: zod_1.z.string().uuid(),
+    typeId: zod_1.z.string().uuid(),
+    description: zod_1.z.string().trim().min(10, "Cuéntale a la parroquia qué necesitas (al menos 10 caracteres)").max(2000),
+    phone: zod_1.z.string().trim().max(40).regex(/^[0-9+()\s-]*$/, "Teléfono inválido").optional(),
+}).strict();
+/** Cursor de solicitudes nuevas que lee SIGyP (`GET /requests/incoming?after=N`). */
+exports.incomingRequestsQuerySchema = exports.turnDecisionsQuerySchema;
 /* -------- Avisos multigrupo (lógica de destinatarios compartida) -------- */
 /** Grupos de destinatarios en Peregrinos. Se derivan de datos reales: seguidores y personal según su rol. */
 exports.NOTICE_AUDIENCES = ["FOLLOWERS", "STAFF:SUPERADMIN", "STAFF:ADMIN", "STAFF:OPERATOR"];

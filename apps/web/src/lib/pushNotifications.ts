@@ -19,7 +19,7 @@ export interface PushTarget {
   organizationId: string;
   eventId?: string;
   /** Pantalla del personal a abrir (p. ej. "turns" = Turnos del sacerdote). Sin él, la bandeja del peregrino. */
-  target?: "turns";
+  target?: "turns" | "requests";
 }
 
 /** Se emite en `window` (detail: PushTarget) cuando el usuario toca una notificación; lo atiende PushHandler. */
@@ -60,7 +60,7 @@ export function toPushTarget(data: unknown): PushTarget | null {
   const d = data as Record<string, unknown>;
   if (typeof d.notificationId !== "string" || !UUID.test(d.notificationId)) return null;
   if (typeof d.organizationId !== "string" || !UUID.test(d.organizationId)) return null;
-  return { notificationId: d.notificationId, organizationId: d.organizationId, ...(typeof d.eventId === "string" && UUID.test(d.eventId) ? { eventId: d.eventId } : {}), ...(d.target === "turns" ? { target: "turns" as const } : {}) };
+  return { notificationId: d.notificationId, organizationId: d.organizationId, ...(typeof d.eventId === "string" && UUID.test(d.eventId) ? { eventId: d.eventId } : {}), ...(d.target === "turns" || d.target === "requests" ? { target: d.target } : {}) };
 }
 
 /**
@@ -69,6 +69,7 @@ export function toPushTarget(data: unknown): PushTarget | null {
  */
 export function pushTargetHref(t: PushTarget): string {
   if (t.target === "turns") return "/turnos";
+  if (t.target === "requests") return "/cuenta/solicitudes";
   return t.eventId
     ? `/parroquias/${t.organizationId}?evento=${t.eventId}`
     : `/cuenta/avisos?aviso=${t.notificationId}`;

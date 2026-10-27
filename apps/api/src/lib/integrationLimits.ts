@@ -13,3 +13,12 @@ export const MAX_ACTIVE_LINK_CODES = 3;
 export async function lockOrganization(tx: Prisma.TransactionClient, organizationId: string): Promise<void> {
   await tx.$queryRaw`SELECT "id" FROM "Organization" WHERE "id" = ${organizationId} FOR UPDATE`;
 }
+
+/**
+ * Cursores que SIGyP lee por `seq` (decisiones de turnos, solicitudes de los fieles): las altas de una organización se
+ * hacen en fila (bloqueo de transacción, sin tocar filas) para que cada `seq` se confirme en orden y una lectura
+ * `seq > cursor` nunca deje atrás una fila que todavía no era visible. Organizaciones distintas no se esperan.
+ */
+export async function lockCursor(tx: Prisma.TransactionClient, stream: string, organizationId: string): Promise<void> {
+  await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`${stream}:${organizationId}`}))::text`;
+}

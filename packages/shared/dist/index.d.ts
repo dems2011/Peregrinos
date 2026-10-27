@@ -41,7 +41,7 @@ export declare const hasEventCapability: (e: {
     capabilities: readonly string[];
 }, c: EventCapability) => boolean;
 /** Estados en los que el evento no admite operación (llegadas, altas desde inscripciones). */
-export declare const isEventOperable: (s: EventStatus) => s is "SCHEDULED" | "IN_PROGRESS";
+export declare const isEventOperable: (s: EventStatus) => s is "IN_PROGRESS" | "SCHEDULED";
 export declare const EVENT_TYPES: readonly ["PILGRIMAGE", "PROCESSION", "PATRONAL_FEAST", "LITURGICAL_CELEBRATION", "ROSARY", "RETREAT", "GATHERING", "COMMUNITY_ACTIVITY", "CULTURAL_ACTIVITY", "OTHER"];
 export type EventType = (typeof EVENT_TYPES)[number];
 /** Etiqueta de cada tipo. A4: el tipo ya no habilita módulos; eso lo deciden las capacidades del evento. */
@@ -832,7 +832,7 @@ export declare const updateEventSchema: z.ZodObject<{
     credentialMode: z.ZodOptional<z.ZodOptional<z.ZodEnum<["STANDARD", "CUSTOM"]>>>;
 }, "strip", z.ZodTypeAny, {
     type?: "OTHER" | "PILGRIMAGE" | "PROCESSION" | "PATRONAL_FEAST" | "LITURGICAL_CELEBRATION" | "ROSARY" | "RETREAT" | "GATHERING" | "COMMUNITY_ACTIVITY" | "CULTURAL_ACTIVITY" | undefined;
-    status?: "DRAFT" | "SCHEDULED" | "IN_PROGRESS" | "FINISHED" | "CANCELLED" | undefined;
+    status?: "IN_PROGRESS" | "CANCELLED" | "DRAFT" | "SCHEDULED" | "FINISHED" | undefined;
     latitude?: number | null | undefined;
     longitude?: number | null | undefined;
     timezone?: string | undefined;
@@ -876,7 +876,7 @@ export declare const updateEventSchema: z.ZodObject<{
     credentialMode?: "STANDARD" | "CUSTOM" | undefined;
 }, {
     type?: "OTHER" | "PILGRIMAGE" | "PROCESSION" | "PATRONAL_FEAST" | "LITURGICAL_CELEBRATION" | "ROSARY" | "RETREAT" | "GATHERING" | "COMMUNITY_ACTIVITY" | "CULTURAL_ACTIVITY" | undefined;
-    status?: "DRAFT" | "SCHEDULED" | "IN_PROGRESS" | "FINISHED" | "CANCELLED" | undefined;
+    status?: "IN_PROGRESS" | "CANCELLED" | "DRAFT" | "SCHEDULED" | "FINISHED" | undefined;
     latitude?: number | null | undefined;
     longitude?: number | null | undefined;
     timezone?: string | undefined;
@@ -925,10 +925,10 @@ export declare const eventListQuerySchema: z.ZodObject<{
     status: z.ZodOptional<z.ZodEnum<["DRAFT", "SCHEDULED", "IN_PROGRESS", "FINISHED", "CANCELLED"]>>;
 }, "strip", z.ZodTypeAny, {
     type?: "OTHER" | "PILGRIMAGE" | "PROCESSION" | "PATRONAL_FEAST" | "LITURGICAL_CELEBRATION" | "ROSARY" | "RETREAT" | "GATHERING" | "COMMUNITY_ACTIVITY" | "CULTURAL_ACTIVITY" | undefined;
-    status?: "DRAFT" | "SCHEDULED" | "IN_PROGRESS" | "FINISHED" | "CANCELLED" | undefined;
+    status?: "IN_PROGRESS" | "CANCELLED" | "DRAFT" | "SCHEDULED" | "FINISHED" | undefined;
 }, {
     type?: "OTHER" | "PILGRIMAGE" | "PROCESSION" | "PATRONAL_FEAST" | "LITURGICAL_CELEBRATION" | "ROSARY" | "RETREAT" | "GATHERING" | "COMMUNITY_ACTIVITY" | "CULTURAL_ACTIVITY" | undefined;
-    status?: "DRAFT" | "SCHEDULED" | "IN_PROGRESS" | "FINISHED" | "CANCELLED" | undefined;
+    status?: "IN_PROGRESS" | "CANCELLED" | "DRAFT" | "SCHEDULED" | "FINISHED" | undefined;
 }>;
 /**
  * Reglas entre campos sobre el estado final del evento (ya combinado con lo guardado).
@@ -1171,7 +1171,7 @@ export declare const updateParticipantSchema: z.ZodObject<{
     status: z.ZodOptional<z.ZodEnum<["ACTIVE", "CANCELLED"]>>;
 }, "strip", z.ZodTypeAny, {
     number?: number | undefined;
-    status?: "CANCELLED" | "ACTIVE" | undefined;
+    status?: "ACTIVE" | "CANCELLED" | undefined;
     notes?: string | undefined;
     phone?: string | undefined;
     firstName?: string | undefined;
@@ -1180,7 +1180,7 @@ export declare const updateParticipantSchema: z.ZodObject<{
     documentType?: string | undefined;
 }, {
     number?: number | undefined;
-    status?: "CANCELLED" | "ACTIVE" | undefined;
+    status?: "ACTIVE" | "CANCELLED" | undefined;
     notes?: string | undefined;
     phone?: string | undefined;
     firstName?: string | undefined;
@@ -1197,10 +1197,10 @@ export declare const participantListSchema: z.ZodObject<{
 }, "strip", z.ZodTypeAny, {
     page: number;
     pageSize: number;
-    status?: "CANCELLED" | "ACTIVE" | undefined;
+    status?: "ACTIVE" | "CANCELLED" | undefined;
     q?: string | undefined;
 }, {
-    status?: "CANCELLED" | "ACTIVE" | undefined;
+    status?: "ACTIVE" | "CANCELLED" | undefined;
     q?: string | undefined;
     page?: number | undefined;
     pageSize?: number | undefined;
@@ -1349,7 +1349,7 @@ export declare const checkinListSchema: z.ZodObject<{
 }, "strip", z.ZodTypeAny, {
     page: number;
     pageSize: number;
-    status?: "CANCELLED" | "ACTIVE" | "CONFLICT" | undefined;
+    status?: "ACTIVE" | "CANCELLED" | "CONFLICT" | undefined;
     participantId?: string | undefined;
     checkpointId?: string | undefined;
     method?: "NUMBER" | "QR" | "SEARCH" | undefined;
@@ -1357,7 +1357,7 @@ export declare const checkinListSchema: z.ZodObject<{
     from?: Date | undefined;
     to?: Date | undefined;
 }, {
-    status?: "CANCELLED" | "ACTIVE" | "CONFLICT" | undefined;
+    status?: "ACTIVE" | "CANCELLED" | "CONFLICT" | undefined;
     page?: number | undefined;
     pageSize?: number | undefined;
     participantId?: string | undefined;
@@ -1727,10 +1727,10 @@ export declare const organizationTransitionSchema: z.ZodObject<{
     to: z.ZodEnum<["DRAFT", "PENDING_REVIEW", "APPROVED", "REJECTED", "SUSPENDED", "ARCHIVED"]>;
     reason: z.ZodOptional<z.ZodString>;
 }, "strict", z.ZodTypeAny, {
-    to: "REJECTED" | "DRAFT" | "PENDING_REVIEW" | "APPROVED" | "SUSPENDED" | "ARCHIVED";
+    to: "REJECTED" | "APPROVED" | "DRAFT" | "PENDING_REVIEW" | "SUSPENDED" | "ARCHIVED";
     reason?: string | undefined;
 }, {
-    to: "REJECTED" | "DRAFT" | "PENDING_REVIEW" | "APPROVED" | "SUSPENDED" | "ARCHIVED";
+    to: "REJECTED" | "APPROVED" | "DRAFT" | "PENDING_REVIEW" | "SUSPENDED" | "ARCHIVED";
     reason?: string | undefined;
 }>;
 /** Presentación a revisión por el SUPERADMIN de la parroquia (DRAFT/REJECTED → PENDING_REVIEW). */

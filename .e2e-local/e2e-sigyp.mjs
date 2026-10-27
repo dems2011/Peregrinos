@@ -34,7 +34,7 @@ const followerB = await follower("seguidor.b@test.local", "30111003", orgB.id);
 await prisma.parishFollower.create({ data: { organizationId: orgA.id, userId: adminA.id } });
 console.log("— Datos de prueba listos");
 
-const cfg = { base: "http://127.0.0.1:4555", password: "Peregrinos2026!", superA: "superadmin@peregrinos.local", superB: "superadmin.b@peregrinos.local", adminA: "admin@peregrinos.local", orgA: orgA.id, orgB: orgB.id };
+const cfg = { base: "http://127.0.0.1:4555", password: "Peregrinos2026!", superA: "superadmin@peregrinos.local", superB: "superadmin.b@peregrinos.local", adminA: "admin@peregrinos.local", orgA: orgA.id, orgB: orgB.id, pilgrimA: "seguidor1@test.local", pilgrimA2: "seguidor2@test.local", pilgrimB: "seguidor.b@test.local", pilgrimPassword: PWD };
 const out = await new Promise((ok) => {
   const p = spawn(process.execPath, ["--import", "tsx", "--test", "--test-concurrency=1", "test/x1-peregrinos-e2e.test.ts"], { cwd: SIGYP_API, env: { ...process.env, PEREGRINOS_E2E: JSON.stringify(cfg), DATABASE_URL: "" } });
   let s = "";
@@ -90,6 +90,20 @@ check("turnos: auditados en Peregrinos (recibido y decidido)", (await prisma.aud
 const turnNotices = await prisma.notification.findMany({ where: { organizationId: orgA.id, kind: "TURN_REQUEST" }, include: { recipients: true } });
 check("turnos: aviso TURN_REQUEST por turno para quien decide (bandeja del personal)", turnNotices.length === 2 && turnNotices.every((n) => n.recipients.length >= 1));
 check("turnos: push honesto sin FCM en pruebas (NOT_CONFIGURED, no se finge enviado)", pt.every((t) => t.pushStatus === "NOT_CONFIGURED"), pt.map((t) => t.pushStatus));
+// Solicitudes de los fieles (2026-10-27): lo que la suite x1 hizo con un fiel real en este Peregrinos.
+const reqIds = JSON.parse((clean.match(/X1_REQUESTS (\{.*\})/) ?? [, "{}"])[1]);
+const pr = reqIds.request ? await prisma.pilgrimRequest.findUnique({ where: { id: reqIds.request } }) : null;
+check("solicitudes: la del fiel quedó FINALIZADA con el número y el mensaje de la parroquia", pr?.status === "CLOSED" && pr.number === reqIds.number && !!pr.message && pr.statusVersion >= 3, pr && { status: pr.status, v: pr.statusVersion });
+check("solicitudes: ninguna en B (sin requests:sync) y un solo tipo publicado en A", (await prisma.pilgrimRequest.count({ where: { organizationId: orgB.id } })) === 0 && (await prisma.parishRequestType.count({ where: { organizationId: orgA.id } })) === 1);
+check("solicitudes: avisos REQUEST_STATUS solo al fiel que pidió (uno por cambio de estado, texto genérico)", await (async () => {
+  const ns = await prisma.notification.findMany({ where: { organizationId: orgA.id, kind: "REQUEST_STATUS" }, include: { recipients: true } });
+  return ns.length >= 2 && ns.every((n) => n.recipients.length === 1 && n.recipients[0].userId === pr?.userId && !/Bautismo/.test(n.title + n.body));
+})());
+check("solicitudes: auditadas (pedido del fiel sin la descripción; estados recibidos de SIGyP)", await (async () => {
+  const created = await prisma.auditLog.findMany({ where: { action: "PILGRIM_REQUEST_CREATED", entityId: reqIds.request } });
+  const states = await prisma.auditLog.count({ where: { action: "SIGYP_REQUEST_STATUS", entityId: reqIds.request } });
+  return created.length === 1 && !JSON.stringify(created[0].metadata).includes("bautizar") && states >= 3;
+})());
 check("D2: el ADMIN no emitió ningún código ni credencial", (await prisma.integrationLinkCode.count({ where: { createdById: adminA.id } })) === 0 && (await prisma.integrationClient.count({ where: { createdById: adminA.id } })) === 0);
 await prisma.$disconnect();
 done("E2E SIGyP ↔ Peregrinos");

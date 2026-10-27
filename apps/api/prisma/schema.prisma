@@ -77,6 +77,8 @@ model Organization {
   integrationLinkCodes IntegrationLinkCode[]
   announcements        ParishAnnouncement[]
   pastoralTurns        PastoralTurn[]
+  requestTypes         ParishRequestType[]
+  pilgrimRequests      PilgrimRequest[]
 }
 
 /// A4a: identidad humana. Independiente de la cuenta (User), de la participación (Participant) y de la inscripción
@@ -222,6 +224,7 @@ model User {
   mediaUploaded            MediaAsset[]
   /// Push: dispositivos (tokens FCM) registrados por esta cuenta.
   deviceTokens             DeviceToken[]
+  pilgrimRequests          PilgrimRequest[]
   /// B5: registros creados por esta cuenta del personal (autoría; SetNull si se borrara).
   livestreamsCreated       ParishLivestream[]
   imagesUploaded           ContentImage[]
@@ -1352,6 +1355,8 @@ enum NotificationKind {
   BULLETIN
   /// Turno que SIGyP pide decidir al sacerdote (2026-10-27).
   TURN_REQUEST
+  /// Cambio de estado de una solicitud del fiel, publicado por SIGyP (2026-10-27).
+  REQUEST_STATUS
 }
 
 /// B1 — Imagen subida por la parroquia, guardada en la base (el disco del servidor no es persistente). El tipo, las
@@ -1937,4 +1942,49 @@ model PastoralTurnDecision {
   /// Una decisión por (turno, versión): un doble clic o dos sesiones no decide dos veces.
   @@unique([turnId, version])
   @@index([organizationId, seq])
+}
+
+/// Tipo de trámite que la parroquia habilitó en SIGyP para pedir desde Peregrinos (2026-10-27). Lo define SIGyP.
+model ParishRequestType {
+  id             String           @id @default(uuid())
+  organizationId String
+  sourceSystem   String           @default("SIGYP")
+  sourceId       String
+  version        Int
+  name           String
+  description    String           @default("")
+  active         Boolean          @default(true)
+  updatedAt      DateTime         @updatedAt
+  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  requests       PilgrimRequest[]
+
+  @@unique([organizationId, sourceSystem, sourceId])
+  @@index([organizationId, active])
+}
+
+/// Solicitud que un fiel hace a su parroquia desde Peregrinos (2026-10-27). `id` es el identificador que ve SIGyP;
+/// `seq` es el cursor con el que SIGyP la recoge (nunca se reutiliza). El estado lo publica SIGyP (versión creciente).
+model PilgrimRequest {
+  id             String            @id @default(uuid())
+  seq            Int               @unique @default(autoincrement())
+  organizationId String
+  userId         String
+  typeId         String
+  typeName       String
+  requesterName  String
+  requesterEmail String
+  requesterPhone String?
+  description    String
+  status         String            @default("SENT")
+  statusVersion  Int               @default(0)
+  number         String?
+  message        String?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  organization   Organization      @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  user           User              @relation(fields: [userId], references: [id], onDelete: Restrict)
+  type           ParishRequestType @relation(fields: [typeId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, seq])
+  @@index([userId, createdAt])
 }

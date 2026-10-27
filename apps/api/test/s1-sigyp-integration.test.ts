@@ -156,7 +156,8 @@ describe("S1: eventos desde SIGyP con el modelo Event de Peregrinos", () => {
   });
   it("la fuente: no avisa a los seguidores, solo INFO/LOCATION, versión en la base y el panel no lo edita", () => {
     const r = read("src/routes/sigypIntegration.ts");
-    const events = r.slice(r.indexOf('app.put("/events/:sourceId"'), r.indexOf("/* ---------- Avisos multigrupo"));
+    // Hasta los turnos (2026-10-27): lo que sigue (turnos, solicitudes) sí avisa a sus destinatarios, con su propia prueba (s8, s9).
+    const events = r.slice(r.indexOf('app.put("/events/:sourceId"'), r.indexOf('app.put("/turns/:sourceId"'));
     assert.ok(!/notifyFollowers|notifyEventPublishedIfDue|pushNotification/.test(events), "publicar un evento no envía avisos");
     assert.match(events, /publishedNotifiedAt: new Date\(\)/);
     assert.match(events, /\["INFO", "LOCATION"\]/);

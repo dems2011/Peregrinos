@@ -18,10 +18,10 @@ export const SIGYP_CONTRACT_VERSION = 1;
  * Alcances de una credencial. `notices:send` = avisos a los SEGUIDORES; `notices:staff` = avisos al PERSONAL de la
  * parroquia: es un permiso aparte que el titular (SUPERADMIN) concede de forma explícita al vincular (D3).
  */
-export const SIGYP_SCOPES = ["announcements:write", "profile:write", "events:write", "notices:send", "notices:staff", "turns:write"] as const;
+export const SIGYP_SCOPES = ["announcements:write", "profile:write", "events:write", "notices:send", "notices:staff", "turns:write", "requests:sync"] as const;
 export type SigypScope = (typeof SIGYP_SCOPES)[number];
 /** Propuesta inicial de la pantalla de vinculación: todo menos los avisos al personal. */
-export const SIGYP_DEFAULT_SCOPES: readonly SigypScope[] = ["announcements:write", "profile:write", "events:write", "notices:send", "turns:write"];
+export const SIGYP_DEFAULT_SCOPES: readonly SigypScope[] = ["announcements:write", "profile:write", "events:write", "notices:send", "turns:write", "requests:sync"];
 export const SIGYP_SCOPE_LABEL: Record<SigypScope, string> = {
   "announcements:write": "Cartelera: avisos públicos con vigencia",
   "profile:write": "Datos públicos del perfil (descripción, contacto, canales y horarios)",
@@ -29,6 +29,7 @@ export const SIGYP_SCOPE_LABEL: Record<SigypScope, string> = {
   "notices:send": "Avisos a los seguidores de la parroquia (sin acceso a sus datos)",
   "notices:staff": "Avisos al personal de la parroquia (administración y operadores)",
   "turns:write": "Turnos que el sacerdote acepta o rechaza desde Peregrinos (sin datos de contacto)",
+  "requests:sync": "Solicitudes de los fieles: SIGyP recibe el pedido (nombre, contacto y descripción) y publica su estado",
 };
 const scopeList = z.array(z.enum(SIGYP_SCOPES)).min(1, "Elige al menos un permiso").max(SIGYP_SCOPES.length)
   .refine((s) => new Set(s).size === s.length, "Permisos repetidos");
@@ -187,6 +188,57 @@ export const turnDecisionSchema = z.object({
 
 /** Cursor de decisiones que lee SIGyP (`GET /turns/decisions?after=N`). */
 export const turnDecisionsQuerySchema = z.object({ after: z.coerce.number().int().min(0).default(0), limit: z.coerce.number().int().min(1).max(200).default(100) });
+
+/* -------- Solicitudes de los fieles (2026-10-27, alcance requests:sync) -------- */
+
+/**
+ * Tipo de trámite que la parroquia habilita para pedir desde Peregrinos (lo define SIGyP; Peregrinos no inventa tipos).
+ * WITHDRAWN = ya no se puede pedir en línea (las solicitudes existentes siguen).
+ */
+export const sigypRequestTypeSchema = z.object({
+  contract: z.literal(1),
+  sourceId: z.string().uuid(),
+  version: z.number().int().min(1).max(1_000_000),
+  name: z.string().trim().min(3).max(120),
+  description: z.string().trim().max(600),
+  status: z.enum(["ACTIVE", "WITHDRAWN"]),
+}).strict();
+export type SigypRequestType = z.infer<typeof sigypRequestTypeSchema>;
+
+/** Estados de una solicitud: SENT = enviada, la parroquia todavía no la recibió; el resto los fija SIGyP. */
+export const PILGRIM_REQUEST_STATUSES = ["SENT", "RECEIVED", "IN_PROGRESS", "PENDING_APPROVAL", "APPROVED", "REJECTED", "CLOSED", "CANCELLED"] as const;
+export type PilgrimRequestStatus = (typeof PILGRIM_REQUEST_STATUSES)[number];
+export const PILGRIM_REQUEST_STATUS_LABEL: Record<PilgrimRequestStatus, string> = {
+  SENT: "Enviada", RECEIVED: "Recibida por la parroquia", IN_PROGRESS: "En curso", PENDING_APPROVAL: "Pendiente de aprobación",
+  APPROVED: "Aprobada", REJECTED: "Rechazada", CLOSED: "Finalizada", CANCELLED: "Cancelada",
+};
+/** Estados en los que la solicitud sigue abierta (cuentan para el tope por persona). */
+export const PILGRIM_REQUEST_OPEN: readonly PilgrimRequestStatus[] = ["SENT", "RECEIVED", "IN_PROGRESS", "PENDING_APPROVAL"];
+
+/**
+ * Estado que SIGyP publica (versión creciente). `message` es un texto PARA LA PERSONA que escribe expresamente quien
+ * gestiona en SIGyP (nunca las notas internas); `number` es el número de trámite de la parroquia.
+ */
+export const sigypRequestStatusSchema = z.object({
+  contract: z.literal(1),
+  sourceId: z.string().uuid(),
+  version: z.number().int().min(1).max(1_000_000),
+  status: z.enum(PILGRIM_REQUEST_STATUSES).exclude(["SENT"]),
+  number: z.string().trim().max(40).nullable(),
+  message: z.string().trim().max(500).nullable(),
+}).strict();
+export type SigypRequestStatus = z.infer<typeof sigypRequestStatusSchema>;
+
+/** Lo que pide el fiel (desde su cuenta): nombre y correo salen de la cuenta; el teléfono es opcional. */
+export const pilgrimRequestCreateSchema = z.object({
+  organizationId: z.string().uuid(),
+  typeId: z.string().uuid(),
+  description: z.string().trim().min(10, "Cuéntale a la parroquia qué necesitas (al menos 10 caracteres)").max(2000),
+  phone: z.string().trim().max(40).regex(/^[0-9+()\s-]*$/, "Teléfono inválido").optional(),
+}).strict();
+
+/** Cursor de solicitudes nuevas que lee SIGyP (`GET /requests/incoming?after=N`). */
+export const incomingRequestsQuerySchema = turnDecisionsQuerySchema;
 
 /* -------- Avisos multigrupo (lógica de destinatarios compartida) -------- */
 

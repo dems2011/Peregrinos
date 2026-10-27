@@ -51,6 +51,7 @@ import bulletinRoutes from "./routes/bulletins";
 import sigypIntegrationRoutes from "./routes/sigypIntegration";
 import organizationIntegrationRoutes from "./routes/organizationIntegrations";
 import organizationTurnRoutes from "./routes/organizationTurns";
+import pilgrimRequestRoutes from "./routes/pilgrimRequests";
 import staffInboxRoutes from "./routes/staffInbox";
 import certificateRoutes, { certificatePublicRoutes } from "./routes/certificates";
 import inventoryRoutes from "./routes/inventory";
@@ -166,6 +167,7 @@ export async function buildApp() {
   // B1: perfil público de parroquias (sin sesión), chat por evento e informe del evento.
   await app.register(publicRoutes, { prefix: "/api/public" });
   await app.register(accountSocialRoutes, { prefix: "/api/auth/account" });
+  await app.register(pilgrimRequestRoutes, { prefix: "/api/auth/account/requests" });
   await app.register(chatRoutes, { prefix: "/api/events/:eventId/chat" });
   await app.register(reportRoutes, { prefix: "/api/events/:eventId/report" });
   // B5: herramientas parroquiales (cada una con su permiso; todo acotado a la organización de la sesión).

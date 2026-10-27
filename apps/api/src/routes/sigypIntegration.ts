@@ -4,7 +4,7 @@ import { z } from "zod";
 import {
   SIGYP_CONTRACT_VERSION, SIGYP_SCOPE_LABEL, sigypAllowedAudiences, sigypAnnouncementSchema, sigypEventSchema,
   sigypEventWithdrawSchema, sigypLinkCompleteSchema, sigypLinkPreviewSchema, sigypNoticeSchema, sigypProfileSchema, sigypTurnSchema, sigypWithdrawSchema,
-  turnDecisionsQuerySchema,
+  turnDecisionsQuerySchema, sigypRequestTypeSchema, sigypRequestStatusSchema, incomingRequestsQuerySchema, PILGRIM_REQUEST_STATUS_LABEL,
   type NoticeAudience, type SigypScope,
 } from "@peregrinos/shared";
 import { prisma } from "../lib/prisma";
@@ -322,6 +322,79 @@ export default async function sigypIntegrationRoutes(app: FastifyInstance) {
       select: { seq: true, sourceId: true, version: true, decision: true, reason: true, decidedAt: true, decidedByName: true },
     });
     return { items, next: items.length ? items[items.length - 1].seq : q.after };
+  });
+
+  /* ---------- Solicitudes de los fieles (2026-10-27) ---------- */
+
+  /** Tipo de trámite que se puede pedir en línea (o su retiro). Versión creciente; igual o menor = «stale». */
+  app.put("/request-types/:sourceId", rl(60), async (req) => {
+    const c = await client(req, "requests:sync");
+    const { sourceId } = sourceParam.parse(req.params);
+    const v = sigypRequestTypeSchema.parse(req.body);
+    if (v.sourceId !== sourceId) throw new AppError(409, "SOURCE_MISMATCH", "El identificador del tipo no coincide con la ruta.");
+    const key = { organizationId_sourceSystem_sourceId: { organizationId: c.organizationId, sourceSystem: SOURCE, sourceId } };
+    const data = { version: v.version, name: v.name, description: v.description, active: v.status === "ACTIVE" };
+    const status = await prisma.$transaction(async (tx) => {
+      const cur = await tx.parishRequestType.findUnique({ where: key });
+      if (versionOutcome(cur?.version, v.version) === "stale") return "stale" as const;
+      if (!cur && v.status === "WITHDRAWN") return "applied" as const;
+      if (cur) {
+        if ((await tx.parishRequestType.updateMany({ where: { id: cur.id, version: { lt: v.version } }, data })).count !== 1) return "stale" as const;
+      } else {
+        try { await tx.parishRequestType.create({ data: { ...data, organizationId: c.organizationId, sourceSystem: SOURCE, sourceId } }); } catch (e) {
+          if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") return "stale" as const;
+          throw e;
+        }
+      }
+      await auditTx(tx, req, { action: "SIGYP_REQUEST_TYPE_APPLIED", entityType: "ParishRequestType", entityId: sourceId, organizationId: c.organizationId, userId: null, metadata: { version: v.version, status: v.status, clientId: c.id } });
+      return "applied" as const;
+    });
+    return { status, version: v.version };
+  });
+
+  /**
+   * Solicitudes nuevas de los fieles, en orden, desde un cursor (`after` = último `seq` ya recibido en SIGyP). Es lo que
+   * la persona escribió para su parroquia: nombre y correo de su cuenta, teléfono opcional, tipo y descripción.
+   */
+  app.get("/requests/incoming", rl(120), async (req) => {
+    const c = await client(req, "requests:sync");
+    const q = incomingRequestsQuerySchema.parse(req.query);
+    const rows = await prisma.pilgrimRequest.findMany({
+      where: { organizationId: c.organizationId, seq: { gt: q.after } }, orderBy: { seq: "asc" }, take: q.limit,
+      select: { seq: true, id: true, typeName: true, requesterName: true, requesterEmail: true, requesterPhone: true, description: true, createdAt: true, type: { select: { sourceId: true } } },
+    });
+    const items = rows.map(({ id, type, ...r }) => ({ ...r, sourceId: id, typeSourceId: type.sourceId }));
+    return { items, next: items.length ? items[items.length - 1].seq : q.after };
+  });
+
+  /**
+   * Estado de una solicitud publicado por SIGyP (versión creciente). Avisa a la persona en su bandeja y por push con un
+   * texto GENÉRICO (sin el tipo de trámite ni el mensaje: pueden ser datos sacramentales y el push se ve con el teléfono
+   * bloqueado); el detalle está en «Mis solicitudes», con sesión.
+   */
+  app.put("/requests/:sourceId/status", rl(120), async (req) => {
+    const c = await client(req, "requests:sync");
+    const { sourceId } = sourceParam.parse(req.params);
+    const v = sigypRequestStatusSchema.parse(req.body);
+    if (v.sourceId !== sourceId) throw new AppError(409, "SOURCE_MISMATCH", "El identificador de la solicitud no coincide con la ruta.");
+    const out = await prisma.$transaction(async (tx) => {
+      const cur = await tx.pilgrimRequest.findFirst({ where: { id: sourceId, organizationId: c.organizationId }, select: { id: true, userId: true, status: true, statusVersion: true } });
+      if (!cur) throw notFound("Solicitud no encontrada.");
+      const r = await tx.pilgrimRequest.updateMany({ where: { id: cur.id, statusVersion: { lt: v.version } }, data: { status: v.status, statusVersion: v.version, number: v.number, message: v.message } });
+      if (r.count !== 1) return { status: "stale" as const, notification: null };
+      const notification = cur.status === v.status ? null : await tx.notification.create({
+        data: {
+          organizationId: c.organizationId, kind: "REQUEST_STATUS", delivery: "PUSH", recipientCount: 1,
+          title: "Novedades sobre tu solicitud",
+          body: `${c.organization.name}: ${PILGRIM_REQUEST_STATUS_LABEL[v.status]}. Mira el detalle en «Mis solicitudes».`,
+          recipients: { create: { userId: cur.userId } },
+        },
+      });
+      await auditTx(tx, req, { action: "SIGYP_REQUEST_STATUS", entityType: "PilgrimRequest", entityId: cur.id, organizationId: c.organizationId, userId: null, metadata: { version: v.version, from: cur.status, to: v.status, clientId: c.id } });
+      return { status: "applied" as const, notification };
+    });
+    if (out.notification) void pushNotification({ ...out.notification, extraData: { target: "requests" } });
+    return { status: out.status, version: v.version };
   });
 
   /* ---------- Avisos multigrupo ---------- */

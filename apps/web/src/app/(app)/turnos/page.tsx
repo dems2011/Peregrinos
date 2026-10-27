@@ -20,7 +20,7 @@ const STATUS: Record<Turn["status"], [string, string]> = { PENDING: ["Pendiente"
 export default function Turnos() {
   const { can, reloadCounters } = useApp();
   const allowed = can("turn:decide");
-  const list = useLoad(() => (allowed ? api<{ pending: Turn[]; recent: Turn[] }>("/organization/turns") : Promise.resolve(null)), [allowed]);
+  const list = useLoad(() => (allowed ? api<{ pending: Turn[]; recent: Turn[]; agenda?: Turn[] }>("/organization/turns") : Promise.resolve(null)), [allowed]);
   if (!allowed) return <Page title="Turnos"><div className="alert warn">No tienes permiso para decidir turnos.</div></Page>;
   const tz: string | undefined = undefined; // zona por defecto de la organización (DEFAULT_TIMEZONE)
   const done = async () => { await list.reload(); await reloadCounters(); };
@@ -33,6 +33,16 @@ export default function Turnos() {
           <h2>Para decidir ({list.data.pending.length})</h2>
           {list.data.pending.length === 0 && <p className="muted" data-testid="turns-empty">No hay turnos pendientes.</p>}
           <div className="stack">{list.data.pending.map((t) => <PendingTurn key={`${t.id}:${t.version}`} t={t} tz={tz} onDone={done} />)}</div>
+          <h2>Mi agenda ({list.data.agenda?.length ?? 0})</h2>
+          {!list.data.agenda?.length ? <p className="muted">No hay turnos aceptados próximos.</p> : (
+            <div className="stack-sm" data-testid="turns-agenda">
+              {list.data.agenda.map((t) => (
+                <div key={t.id} className="card small">
+                  <b>{fmtDateTimeMedium(t.startsAt, tz)} – {fmtDateTimeMedium(t.endsAt, tz, undefined, false)}</b> · {t.title}{t.location && <span className="muted"> · {t.location}</span>}
+                </div>
+              ))}
+            </div>
+          )}
           {list.data.recent.length > 0 && (
             <>
               <h2>Recientes</h2>
