@@ -62,7 +62,9 @@ describe("Push: envío de avisos a los seguidores", () => {
     assert.match(follow, /notificationRecipient\.createMany/);
   });
   it("sin Firebase configurado no hace nada; nunca lanza", () => {
-    assert.match(push, /if \(!pushConfigured\(\)\) return;/);
+    // 2026-10-27: el envío vive en sendNotificationPush (devuelve el resultado para los turnos); pushNotification lo
+    // envuelve y nunca lanza.
+    assert.match(push, /if \(!pushConfigured\(\)\) return null;/);
     assert.match(push, /\} catch \(e\) \{\s*console\.error\(/);
   });
   it("destinatarios del aviso guardado y solo tokens activos (revokedAt IS NULL)", () => {
@@ -70,7 +72,8 @@ describe("Push: envío de avisos a los seguidores", () => {
     assert.match(push, /deviceToken\.findMany\(\{ where: \{ userId: \{ in: userIds \}, revokedAt: null \}/);
   });
   it("datos para abrir el aviso en la app: notificationId, organizationId y eventId si existe", () => {
-    assert.match(push, /const data: Record<string, string> = \{ notificationId: n\.id, organizationId: n\.organizationId \}/);
+    // Datos extra (p. ej. la pantalla de turnos) primero: notificationId y organizationId nunca se pueden pisar.
+    assert.match(push, /const data: Record<string, string> = \{ \.\.\.\(n\.extraData \?\? \{\}\), notificationId: n\.id, organizationId: n\.organizationId \}/);
     assert.match(push, /if \(n\.eventId\) data\.eventId = n\.eventId;/);
   });
   it("los tokens que FCM rechaza quedan dados de baja (revokedAt), sin borrar", () => {

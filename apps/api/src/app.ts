@@ -50,6 +50,8 @@ import donationRoutes from "./routes/donations";
 import bulletinRoutes from "./routes/bulletins";
 import sigypIntegrationRoutes from "./routes/sigypIntegration";
 import organizationIntegrationRoutes from "./routes/organizationIntegrations";
+import organizationTurnRoutes from "./routes/organizationTurns";
+import staffInboxRoutes from "./routes/staffInbox";
 import certificateRoutes, { certificatePublicRoutes } from "./routes/certificates";
 import inventoryRoutes from "./routes/inventory";
 import groupRoutes from "./routes/groups";
@@ -177,6 +179,9 @@ export async function buildApp() {
   // SIGyP (Gestión Parroquial): entrada autenticada por credencial de organización y su administración.
   await app.register(sigypIntegrationRoutes, { prefix: "/api/integrations/sigyp/v1" });
   await app.register(organizationIntegrationRoutes, { prefix: "/api/organization/integrations/sigyp" });
+  // Turnos que decide el sacerdote, y bandeja y teléfono del personal (2026-10-27).
+  await app.register(organizationTurnRoutes, { prefix: "/api/organization/turns" });
+  await app.register(staffInboxRoutes, { prefix: "/api/staff" });
   await app.register(certificateRoutes, { prefix: "/api/organization/certificates" });
   await app.register(certificatePublicRoutes, { prefix: "/api/public" });
   await app.register(inventoryRoutes, { prefix: "/api/organization/inventory" });

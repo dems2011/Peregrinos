@@ -18,6 +18,8 @@ export interface PushTarget {
   notificationId: string;
   organizationId: string;
   eventId?: string;
+  /** Pantalla del personal a abrir (p. ej. "turns" = Turnos del sacerdote). Sin él, la bandeja del peregrino. */
+  target?: "turns";
 }
 
 /** Se emite en `window` (detail: PushTarget) cuando el usuario toca una notificación; lo atiende PushHandler. */
@@ -36,6 +38,8 @@ let active = false;
 let listeners: Promise<void> | null = null;
 /** Último toque recibido antes de que alguien lo atienda (la app pudo abrirse desde la notificación). */
 let pendingOpen: PushTarget | null = null;
+/** Dónde se registra el token: cuenta del peregrino o personal (el mismo teléfono puede pasar de una a otra). */
+let devicesPath = "/auth/account/devices";
 
 /**
  * El plugin se devuelve ENVUELTO ({ push }): un plugin de Capacitor es un proxy que responde a cualquier método, y si
@@ -56,7 +60,7 @@ export function toPushTarget(data: unknown): PushTarget | null {
   const d = data as Record<string, unknown>;
   if (typeof d.notificationId !== "string" || !UUID.test(d.notificationId)) return null;
   if (typeof d.organizationId !== "string" || !UUID.test(d.organizationId)) return null;
-  return { notificationId: d.notificationId, organizationId: d.organizationId, ...(typeof d.eventId === "string" && UUID.test(d.eventId) ? { eventId: d.eventId } : {}) };
+  return { notificationId: d.notificationId, organizationId: d.organizationId, ...(typeof d.eventId === "string" && UUID.test(d.eventId) ? { eventId: d.eventId } : {}), ...(d.target === "turns" ? { target: "turns" as const } : {}) };
 }
 
 /**
@@ -64,6 +68,7 @@ export function toPushTarget(data: unknown): PushTarget | null {
  * evento resaltado; sin evento, la bandeja de avisos con ese aviso abierto.
  */
 export function pushTargetHref(t: PushTarget): string {
+  if (t.target === "turns") return "/turnos";
   return t.eventId
     ? `/parroquias/${t.organizationId}?evento=${t.eventId}`
     : `/cuenta/avisos?aviso=${t.notificationId}`;
@@ -88,7 +93,7 @@ export function takePendingPushOpen(): PushTarget | null {
 
 async function sendToken(t: string) {
   try {
-    await api("/auth/account/devices", { method: "POST", body: JSON.stringify({ token: t, platform: "ANDROID" }) });
+    await api(devicesPath, { method: "POST", body: JSON.stringify({ token: t, platform: "ANDROID" }) });
   } catch (e) {
     console.warn("[push] No se pudo registrar el dispositivo:", e instanceof Error ? e.message : e);
   }
@@ -133,6 +138,17 @@ export async function initPushListeners() {
  * dispositivo en FCM y envía el token al API (el listener "registration" lo recibe).
  */
 export async function enablePushForAccount() {
+  devicesPath = "/auth/account/devices";
+  await enablePush();
+}
+
+/** Igual, para el personal (p. ej. el sacerdote que decide turnos): registra el teléfono en /api/staff/devices. */
+export async function enablePushForStaff() {
+  devicesPath = "/staff/devices";
+  await enablePush();
+}
+
+async function enablePush() {
   try {
     const p = await plugin();
     if (!p) return;
@@ -152,6 +168,9 @@ export async function enablePushForAccount() {
   }
 }
 
+/** Baja del teléfono del personal al cerrar sesión (mismo token; la ruta es la que se usó al registrarlo). */
+export const disablePushForStaff = () => disablePushForAccount();
+
 /** Espera máxima de la baja: el cierre de sesión no queda colgado si el API tarda (p. ej. arranque en frío). */
 const REVOKE_TIMEOUT_MS = 5000;
 
@@ -162,7 +181,7 @@ export async function disablePushForAccount() {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), REVOKE_TIMEOUT_MS);
   try {
-    await api("/auth/account/devices", { method: "DELETE", body: JSON.stringify({ token }), signal: ctrl.signal });
+    await api(devicesPath, { method: "DELETE", body: JSON.stringify({ token }), signal: ctrl.signal });
   } catch (e) {
     console.warn("[push] No se pudo dar de baja el dispositivo:", e instanceof Error ? e.message : e);
   } finally {

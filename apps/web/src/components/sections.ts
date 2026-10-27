@@ -1,5 +1,5 @@
 import {
-  BarChart3, Boxes, CalendarClock, CalendarCog, CalendarDays, Church, ClipboardList, Clock, FileBadge, HandHeart, HeartHandshake, History, IdCard,
+  BarChart3, Bell, Boxes, CalendarCheck, CalendarClock, CalendarCog, CalendarDays, Church, ClipboardList, Clock, FileBadge, HandHeart, HeartHandshake, History, IdCard,
   KeyRound, MapPin, Megaphone, MessagesSquare, Newspaper, Phone, Radio, ScanLine, ShieldCheck, Users, UsersRound, Wallet,
 } from "lucide-react";
 import { hasEventCapability, type EventCapability, type Permission } from "@peregrinos/shared";
@@ -42,13 +42,15 @@ export const ADMIN_SECTIONS: (Section & { group: AdminGroup })[] = [
   { group: "Perfil y publicaciones", href: "/configuracion/transmisiones", label: "Transmisiones en vivo", sub: "Misas y celebraciones por YouTube", icon: Radio, color: "#D94343", perm: "stream:manage" },
   { group: "Eventos y seguimiento", href: "/configuracion/eventos", label: "Eventos", sub: "Todos los eventos por tipo y estado; elegir con cuál trabajar", icon: CalendarDays, color: "#0E9AA7", perm: "event:update" },
   { group: "Agenda y vida parroquial", href: "/configuracion/agenda", label: "Agenda pastoral", sub: "Misas, confesiones, adoración y actividades", icon: CalendarClock, color: "#18A957", perm: "agenda:manage" },
+  { group: "Agenda y vida parroquial", href: "/turnos", label: "Turnos", sub: "Aceptar o rechazar los turnos que pide la secretaría (SIGyP)", icon: CalendarCheck, color: "#0B3158", perm: "turn:decide" },
   { group: "Agenda y vida parroquial", href: "/configuracion/grupos", label: "Grupos pastorales", sub: "Grupos, miembros y asistencia", icon: UsersRound, color: "#7B3FE4", perm: "group:manage" },
   { group: "Donaciones", href: "/configuracion/donaciones", label: "Donaciones", sub: "Campañas con enlace de Mercado Pago", icon: HeartHandshake, color: "#D9467A", perm: "donation:manage" },
   { group: "Administración parroquial", href: "/configuracion/certificados", label: "Certificados", sub: "Solicitudes de partidas sacramentales", icon: FileBadge, color: "#1677FF", perm: "certificate:manage" },
   { group: "Administración parroquial", href: "/configuracion/inventario", label: "Inventario", sub: "Bienes y recursos de la parroquia", icon: Boxes, color: "#4A5563", perm: "inventory:manage" },
   { group: "Acceso y permisos", href: "/configuracion/usuarios", label: "Usuarios e invitaciones", sub: "Equipo, invitaciones, permisos y puntos asignados", icon: Users, color: "#7B3FE4", perm: ["user:manage", "invitation:manage", "assignment:manage"] },
   { group: "Acceso y permisos", href: "/configuracion/auditoria", label: "Auditoría", sub: "Quién hizo cada acción", icon: History, color: "#4A5563", perm: "audit:read" },
-  // Disponible para todo el personal: cada cuenta cambia su propia contraseña.
+  // Disponibles para todo el personal: sus avisos y su propia contraseña.
+  { group: "Acceso y permisos", href: "/bandeja", label: "Mis avisos", sub: "Avisos de la parroquia y de SIGyP para el personal", icon: Bell, color: "#F29B18" },
   { group: "Acceso y permisos", href: "/configuracion/seguridad", label: "Seguridad de la cuenta", sub: "Cambiar contraseña", icon: ShieldCheck, color: "#0F766E" },
 ];
 

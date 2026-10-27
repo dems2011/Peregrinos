@@ -7,6 +7,12 @@ propietario en el momento. Claude no ejecuta `db:deploy` ni `git push` (bloquead
 |---|---|
 | 28 `20261019000000_sigyp_integration` | Tablas `IntegrationClient` y `ParishAnnouncement`; 4 columnas nuevas en `Organization` (nulas o con valor por defecto); 3 CHECK |
 | 29 `20261019000100_sigyp_link_events_notices` | Tabla `IntegrationLinkCode`; 5 columnas en `Event` y 5 en `Notification` (nulas o con valor por defecto); 3 índices únicos; 6 CHECK |
+| 30 `20261027000000_pastoral_turns` (2026-10-27) | Turnos del sacerdote: tablas `PastoralTurn` y `PastoralTurnDecision`, valor `TURN_REQUEST` en `NotificationKind`, 6 CHECK. Aditiva |
+
+**Desde el 2026-10-27 son TRES migraciones pendientes (28, 29 y 30).** Donde abajo dice «2 pendientes» o «28/29», léase
+«3 pendientes» (las tres anteriores) y «28/29/30»; la reversión va en orden inverso: primero
+`rollback/20261027_pastoral_turns_rollback.sql`, después `rollback/20261019_sigyp_rollback.sql`. El ensayo
+`migraciones-actualizacion.sh` ya cubre 27 → 30 → reversión → 30.
 
 Ninguna borra ni modifica datos. Las correcciones de seguridad D1–D4 (2026-10-26) **no agregan migraciones** en
 Peregrinos. (SIGyP tiene su propia migración `20261026000000_peregrinos_link_scopes_staff_notices` en su propia base

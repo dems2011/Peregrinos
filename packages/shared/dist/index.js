@@ -139,7 +139,7 @@ const ADMIN = [
 const SUPERADMIN = [
     ...ADMIN, "event:create", "event:update", "user:manage", "backup:run", "audit:read",
     "parish:profile", "notice:send", "post:manage", "stream:manage", "tracking:read",
-    "certificate:manage", "agenda:manage", "donation:manage", "inventory:manage", "group:manage", "notice:staff",
+    "certificate:manage", "agenda:manage", "donation:manage", "inventory:manage", "group:manage", "notice:staff", "turn:decide",
 ];
 exports.ROLE_PERMISSIONS = {
     SUPERADMIN: new Set(SUPERADMIN),
@@ -636,6 +636,7 @@ exports.PERMISSION_CATALOG = [
     { id: "chat:moderate", group: "Eventos y seguimiento", label: "Moderar el chat", description: "Ocultar mensajes del chat del evento" },
     { id: "report:read", group: "Eventos y seguimiento", label: "Estadísticas e informes", description: "Informe del evento y estadísticas" },
     { id: "agenda:manage", group: "Agenda y vida parroquial", label: "Agenda pastoral", description: "Horarios de misa, confesiones, adoración y actividades" },
+    { id: "turn:decide", group: "Agenda y vida parroquial", label: "Turnos del sacerdote", description: "Aceptar o rechazar los turnos que la secretaría pide desde SIGyP" },
     { id: "group:manage", group: "Agenda y vida parroquial", label: "Grupos pastorales", description: "Grupos, miembros, encuentros y asistencia" },
     { id: "donation:manage", group: "Donaciones", label: "Donaciones", description: "Campañas y enlaces de pago de la parroquia" },
     { id: "certificate:manage", group: "Administración parroquial", label: "Certificados sacramentales", description: "Atender solicitudes de partidas" },

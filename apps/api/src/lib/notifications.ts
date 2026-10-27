@@ -2,7 +2,7 @@ import type { Notification, NotificationKind, Prisma } from "@prisma/client";
 import { formatDate } from "@peregrinos/shared";
 import { uniqueRecipients, type NoticeAudience } from "@peregrinos/shared";
 import { prisma } from "./prisma";
-import { pushConfigured, sendPushToUsers } from "./push";
+import { pushConfigured, sendPushToUsers, type PushResult } from "./push";
 
 type Tx = Prisma.TransactionClient;
 
@@ -35,26 +35,37 @@ const PUSH_BODY_MAX = 500;
  * Nunca lanza: si FCM falla o no está configurado, el aviso de la bandeja ya existe y no se ve afectado.
  * Los tokens que FCM rechaza (no registrados o inválidos) quedan dados de baja (revokedAt).
  */
-export async function pushNotification(n: Pick<Notification, "id" | "organizationId" | "eventId" | "title" | "body">) {
-  if (!pushConfigured()) return;
+export async function pushNotification(n: PushableNotification) {
   try {
-    const recipients = await prisma.notificationRecipient.findMany({ where: { notificationId: n.id }, select: { userId: true } });
-    if (!recipients.length) return;
-    const body = n.body.length > PUSH_BODY_MAX ? `${n.body.slice(0, PUSH_BODY_MAX - 1).trimEnd()}…` : n.body;
-    const data: Record<string, string> = { notificationId: n.id, organizationId: n.organizationId };
-    if (n.eventId) data.eventId = n.eventId;
-    const result = await sendPushToUsers(recipients.map((r) => r.userId), { title: n.title, body, data }, (userIds) =>
-      prisma.deviceToken.findMany({ where: { userId: { in: userIds }, revokedAt: null }, select: { userId: true, token: true } }),
-    );
-    if (result.invalid.length) {
-      await prisma.deviceToken.updateMany({ where: { token: { in: result.invalid.map((t) => t.token) }, revokedAt: null }, data: { revokedAt: new Date() } });
-    }
-    if (result.sent || result.failed) {
-      console.info(`[push] aviso ${n.id}: ${result.sent} enviados, ${result.failed} fallidos, ${result.invalid.length} tokens dados de baja`);
-    }
+    await sendNotificationPush(n);
   } catch (e) {
     console.error(`[push] No se pudo enviar el aviso ${n.id}:`, (e as Error).message);
   }
+}
+
+export type PushableNotification = Pick<Notification, "id" | "organizationId" | "eventId" | "title" | "body"> & { extraData?: Record<string, string> };
+
+/**
+ * Envía el push de un aviso y devuelve el resultado (null = FCM no configurado). Puede lanzar si falla la base; los
+ * errores de FCM vuelven en el resultado (`failed`). `extraData` agrega datos para la app (p. ej. a qué pantalla ir).
+ */
+export async function sendNotificationPush(n: PushableNotification): Promise<PushResult | null> {
+  if (!pushConfigured()) return null;
+  const recipients = await prisma.notificationRecipient.findMany({ where: { notificationId: n.id }, select: { userId: true } });
+  if (!recipients.length) return { sent: 0, failed: 0, invalid: [] };
+  const body = n.body.length > PUSH_BODY_MAX ? `${n.body.slice(0, PUSH_BODY_MAX - 1).trimEnd()}…` : n.body;
+  const data: Record<string, string> = { ...(n.extraData ?? {}), notificationId: n.id, organizationId: n.organizationId };
+  if (n.eventId) data.eventId = n.eventId;
+  const result = await sendPushToUsers(recipients.map((r) => r.userId), { title: n.title, body, data }, (userIds) =>
+    prisma.deviceToken.findMany({ where: { userId: { in: userIds }, revokedAt: null }, select: { userId: true, token: true } }),
+  );
+  if (result.invalid.length) {
+    await prisma.deviceToken.updateMany({ where: { token: { in: result.invalid.map((t) => t.token) }, revokedAt: null }, data: { revokedAt: new Date() } });
+  }
+  if (result.sent || result.failed) {
+    console.info(`[push] aviso ${n.id}: ${result.sent} enviados, ${result.failed} fallidos, ${result.invalid.length} tokens dados de baja`);
+  }
+  return result;
 }
 
 /** Estados en los que un evento se considera publicado para los seguidores. */

@@ -113,3 +113,23 @@ rechazado por los dos sistemas, la contraseña incorrecta auditada en ambos y la
 
 **Pendiente de decisión (no implementado aquí):** política general de MFA obligatorio para el SUPERADMIN en todos los
 accesos. D1 no depende de ella: la contraseña se pide igual.
+
+## Turnos que decide el sacerdote (2026-10-27)
+
+SIGyP pide la decisión del sacerdote sobre un turno de su agenda; el sacerdote acepta o rechaza en Peregrinos y la
+secretaría ve el resultado dentro de SIGyP. Peregrinos nunca se conecta a SIGyP: SIGyP envía (bandeja de salida) y
+consulta las decisiones (cada 20 s y en cada sincronización manual), así que «inmediato» = menos de ~20 s.
+
+| Pieza | Implementación |
+|---|---|
+| Contrato | Alcance nuevo `turns:write` (concedido por el titular al generar el código). `PUT /turns/:sourceId` (versionado; `WITHDRAWN` retira la petición) y `GET /turns/decisions?after=<cursor>` (cursor `seq` global, sin huecos de visibilidad entre organizaciones). Sin datos de contacto: la nota llega siempre vacía. |
+| Datos | Migración 30 `20261027000000_pastoral_turns` (ADITIVA): `PastoralTurn`, `PastoralTurnDecision` (clave única turno/versión), valor `TURN_REQUEST` de `NotificationKind`, CHECK de coherencia. Reversión probada: `prisma/rollback/20261027_pastoral_turns_rollback.sql` (se aborta si hay turnos). |
+| Decisión | Panel `/turnos`, permiso `turn:decide` (SUPERADMIN; concedible). `POST /api/organization/turns/:id/decision` condicional (PENDIENTE + versión vista) → `409 TURN_ALREADY_DECIDED` / `TURN_CHANGED`; rechazo con motivo ≥ 5. Auditado `TURN_ACCEPTED`/`TURN_REJECTED`; recepción `SIGYP_TURN_APPLIED`/`SIGYP_TURN_WITHDRAWN`. |
+| Aviso al sacerdote | Aviso `TURN_REQUEST` en la bandeja NUEVA del personal (`/api/staff/notifications`, pantalla `/bandeja`; antes el personal no tenía bandeja ni dispositivos) y banner en el panel con turnos pendientes y avisos sin leer (consulta cada 60 s, al volver a la pestaña y al recibir un push). Push FCM al teléfono del personal con dispositivo registrado (`/api/staff/devices`): estado guardado en el turno (`SENT`, `FAILED`, `NO_DEVICES`, `NOT_CONFIGURED`), hasta 3 intentos solo si fallan todos los envíos, fallo auditado (`TURN_PUSH_FAILED`); un fallo del proveedor nunca deshace ni bloquea el turno. |
+
+**Verificado:** `s8-pastoral-turns` (esquemas, permisos, reglas de la fuente, push con proveedor simulado: éxito, fallo,
+excepción, reintentos, sin dispositivos, sin configuración); `e2e-turnos.mjs` sobre PostgreSQL 18 real; extremo a
+extremo real con SIGyP (`run.sh e2e-sigyp.mjs`: x1 6/6, 25/25 verificaciones en esta base, incluidas dos decisiones
+simultáneas → una sola guardada); `migraciones-actualizacion.sh` 27 → 30 → reversión → 30.
+**NO verificado:** la entrega push a un teléfono real (no hay dispositivo ni emulador en esta PC, y la configuración FCM
+de Render no se tocó ni se probó). En las pruebas el estado es honestamente `NOT_CONFIGURED`.

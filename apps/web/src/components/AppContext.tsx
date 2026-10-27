@@ -5,6 +5,7 @@ import type { MeResponse, Permission } from "@peregrinos/shared";
 import { ApiError, SESSION_EXPIRED_EVENT, api, getMe, qs } from "@/lib/api";
 import { StepUpDialog } from "@/components/StepUpDialog";
 import { useEventStream } from "@/lib/hooks";
+import { PUSH_RECEIVED_EVENT, enablePushForStaff } from "@/lib/pushNotifications";
 import type { EventItem } from "@/lib/types";
 
 type Handler = (type: string, data: any) => void;
@@ -21,6 +22,10 @@ interface Ctx {
   /** A6: vuelve a leer /auth/me (tras enrolar, desactivar MFA o un step-up). */
   setMe: (m: MeResponse) => void;
   reloadMe: () => Promise<void>;
+  /** Avisos visibles en la web: turnos que esperan la decisión del sacerdote y avisos sin leer de la bandeja. */
+  pendingTurns: number;
+  unreadInbox: number;
+  reloadCounters: () => Promise<void>;
 }
 const C = createContext<Ctx | null>(null);
 export const useApp = () => { const v = useContext(C); if (!v) throw new Error("useApp fuera de AppProvider"); return v; };
@@ -38,6 +43,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [events, setEvents] = useState<EventItem[]>([]);
   const [eventId, setEventIdState] = useState<string | undefined>();
   const [pending, setPending] = useState(0);
+  const [pendingTurns, setPendingTurns] = useState(0);
+  const [unreadInbox, setUnreadInbox] = useState(0);
   const handlers = useRef(new Set<Handler>());
 
   const can = useCallback((p: Permission) => !!me?.permissions.includes(p), [me]);
@@ -63,6 +70,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     try {
       const m = await getMe(); setMe(m);
       await loadEvents(m);
+      // App Android: registra el teléfono del personal para recibir push (en el navegador no hace nada).
+      void enablePushForStaff();
     }
     catch (e) {
       // Solo la falta de sesión lleva al login; un error de red o del servidor se muestra con opción de reintentar.
@@ -93,6 +102,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [me, eventId]);
   useEffect(() => { loadPending(); }, [loadPending]);
 
+  // Contadores de avisos (cada minuto, al volver a la pestaña y al llegar un push con la app abierta). No críticos.
+  const loadCounters = useCallback(async () => {
+    if (!me) return;
+    try { setUnreadInbox((await api<{ unread: number }>("/staff/notifications")).unread); } catch { /* no crítico */ }
+    if (me.permissions.includes("turn:decide")) {
+      try { setPendingTurns((await api<{ pending: number }>("/organization/turns/summary")).pending); } catch { /* no crítico */ }
+    }
+  }, [me]);
+  useEffect(() => {
+    void loadCounters();
+    const t = setInterval(() => void loadCounters(), 60_000);
+    const onVisible = () => { if (document.visibilityState === "visible") void loadCounters(); };
+    const onPush = () => void loadCounters();
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener(PUSH_RECEIVED_EVENT, onPush);
+    return () => { clearInterval(t); document.removeEventListener("visibilitychange", onVisible); window.removeEventListener(PUSH_RECEIVED_EVENT, onPush); };
+  }, [loadCounters]);
+
   const live = useEventStream(eventId, (type, data) => {
     if (type.startsWith("registration.")) loadPending();
     if (me && (type === "participants.changed" || type === "checkin.created")) loadEvents(me).catch(() => { /* se reintenta con el próximo aviso */ });
@@ -104,8 +131,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const value = useMemo<Ctx | null>(() => me && {
     me, can, events, event, setEventId, live, pendingPayments: pending, subscribe,
     reloadEvents: async () => { await loadEvents(me); },
-    setMe, reloadMe: boot,
-  }, [me, can, events, event, setEventId, live, pending, subscribe, loadEvents, boot]);
+    setMe, reloadMe: boot, pendingTurns, unreadInbox, reloadCounters: loadCounters,
+  }, [me, can, events, event, setEventId, live, pending, subscribe, loadEvents, boot, pendingTurns, unreadInbox, loadCounters]);
 
   if (!value && bootError) {
     return (

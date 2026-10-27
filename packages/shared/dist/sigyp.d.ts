@@ -13,33 +13,33 @@ export declare const SIGYP_CONTRACT_VERSION = 1;
  * Alcances de una credencial. `notices:send` = avisos a los SEGUIDORES; `notices:staff` = avisos al PERSONAL de la
  * parroquia: es un permiso aparte que el titular (SUPERADMIN) concede de forma explícita al vincular (D3).
  */
-export declare const SIGYP_SCOPES: readonly ["announcements:write", "profile:write", "events:write", "notices:send", "notices:staff"];
+export declare const SIGYP_SCOPES: readonly ["announcements:write", "profile:write", "events:write", "notices:send", "notices:staff", "turns:write"];
 export type SigypScope = (typeof SIGYP_SCOPES)[number];
 /** Propuesta inicial de la pantalla de vinculación: todo menos los avisos al personal. */
 export declare const SIGYP_DEFAULT_SCOPES: readonly SigypScope[];
 export declare const SIGYP_SCOPE_LABEL: Record<SigypScope, string>;
 /** Código de vinculación: alcances elegidos explícitamente por el titular + su contraseña. */
 export declare const sigypLinkCodeCreateSchema: z.ZodObject<{
-    scopes: z.ZodEffects<z.ZodArray<z.ZodEnum<["announcements:write", "profile:write", "events:write", "notices:send", "notices:staff"]>, "many">, ("announcements:write" | "profile:write" | "events:write" | "notices:send" | "notices:staff")[], ("announcements:write" | "profile:write" | "events:write" | "notices:send" | "notices:staff")[]>;
+    scopes: z.ZodEffects<z.ZodArray<z.ZodEnum<["announcements:write", "profile:write", "events:write", "notices:send", "notices:staff", "turns:write"]>, "many">, ("announcements:write" | "profile:write" | "events:write" | "notices:send" | "notices:staff" | "turns:write")[], ("announcements:write" | "profile:write" | "events:write" | "notices:send" | "notices:staff" | "turns:write")[]>;
     password: z.ZodString;
 }, "strict", z.ZodTypeAny, {
-    scopes: ("announcements:write" | "profile:write" | "events:write" | "notices:send" | "notices:staff")[];
+    scopes: ("announcements:write" | "profile:write" | "events:write" | "notices:send" | "notices:staff" | "turns:write")[];
     password: string;
 }, {
-    scopes: ("announcements:write" | "profile:write" | "events:write" | "notices:send" | "notices:staff")[];
+    scopes: ("announcements:write" | "profile:write" | "events:write" | "notices:send" | "notices:staff" | "turns:write")[];
     password: string;
 }>;
 /** Credencial directa (solo SUPERADMIN): nombre, alcances explícitos y contraseña. */
 export declare const sigypClientCreateSchema: z.ZodObject<{
     label: z.ZodDefault<z.ZodString>;
-    scopes: z.ZodEffects<z.ZodArray<z.ZodEnum<["announcements:write", "profile:write", "events:write", "notices:send", "notices:staff"]>, "many">, ("announcements:write" | "profile:write" | "events:write" | "notices:send" | "notices:staff")[], ("announcements:write" | "profile:write" | "events:write" | "notices:send" | "notices:staff")[]>;
+    scopes: z.ZodEffects<z.ZodArray<z.ZodEnum<["announcements:write", "profile:write", "events:write", "notices:send", "notices:staff", "turns:write"]>, "many">, ("announcements:write" | "profile:write" | "events:write" | "notices:send" | "notices:staff" | "turns:write")[], ("announcements:write" | "profile:write" | "events:write" | "notices:send" | "notices:staff" | "turns:write")[]>;
     password: z.ZodString;
 }, "strict", z.ZodTypeAny, {
-    scopes: ("announcements:write" | "profile:write" | "events:write" | "notices:send" | "notices:staff")[];
+    scopes: ("announcements:write" | "profile:write" | "events:write" | "notices:send" | "notices:staff" | "turns:write")[];
     password: string;
     label: string;
 }, {
-    scopes: ("announcements:write" | "profile:write" | "events:write" | "notices:send" | "notices:staff")[];
+    scopes: ("announcements:write" | "profile:write" | "events:write" | "notices:send" | "notices:staff" | "turns:write")[];
     password: string;
     label?: string | undefined;
 }>;
@@ -380,6 +380,104 @@ export declare const sigypEventWithdrawSchema: z.ZodObject<{
     version: number;
 }>;
 export type SigypEvent = z.infer<typeof sigypEventSchema>;
+/**
+ * Turno que SIGyP pide decidir al sacerdote. Solo lo necesario para decidir: NUNCA datos de contacto ni del expediente
+ * (la nota es texto libre de quien carga, con tope). Cada envío trae una versión creciente; WITHDRAWN = ya no requiere
+ * decisión (se canceló o se resolvió en SIGyP).
+ */
+export declare const TURN_STATUSES_FROM_SIGYP: readonly ["PENDING", "WITHDRAWN"];
+export declare const sigypTurnSchema: z.ZodEffects<z.ZodObject<{
+    contract: z.ZodLiteral<1>;
+    sourceId: z.ZodString;
+    version: z.ZodNumber;
+    title: z.ZodString;
+    category: z.ZodNullable<z.ZodString>;
+    startsAt: z.ZodString;
+    endsAt: z.ZodString;
+    location: z.ZodNullable<z.ZodString>;
+    note: z.ZodNullable<z.ZodString>;
+    status: z.ZodEnum<["PENDING", "WITHDRAWN"]>;
+}, "strict", z.ZodTypeAny, {
+    status: "PENDING" | "WITHDRAWN";
+    title: string;
+    location: string | null;
+    note: string | null;
+    category: string | null;
+    contract: 1;
+    sourceId: string;
+    version: number;
+    startsAt: string;
+    endsAt: string;
+}, {
+    status: "PENDING" | "WITHDRAWN";
+    title: string;
+    location: string | null;
+    note: string | null;
+    category: string | null;
+    contract: 1;
+    sourceId: string;
+    version: number;
+    startsAt: string;
+    endsAt: string;
+}>, {
+    status: "PENDING" | "WITHDRAWN";
+    title: string;
+    location: string | null;
+    note: string | null;
+    category: string | null;
+    contract: 1;
+    sourceId: string;
+    version: number;
+    startsAt: string;
+    endsAt: string;
+}, {
+    status: "PENDING" | "WITHDRAWN";
+    title: string;
+    location: string | null;
+    note: string | null;
+    category: string | null;
+    contract: 1;
+    sourceId: string;
+    version: number;
+    startsAt: string;
+    endsAt: string;
+}>;
+export type SigypTurn = z.infer<typeof sigypTurnSchema>;
+/** Decisión del sacerdote en Peregrinos: sobre la versión que está viendo; rechazar exige motivo. */
+export declare const TURN_DECISIONS: readonly ["ACCEPTED", "REJECTED"];
+export type TurnDecision = (typeof TURN_DECISIONS)[number];
+export declare const turnDecisionSchema: z.ZodEffects<z.ZodObject<{
+    decision: z.ZodEnum<["ACCEPTED", "REJECTED"]>;
+    version: z.ZodNumber;
+    reason: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+}, "strict", z.ZodTypeAny, {
+    version: number;
+    decision: "REJECTED" | "ACCEPTED";
+    reason?: string | null | undefined;
+}, {
+    version: number;
+    decision: "REJECTED" | "ACCEPTED";
+    reason?: string | null | undefined;
+}>, {
+    version: number;
+    decision: "REJECTED" | "ACCEPTED";
+    reason?: string | null | undefined;
+}, {
+    version: number;
+    decision: "REJECTED" | "ACCEPTED";
+    reason?: string | null | undefined;
+}>;
+/** Cursor de decisiones que lee SIGyP (`GET /turns/decisions?after=N`). */
+export declare const turnDecisionsQuerySchema: z.ZodObject<{
+    after: z.ZodDefault<z.ZodNumber>;
+    limit: z.ZodDefault<z.ZodNumber>;
+}, "strip", z.ZodTypeAny, {
+    after: number;
+    limit: number;
+}, {
+    after?: number | undefined;
+    limit?: number | undefined;
+}>;
 /** Grupos de destinatarios en Peregrinos. Se derivan de datos reales: seguidores y personal según su rol. */
 export declare const NOTICE_AUDIENCES: readonly ["FOLLOWERS", "STAFF:SUPERADMIN", "STAFF:ADMIN", "STAFF:OPERATOR"];
 export type NoticeAudience = (typeof NOTICE_AUDIENCES)[number];

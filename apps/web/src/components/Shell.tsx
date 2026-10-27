@@ -83,6 +83,22 @@ export function EventPicker() {
   );
 }
 
+/**
+ * Aviso visible en todas las pantallas del panel: turnos que esperan la decisión del sacerdote y avisos sin leer de la
+ * bandeja del personal (los contadores los mantiene AppContext). No depende del push: funciona igual en el navegador.
+ */
+function StaffNotices() {
+  const { pendingTurns, unreadInbox } = useApp();
+  if (!pendingTurns && !unreadInbox) return null;
+  return (
+    <div className="alert warn staff-notices" role="status" data-testid="staff-notices">
+      {pendingTurns > 0 && <Link href="/turnos"><b>{pendingTurns === 1 ? "1 turno para decidir" : `${pendingTurns} turnos para decidir`}</b></Link>}
+      {pendingTurns > 0 && unreadInbox > 0 && " · "}
+      {unreadInbox > 0 && <Link href="/bandeja">{unreadInbox === 1 ? "1 aviso sin leer" : `${unreadInbox} avisos sin leer`}</Link>}
+    </div>
+  );
+}
+
 export function Shell({ children }: { children: React.ReactNode }) {
   const path = usePathname();
   const router = useRouter();
@@ -122,6 +138,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
       </aside>
 
       <div className="main">
+        <StaffNotices />
         {children}
         {/* Quién toma las llegadas y opera el panel en este dispositivo (usuario autenticado real). */}
         <footer className="resp-foot" aria-label="Administrador responsable">

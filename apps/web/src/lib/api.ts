@@ -241,5 +241,10 @@ export const login = (email: string, password: string) => post<MeResponse | MfaC
 export const verifyMfaLogin = (input: { code: string } | { recoveryCode: string }) => post<MeResponse>("/auth/mfa/verify", input);
 export const cancelMfaLogin = () => post<void>("/auth/mfa/cancel");
 export const stepUp = (input: { code: string } | { recoveryCode: string }) => post<MeResponse>("/auth/mfa/step-up", input);
-export const logout = () => post<void>("/auth/logout");
+/** Cierre de sesión del personal: antes da de baja el teléfono para push (necesita la sesión todavía abierta). */
+export const logout = async () => {
+  const { disablePushForStaff } = await import("./pushNotifications");
+  await disablePushForStaff();
+  return post<void>("/auth/logout");
+};
 export const getMe = () => api<MeResponse>("/auth/me");

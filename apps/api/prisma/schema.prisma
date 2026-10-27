@@ -76,6 +76,7 @@ model Organization {
   integrationClients   IntegrationClient[]
   integrationLinkCodes IntegrationLinkCode[]
   announcements        ParishAnnouncement[]
+  pastoralTurns        PastoralTurn[]
 }
 
 /// A4a: identidad humana. Independiente de la cuenta (User), de la participación (Participant) y de la inscripción
@@ -1349,6 +1350,8 @@ enum NotificationKind {
   LIVESTREAM
   /// B5: boletín parroquial publicado.
   BULLETIN
+  /// Turno que SIGyP pide decidir al sacerdote (2026-10-27).
+  TURN_REQUEST
 }
 
 /// B1 — Imagen subida por la parroquia, guardada en la base (el disco del servidor no es persistente). El tipo, las
@@ -1883,4 +1886,55 @@ model IntegrationLinkCode {
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
 
   @@index([organizationId, usedAt, revokedAt])
+}
+
+/// Turno que SIGyP pide decidir al sacerdote (2026-10-27). Solo lo necesario para decidir: sin datos de contacto.
+/// status: PENDING → ACCEPTED | REJECTED (una sola decisión por versión) | WITHDRAWN (lo retiró SIGyP). Una versión nueva
+/// desde SIGyP (p. ej. cambió el horario) vuelve a PENDING: la decisión anterior queda en PastoralTurnDecision.
+model PastoralTurn {
+  id             String                 @id @default(uuid())
+  organizationId String
+  sourceSystem   String                 @default("SIGYP")
+  sourceId       String
+  version        Int
+  title          String
+  category       String?
+  startsAt       DateTime
+  endsAt         DateTime
+  location       String?
+  note           String?
+  status         String                 @default("PENDING")
+  decidedVersion Int?
+  decidedById    String?
+  decidedAt      DateTime?
+  reason         String?
+  /// Resultado del push al sacerdote: SENT | FAILED | NO_DEVICES | NOT_CONFIGURED (null = sin intentar todavía).
+  pushStatus     String?
+  pushAttempts   Int                    @default(0)
+  receivedAt     DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+  organization   Organization           @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  decisions      PastoralTurnDecision[]
+
+  @@unique([organizationId, sourceSystem, sourceId])
+  @@index([organizationId, status, startsAt])
+}
+
+/// Registro de decisiones (solo agregado). `seq` es el cursor que lee SIGyP: nunca se reutiliza ni retrocede.
+model PastoralTurnDecision {
+  seq            Int          @id @default(autoincrement())
+  organizationId String
+  turnId         String
+  sourceId       String
+  version        Int
+  decision       String
+  reason         String?
+  decidedById    String
+  decidedByName  String
+  decidedAt      DateTime     @default(now())
+  turn           PastoralTurn @relation(fields: [turnId], references: [id], onDelete: Restrict)
+
+  /// Una decisión por (turno, versión): un doble clic o dos sesiones no decide dos veces.
+  @@unique([turnId, version])
+  @@index([organizationId, seq])
 }

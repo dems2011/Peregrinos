@@ -3,7 +3,8 @@ import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import {
   SIGYP_CONTRACT_VERSION, SIGYP_SCOPE_LABEL, sigypAllowedAudiences, sigypAnnouncementSchema, sigypEventSchema,
-  sigypEventWithdrawSchema, sigypLinkCompleteSchema, sigypLinkPreviewSchema, sigypNoticeSchema, sigypProfileSchema, sigypWithdrawSchema,
+  sigypEventWithdrawSchema, sigypLinkCompleteSchema, sigypLinkPreviewSchema, sigypNoticeSchema, sigypProfileSchema, sigypTurnSchema, sigypWithdrawSchema,
+  turnDecisionsQuerySchema,
   type NoticeAudience, type SigypScope,
 } from "@peregrinos/shared";
 import { prisma } from "../lib/prisma";
@@ -14,6 +15,7 @@ import { notifyAudiences, pushNotification, resolveAudiences } from "../lib/noti
 import { readSingleFile } from "../lib/image";
 import { contentImageUrls, prepareContentImage, replaceContentImage } from "../lib/contentImages";
 import { MAX_ACTIVE_SIGYP_CLIENTS, lockOrganization } from "../lib/integrationLimits";
+import { notifyTurnDeciders, pushTurnNotification } from "../lib/turns";
 
 const sourceParam = z.object({ sourceId: z.string().uuid() });
 const SOURCE = "SIGYP";
@@ -252,6 +254,74 @@ export default async function sigypIntegrationRoutes(app: FastifyInstance) {
       await auditTx(tx, req, { action: "SIGYP_EVENT_COVER_APPLIED", entityType: "Event", entityId: ev.id, eventId: ev.id, organizationId: c.organizationId, userId: null, metadata: { sha256: images[0].sha256, bytes: images[0].sizeBytes } });
     });
     return { status: "applied", cover: await contentImageUrls("EVENT_COVER", ev.id) };
+  });
+
+  /* ---------- Turnos que decide el sacerdote (2026-10-27) ---------- */
+
+  /**
+   * Alta o cambio de un turno pendiente (o su retiro). Versión creciente: igual o menor = «stale» sin cambios. Un turno
+   * nuevo, o uno ya decidido/retirado que vuelve a PENDING, o uno pendiente que cambia de horario o lugar, avisa a quienes
+   * deciden (bandeja + push después de confirmar). Retirar o reabrir borra la decisión vigente del turno; las anteriores
+   * quedan en PastoralTurnDecision (solo agregado).
+   */
+  app.put("/turns/:sourceId", rl(120), async (req) => {
+    const c = await client(req, "turns:write");
+    const { sourceId } = sourceParam.parse(req.params);
+    const v = sigypTurnSchema.parse(req.body);
+    if (v.sourceId !== sourceId) throw new AppError(409, "SOURCE_MISMATCH", "El identificador del turno no coincide con la ruta.");
+    const fields = {
+      version: v.version, title: v.title, category: v.category, startsAt: new Date(v.startsAt), endsAt: new Date(v.endsAt),
+      location: v.location, note: v.note,
+    };
+    const undecided = { decidedVersion: null, decidedById: null, decidedAt: null, reason: null };
+    const key = { organizationId_sourceSystem_sourceId: { organizationId: c.organizationId, sourceSystem: SOURCE, sourceId } };
+    const out = await prisma.$transaction(async (tx) => {
+      const cur = await tx.pastoralTurn.findUnique({ where: key });
+      if (versionOutcome(cur?.version, v.version) === "stale") return { status: "stale" as const, turnStatus: cur!.status, notification: null, turnId: cur!.id };
+      if (v.status === "WITHDRAWN") {
+        if (!cur) return { status: "applied" as const, turnStatus: "WITHDRAWN", notification: null, turnId: null }; // nunca llegó: nada que retirar
+        const r = await tx.pastoralTurn.updateMany({ where: { id: cur.id, version: { lt: v.version } }, data: { ...fields, status: "WITHDRAWN", ...undecided } });
+        if (r.count !== 1) return { status: "stale" as const, turnStatus: cur.status, notification: null, turnId: cur.id };
+        await auditTx(tx, req, { action: "SIGYP_TURN_WITHDRAWN", entityType: "PastoralTurn", entityId: cur.id, organizationId: c.organizationId, userId: null, metadata: { version: v.version, sourceId, clientId: c.id } });
+        return { status: "applied" as const, turnStatus: "WITHDRAWN", notification: null, turnId: cur.id };
+      }
+      let turnId: string;
+      let notify: boolean, reopened: boolean;
+      if (!cur) {
+        try {
+          turnId = (await tx.pastoralTurn.create({ data: { ...fields, organizationId: c.organizationId, sourceSystem: SOURCE, sourceId, status: "PENDING" }, select: { id: true } })).id;
+        } catch (e) {
+          if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") return { status: "stale" as const, turnStatus: "PENDING", notification: null, turnId: null };
+          throw e;
+        }
+        notify = true; reopened = false;
+      } else {
+        const r = await tx.pastoralTurn.updateMany({ where: { id: cur.id, version: { lt: v.version } }, data: { ...fields, status: "PENDING", ...undecided } });
+        if (r.count !== 1) return { status: "stale" as const, turnStatus: cur.status, notification: null, turnId: cur.id };
+        turnId = cur.id;
+        reopened = true;
+        notify = cur.status !== "PENDING" || +cur.startsAt !== +fields.startsAt || +cur.endsAt !== +fields.endsAt || (cur.location ?? null) !== (fields.location ?? null);
+      }
+      const notification = notify ? await notifyTurnDeciders(tx, { organizationId: c.organizationId, title: v.title, startsAt: fields.startsAt, location: v.location }, c.organization.timezone, reopened) : null;
+      await auditTx(tx, req, { action: "SIGYP_TURN_APPLIED", entityType: "PastoralTurn", entityId: turnId, organizationId: c.organizationId, userId: null, metadata: { version: v.version, sourceId, clientId: c.id, reopened, notified: notification?.recipientCount ?? 0 } });
+      return { status: "applied" as const, turnStatus: "PENDING", notification, turnId };
+    });
+    if (out.notification && out.turnId) void pushTurnNotification(out.turnId, out.notification);
+    return { status: out.status, version: v.version, turnStatus: out.turnStatus, notified: out.notification?.recipientCount ?? 0 };
+  });
+
+  /**
+   * Decisiones del sacerdote, en orden, desde un cursor (`after` = último `seq` ya aplicado en SIGyP). Solo lo necesario
+   * para aplicarlas: turno, versión decidida, decisión, motivo, fecha y nombre de quien decidió.
+   */
+  app.get("/turns/decisions", rl(120), async (req) => {
+    const c = await client(req, "turns:write");
+    const q = turnDecisionsQuerySchema.parse(req.query);
+    const items = await prisma.pastoralTurnDecision.findMany({
+      where: { organizationId: c.organizationId, seq: { gt: q.after } }, orderBy: { seq: "asc" }, take: q.limit,
+      select: { seq: true, sourceId: true, version: true, decision: true, reason: true, decidedAt: true, decidedByName: true },
+    });
+    return { items, next: items.length ? items[items.length - 1].seq : q.after };
   });
 
   /* ---------- Avisos multigrupo ---------- */

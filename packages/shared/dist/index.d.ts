@@ -57,7 +57,9 @@ export type Permission = "event:read" | "event:create" | "event:update" | "user:
 /** B5: herramientas parroquiales. Por defecto solo las tiene el SUPERADMIN; se otorgan una a una (PERMISSION_CATALOG). */
  | "parish:profile" | "notice:send" | "post:manage" | "stream:manage" | "chat:moderate" | "tracking:read" | "certificate:manage" | "agenda:manage" | "donation:manage" | "inventory:manage" | "group:manage"
 /** Avisos al personal de la parroquia: permiso propio, distinto de notice:send (seguidores) y de user:manage. */
- | "notice:staff";
+ | "notice:staff"
+/** Aceptar o rechazar los turnos que SIGyP pide decidir al sacerdote (por defecto, el titular). */
+ | "turn:decide";
 export declare const ROLE_PERMISSIONS: Record<Role, ReadonlySet<Permission>>;
 export declare function can(role: Role, permission: Permission): boolean;
 export declare const loginSchema: z.ZodObject<{
@@ -988,13 +990,13 @@ export declare const createUserSchema: z.ZodObject<{
     email: z.ZodString;
     password: z.ZodString;
     role: z.ZodEnum<["SUPERADMIN", "ADMIN", "OPERATOR"]>;
-    extraPermissions: z.ZodDefault<z.ZodEffects<z.ZodEffects<z.ZodArray<z.ZodString, "many">, ("event:create" | "event:update" | "participant:create" | "checkin:create" | "checkin:read" | "report:read" | "invitation:manage" | "payment:review" | "parish:profile" | "notice:send" | "post:manage" | "stream:manage" | "chat:moderate" | "tracking:read" | "certificate:manage" | "agenda:manage" | "donation:manage" | "inventory:manage" | "group:manage" | "notice:staff")[], string[]>, ("event:create" | "event:update" | "participant:create" | "checkin:create" | "checkin:read" | "report:read" | "invitation:manage" | "payment:review" | "parish:profile" | "notice:send" | "post:manage" | "stream:manage" | "chat:moderate" | "tracking:read" | "certificate:manage" | "agenda:manage" | "donation:manage" | "inventory:manage" | "group:manage" | "notice:staff")[], string[]>>;
+    extraPermissions: z.ZodDefault<z.ZodEffects<z.ZodEffects<z.ZodArray<z.ZodString, "many">, ("event:create" | "event:update" | "participant:create" | "checkin:create" | "checkin:read" | "report:read" | "invitation:manage" | "payment:review" | "parish:profile" | "notice:send" | "post:manage" | "stream:manage" | "chat:moderate" | "tracking:read" | "certificate:manage" | "agenda:manage" | "donation:manage" | "inventory:manage" | "group:manage" | "notice:staff" | "turn:decide")[], string[]>, ("event:create" | "event:update" | "participant:create" | "checkin:create" | "checkin:read" | "report:read" | "invitation:manage" | "payment:review" | "parish:profile" | "notice:send" | "post:manage" | "stream:manage" | "chat:moderate" | "tracking:read" | "certificate:manage" | "agenda:manage" | "donation:manage" | "inventory:manage" | "group:manage" | "notice:staff" | "turn:decide")[], string[]>>;
 }, "strict", z.ZodTypeAny, {
     email: string;
     name: string;
     role: "SUPERADMIN" | "ADMIN" | "OPERATOR";
     password: string;
-    extraPermissions: ("event:create" | "event:update" | "participant:create" | "checkin:create" | "checkin:read" | "report:read" | "invitation:manage" | "payment:review" | "parish:profile" | "notice:send" | "post:manage" | "stream:manage" | "chat:moderate" | "tracking:read" | "certificate:manage" | "agenda:manage" | "donation:manage" | "inventory:manage" | "group:manage" | "notice:staff")[];
+    extraPermissions: ("event:create" | "event:update" | "participant:create" | "checkin:create" | "checkin:read" | "report:read" | "invitation:manage" | "payment:review" | "parish:profile" | "notice:send" | "post:manage" | "stream:manage" | "chat:moderate" | "tracking:read" | "certificate:manage" | "agenda:manage" | "donation:manage" | "inventory:manage" | "group:manage" | "notice:staff" | "turn:decide")[];
 }, {
     email: string;
     name: string;
@@ -1007,12 +1009,12 @@ export declare const updateUserSchema: z.ZodObject<{
     role: z.ZodOptional<z.ZodEnum<["SUPERADMIN", "ADMIN", "OPERATOR"]>>;
     isActive: z.ZodOptional<z.ZodBoolean>;
     password: z.ZodOptional<z.ZodString>;
-    extraPermissions: z.ZodOptional<z.ZodEffects<z.ZodEffects<z.ZodArray<z.ZodString, "many">, ("event:create" | "event:update" | "participant:create" | "checkin:create" | "checkin:read" | "report:read" | "invitation:manage" | "payment:review" | "parish:profile" | "notice:send" | "post:manage" | "stream:manage" | "chat:moderate" | "tracking:read" | "certificate:manage" | "agenda:manage" | "donation:manage" | "inventory:manage" | "group:manage" | "notice:staff")[], string[]>, ("event:create" | "event:update" | "participant:create" | "checkin:create" | "checkin:read" | "report:read" | "invitation:manage" | "payment:review" | "parish:profile" | "notice:send" | "post:manage" | "stream:manage" | "chat:moderate" | "tracking:read" | "certificate:manage" | "agenda:manage" | "donation:manage" | "inventory:manage" | "group:manage" | "notice:staff")[], string[]>>;
+    extraPermissions: z.ZodOptional<z.ZodEffects<z.ZodEffects<z.ZodArray<z.ZodString, "many">, ("event:create" | "event:update" | "participant:create" | "checkin:create" | "checkin:read" | "report:read" | "invitation:manage" | "payment:review" | "parish:profile" | "notice:send" | "post:manage" | "stream:manage" | "chat:moderate" | "tracking:read" | "certificate:manage" | "agenda:manage" | "donation:manage" | "inventory:manage" | "group:manage" | "notice:staff" | "turn:decide")[], string[]>, ("event:create" | "event:update" | "participant:create" | "checkin:create" | "checkin:read" | "report:read" | "invitation:manage" | "payment:review" | "parish:profile" | "notice:send" | "post:manage" | "stream:manage" | "chat:moderate" | "tracking:read" | "certificate:manage" | "agenda:manage" | "donation:manage" | "inventory:manage" | "group:manage" | "notice:staff" | "turn:decide")[], string[]>>;
 }, "strict", z.ZodTypeAny, {
     name?: string | undefined;
     role?: "SUPERADMIN" | "ADMIN" | "OPERATOR" | undefined;
     password?: string | undefined;
-    extraPermissions?: ("event:create" | "event:update" | "participant:create" | "checkin:create" | "checkin:read" | "report:read" | "invitation:manage" | "payment:review" | "parish:profile" | "notice:send" | "post:manage" | "stream:manage" | "chat:moderate" | "tracking:read" | "certificate:manage" | "agenda:manage" | "donation:manage" | "inventory:manage" | "group:manage" | "notice:staff")[] | undefined;
+    extraPermissions?: ("event:create" | "event:update" | "participant:create" | "checkin:create" | "checkin:read" | "report:read" | "invitation:manage" | "payment:review" | "parish:profile" | "notice:send" | "post:manage" | "stream:manage" | "chat:moderate" | "tracking:read" | "certificate:manage" | "agenda:manage" | "donation:manage" | "inventory:manage" | "group:manage" | "notice:staff" | "turn:decide")[] | undefined;
     isActive?: boolean | undefined;
 }, {
     name?: string | undefined;
@@ -1447,6 +1449,11 @@ export declare const PERMISSION_CATALOG: readonly [{
     readonly label: "Agenda pastoral";
     readonly description: "Horarios de misa, confesiones, adoración y actividades";
 }, {
+    readonly id: "turn:decide";
+    readonly group: "Agenda y vida parroquial";
+    readonly label: "Turnos del sacerdote";
+    readonly description: "Aceptar o rechazar los turnos que la secretaría pide desde SIGyP";
+}, {
     readonly id: "group:manage";
     readonly group: "Agenda y vida parroquial";
     readonly label: "Grupos pastorales";
@@ -1522,12 +1529,12 @@ export declare const ACCESS_LEVELS: readonly [{
 export declare const createInvitationSchema: z.ZodEffects<z.ZodObject<{
     email: z.ZodString;
     role: z.ZodEnum<["SUPERADMIN", "ADMIN", "OPERATOR"]>;
-    extraPermissions: z.ZodDefault<z.ZodEffects<z.ZodEffects<z.ZodArray<z.ZodString, "many">, ("event:create" | "event:update" | "participant:create" | "checkin:create" | "checkin:read" | "report:read" | "invitation:manage" | "payment:review" | "parish:profile" | "notice:send" | "post:manage" | "stream:manage" | "chat:moderate" | "tracking:read" | "certificate:manage" | "agenda:manage" | "donation:manage" | "inventory:manage" | "group:manage" | "notice:staff")[], string[]>, ("event:create" | "event:update" | "participant:create" | "checkin:create" | "checkin:read" | "report:read" | "invitation:manage" | "payment:review" | "parish:profile" | "notice:send" | "post:manage" | "stream:manage" | "chat:moderate" | "tracking:read" | "certificate:manage" | "agenda:manage" | "donation:manage" | "inventory:manage" | "group:manage" | "notice:staff")[], string[]>>;
+    extraPermissions: z.ZodDefault<z.ZodEffects<z.ZodEffects<z.ZodArray<z.ZodString, "many">, ("event:create" | "event:update" | "participant:create" | "checkin:create" | "checkin:read" | "report:read" | "invitation:manage" | "payment:review" | "parish:profile" | "notice:send" | "post:manage" | "stream:manage" | "chat:moderate" | "tracking:read" | "certificate:manage" | "agenda:manage" | "donation:manage" | "inventory:manage" | "group:manage" | "notice:staff" | "turn:decide")[], string[]>, ("event:create" | "event:update" | "participant:create" | "checkin:create" | "checkin:read" | "report:read" | "invitation:manage" | "payment:review" | "parish:profile" | "notice:send" | "post:manage" | "stream:manage" | "chat:moderate" | "tracking:read" | "certificate:manage" | "agenda:manage" | "donation:manage" | "inventory:manage" | "group:manage" | "notice:staff" | "turn:decide")[], string[]>>;
     checkpointIds: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
 }, "strict", z.ZodTypeAny, {
     email: string;
     role: "SUPERADMIN" | "ADMIN" | "OPERATOR";
-    extraPermissions: ("event:create" | "event:update" | "participant:create" | "checkin:create" | "checkin:read" | "report:read" | "invitation:manage" | "payment:review" | "parish:profile" | "notice:send" | "post:manage" | "stream:manage" | "chat:moderate" | "tracking:read" | "certificate:manage" | "agenda:manage" | "donation:manage" | "inventory:manage" | "group:manage" | "notice:staff")[];
+    extraPermissions: ("event:create" | "event:update" | "participant:create" | "checkin:create" | "checkin:read" | "report:read" | "invitation:manage" | "payment:review" | "parish:profile" | "notice:send" | "post:manage" | "stream:manage" | "chat:moderate" | "tracking:read" | "certificate:manage" | "agenda:manage" | "donation:manage" | "inventory:manage" | "group:manage" | "notice:staff" | "turn:decide")[];
     checkpointIds: string[];
 }, {
     email: string;
@@ -1537,7 +1544,7 @@ export declare const createInvitationSchema: z.ZodEffects<z.ZodObject<{
 }>, {
     email: string;
     role: "SUPERADMIN" | "ADMIN" | "OPERATOR";
-    extraPermissions: ("event:create" | "event:update" | "participant:create" | "checkin:create" | "checkin:read" | "report:read" | "invitation:manage" | "payment:review" | "parish:profile" | "notice:send" | "post:manage" | "stream:manage" | "chat:moderate" | "tracking:read" | "certificate:manage" | "agenda:manage" | "donation:manage" | "inventory:manage" | "group:manage" | "notice:staff")[];
+    extraPermissions: ("event:create" | "event:update" | "participant:create" | "checkin:create" | "checkin:read" | "report:read" | "invitation:manage" | "payment:review" | "parish:profile" | "notice:send" | "post:manage" | "stream:manage" | "chat:moderate" | "tracking:read" | "certificate:manage" | "agenda:manage" | "donation:manage" | "inventory:manage" | "group:manage" | "notice:staff" | "turn:decide")[];
     checkpointIds: string[];
 }, {
     email: string;
@@ -1568,9 +1575,9 @@ export declare const declineInvitationSchema: z.ZodObject<{
 }>;
 /** B5: permisos de un colaborador (reemplaza la lista completa de permisos extra). */
 export declare const userPermissionsSchema: z.ZodObject<{
-    extraPermissions: z.ZodEffects<z.ZodEffects<z.ZodArray<z.ZodString, "many">, ("event:create" | "event:update" | "participant:create" | "checkin:create" | "checkin:read" | "report:read" | "invitation:manage" | "payment:review" | "parish:profile" | "notice:send" | "post:manage" | "stream:manage" | "chat:moderate" | "tracking:read" | "certificate:manage" | "agenda:manage" | "donation:manage" | "inventory:manage" | "group:manage" | "notice:staff")[], string[]>, ("event:create" | "event:update" | "participant:create" | "checkin:create" | "checkin:read" | "report:read" | "invitation:manage" | "payment:review" | "parish:profile" | "notice:send" | "post:manage" | "stream:manage" | "chat:moderate" | "tracking:read" | "certificate:manage" | "agenda:manage" | "donation:manage" | "inventory:manage" | "group:manage" | "notice:staff")[], string[]>;
+    extraPermissions: z.ZodEffects<z.ZodEffects<z.ZodArray<z.ZodString, "many">, ("event:create" | "event:update" | "participant:create" | "checkin:create" | "checkin:read" | "report:read" | "invitation:manage" | "payment:review" | "parish:profile" | "notice:send" | "post:manage" | "stream:manage" | "chat:moderate" | "tracking:read" | "certificate:manage" | "agenda:manage" | "donation:manage" | "inventory:manage" | "group:manage" | "notice:staff" | "turn:decide")[], string[]>, ("event:create" | "event:update" | "participant:create" | "checkin:create" | "checkin:read" | "report:read" | "invitation:manage" | "payment:review" | "parish:profile" | "notice:send" | "post:manage" | "stream:manage" | "chat:moderate" | "tracking:read" | "certificate:manage" | "agenda:manage" | "donation:manage" | "inventory:manage" | "group:manage" | "notice:staff" | "turn:decide")[], string[]>;
 }, "strict", z.ZodTypeAny, {
-    extraPermissions: ("event:create" | "event:update" | "participant:create" | "checkin:create" | "checkin:read" | "report:read" | "invitation:manage" | "payment:review" | "parish:profile" | "notice:send" | "post:manage" | "stream:manage" | "chat:moderate" | "tracking:read" | "certificate:manage" | "agenda:manage" | "donation:manage" | "inventory:manage" | "group:manage" | "notice:staff")[];
+    extraPermissions: ("event:create" | "event:update" | "participant:create" | "checkin:create" | "checkin:read" | "report:read" | "invitation:manage" | "payment:review" | "parish:profile" | "notice:send" | "post:manage" | "stream:manage" | "chat:moderate" | "tracking:read" | "certificate:manage" | "agenda:manage" | "donation:manage" | "inventory:manage" | "group:manage" | "notice:staff" | "turn:decide")[];
 }, {
     extraPermissions: string[];
 }>;
@@ -2093,10 +2100,10 @@ export declare const volunteerTransitionSchema: z.ZodObject<{
     to: z.ZodEnum<["REQUESTED", "UNDER_REVIEW", "APPROVED", "REJECTED", "WITHDRAWN", "REVOKED", "COMPLETED"]>;
     reason: z.ZodOptional<z.ZodString>;
 }, "strict", z.ZodTypeAny, {
-    to: "REJECTED" | "APPROVED" | "REQUESTED" | "UNDER_REVIEW" | "WITHDRAWN" | "REVOKED" | "COMPLETED";
+    to: "REJECTED" | "WITHDRAWN" | "APPROVED" | "REQUESTED" | "UNDER_REVIEW" | "REVOKED" | "COMPLETED";
     reason?: string | undefined;
 }, {
-    to: "REJECTED" | "APPROVED" | "REQUESTED" | "UNDER_REVIEW" | "WITHDRAWN" | "REVOKED" | "COMPLETED";
+    to: "REJECTED" | "WITHDRAWN" | "APPROVED" | "REQUESTED" | "UNDER_REVIEW" | "REVOKED" | "COMPLETED";
     reason?: string | undefined;
 }>;
 /** Equipos, zonas y funciones: nombres libres que define la organización (sin enums). */

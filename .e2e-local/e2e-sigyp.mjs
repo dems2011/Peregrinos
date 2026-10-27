@@ -78,6 +78,18 @@ check("D3: ningún aviso SIGyP al personal en B", (await prisma.notification.cou
 check("D1: los intentos con contraseña incorrecta en Peregrinos quedaron auditados (REAUTH_FAILED)", (await prisma.auditLog.count({ where: { action: "REAUTH_FAILED" } })) >= 1);
 // El ADMIN de la semilla no tiene parish:profile: lo frena el permiso antes que la regla del SUPERADMIN (el caso con
 // parish:profile concedido, auditado como SIGYP_GRANT_DENIED, está en e2e-sigyp-seguridad.mjs).
+// Turnos del sacerdote (2026-10-27): lo que la suite x1 decidió en este Peregrinos real.
+const turns = JSON.parse((clean.match(/X1_TURNS (\{.*\})/) ?? [, "{}"])[1]);
+const pt = turns.t1 ? await prisma.pastoralTurn.findMany({ where: { organizationId: orgA.id, sourceId: { in: [turns.t1, turns.t2] } }, include: { decisions: true } }) : [];
+const t1 = pt.find((t) => t.sourceId === turns.t1), t2 = pt.find((t) => t.sourceId === turns.t2);
+check("turnos: llegaron 2 turnos SIGyP a A, ninguno a B", pt.length === 2 && (await prisma.pastoralTurn.count({ where: { organizationId: orgB.id } })) === 0);
+check("turnos: decisiones simultáneas → UNA sola decisión guardada para el primero", t1?.decisions.length === 1 && t1.status === turns.winner, t1 && { status: t1.status, n: t1.decisions.length });
+check("turnos: el rechazo guarda su motivo y quién", t2?.status === "REJECTED" && t2.decisions.length === 1 && t2.reason === "Ese día celebro en otra capilla" && !!t2.decidedById);
+check("turnos: auditados en Peregrinos (recibido y decidido)", (await prisma.auditLog.count({ where: { organizationId: orgA.id, action: "SIGYP_TURN_APPLIED" } })) >= 2
+  && (await prisma.auditLog.count({ where: { organizationId: orgA.id, action: { in: ["TURN_ACCEPTED", "TURN_REJECTED"] }, entityId: { in: [t1?.id, t2?.id].filter(Boolean) } } })) === 2);
+const turnNotices = await prisma.notification.findMany({ where: { organizationId: orgA.id, kind: "TURN_REQUEST" }, include: { recipients: true } });
+check("turnos: aviso TURN_REQUEST por turno para quien decide (bandeja del personal)", turnNotices.length === 2 && turnNotices.every((n) => n.recipients.length >= 1));
+check("turnos: push honesto sin FCM en pruebas (NOT_CONFIGURED, no se finge enviado)", pt.every((t) => t.pushStatus === "NOT_CONFIGURED"), pt.map((t) => t.pushStatus));
 check("D2: el ADMIN no emitió ningún código ni credencial", (await prisma.integrationLinkCode.count({ where: { createdById: adminA.id } })) === 0 && (await prisma.integrationClient.count({ where: { createdById: adminA.id } })) === 0);
 await prisma.$disconnect();
 done("E2E SIGyP ↔ Peregrinos");

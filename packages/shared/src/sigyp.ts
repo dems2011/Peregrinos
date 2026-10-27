@@ -18,16 +18,17 @@ export const SIGYP_CONTRACT_VERSION = 1;
  * Alcances de una credencial. `notices:send` = avisos a los SEGUIDORES; `notices:staff` = avisos al PERSONAL de la
  * parroquia: es un permiso aparte que el titular (SUPERADMIN) concede de forma explícita al vincular (D3).
  */
-export const SIGYP_SCOPES = ["announcements:write", "profile:write", "events:write", "notices:send", "notices:staff"] as const;
+export const SIGYP_SCOPES = ["announcements:write", "profile:write", "events:write", "notices:send", "notices:staff", "turns:write"] as const;
 export type SigypScope = (typeof SIGYP_SCOPES)[number];
 /** Propuesta inicial de la pantalla de vinculación: todo menos los avisos al personal. */
-export const SIGYP_DEFAULT_SCOPES: readonly SigypScope[] = ["announcements:write", "profile:write", "events:write", "notices:send"];
+export const SIGYP_DEFAULT_SCOPES: readonly SigypScope[] = ["announcements:write", "profile:write", "events:write", "notices:send", "turns:write"];
 export const SIGYP_SCOPE_LABEL: Record<SigypScope, string> = {
   "announcements:write": "Cartelera: avisos públicos con vigencia",
   "profile:write": "Datos públicos del perfil (descripción, contacto, canales y horarios)",
   "events:write": "Eventos públicos de la parroquia (sin inscripciones ni datos de participantes)",
   "notices:send": "Avisos a los seguidores de la parroquia (sin acceso a sus datos)",
   "notices:staff": "Avisos al personal de la parroquia (administración y operadores)",
+  "turns:write": "Turnos que el sacerdote acepta o rechaza desde Peregrinos (sin datos de contacto)",
 };
 const scopeList = z.array(z.enum(SIGYP_SCOPES)).min(1, "Elige al menos un permiso").max(SIGYP_SCOPES.length)
   .refine((s) => new Set(s).size === s.length, "Permisos repetidos");
@@ -151,6 +152,41 @@ export const sigypEventSchema = z.object({
   .refine((e) => e.attendanceMode === "ONLINE" || e.locationName !== null || e.address !== null, { message: "Un evento presencial o mixto necesita lugar o dirección", path: ["locationName"] });
 export const sigypEventWithdrawSchema = sigypWithdrawSchema;
 export type SigypEvent = z.infer<typeof sigypEventSchema>;
+
+/* -------- Turnos con decisión del sacerdote (2026-10-27) -------- */
+
+/**
+ * Turno que SIGyP pide decidir al sacerdote. Solo lo necesario para decidir: NUNCA datos de contacto ni del expediente
+ * (la nota es texto libre de quien carga, con tope). Cada envío trae una versión creciente; WITHDRAWN = ya no requiere
+ * decisión (se canceló o se resolvió en SIGyP).
+ */
+export const TURN_STATUSES_FROM_SIGYP = ["PENDING", "WITHDRAWN"] as const;
+export const sigypTurnSchema = z.object({
+  contract: z.literal(1),
+  sourceId: z.string().uuid(),
+  version: z.number().int().min(1).max(1_000_000),
+  title: z.string().trim().min(3).max(150),
+  category: z.string().trim().max(60).nullable(),
+  startsAt: iso,
+  endsAt: iso,
+  location: z.string().trim().max(160).nullable(),
+  note: z.string().trim().max(500).nullable(),
+  status: z.enum(TURN_STATUSES_FROM_SIGYP),
+}).strict().refine((t) => new Date(t.endsAt).getTime() > new Date(t.startsAt).getTime(), { message: "endsAt debe ser posterior a startsAt", path: ["endsAt"] });
+export type SigypTurn = z.infer<typeof sigypTurnSchema>;
+
+/** Decisión del sacerdote en Peregrinos: sobre la versión que está viendo; rechazar exige motivo. */
+export const TURN_DECISIONS = ["ACCEPTED", "REJECTED"] as const;
+export type TurnDecision = (typeof TURN_DECISIONS)[number];
+export const turnDecisionSchema = z.object({
+  decision: z.enum(TURN_DECISIONS),
+  version: z.number().int().min(1),
+  // Mínimo 5: el mismo que exige SIGyP a un rechazo (AgendaEvent_reject_reason_length), para que se pueda aplicar allí.
+  reason: z.string().trim().min(5, "Indica el motivo (al menos 5 caracteres)").max(300).nullable().optional(),
+}).strict().refine((d) => d.decision !== "REJECTED" || !!d.reason, { message: "Rechazar un turno exige un motivo", path: ["reason"] });
+
+/** Cursor de decisiones que lee SIGyP (`GET /turns/decisions?after=N`). */
+export const turnDecisionsQuerySchema = z.object({ after: z.coerce.number().int().min(0).default(0), limit: z.coerce.number().int().min(1).max(200).default(100) });
 
 /* -------- Avisos multigrupo (lógica de destinatarios compartida) -------- */
 

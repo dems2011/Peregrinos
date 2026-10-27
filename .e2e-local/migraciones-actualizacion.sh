@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Prueba de actualización de la base: el esquema de PRODUCCIÓN (origin/main, 27 migraciones) con datos sintéticos →
-# migraciones 28 y 29 → verificación de integridad y de deriva → reversión con su script → nueva aplicación.
+# migraciones 28, 29 y 30 → verificación de integridad y de deriva → reversión con sus scripts → nueva aplicación.
 # PostgreSQL 18 en un contenedor DESECHABLE (127.0.0.1:5443). Nunca usa apps/api/.env ni toca otra base.
 # Uso: bash .e2e-local/migraciones-actualizacion.sh [ref-de-produccion=origin/main]
 set -u
@@ -53,9 +53,9 @@ fp() { psqlq -c "SELECT md5(string_agg(x, '|' ORDER BY x)) FROM (
 BEFORE="$(fp)"
 echo "    huella antes: $BEFORE"
 
-echo "— 3. Migraciones 28 y 29"
+echo "— 3. Migraciones 28, 29 y 30"
 npx.cmd prisma migrate deploy --schema "$NEW_SCHEMA" 2>&1 | grep -E "migrations? found|Applying|applied|Error"; check "migrate deploy sin errores" "${PIPESTATUS[0]}"
-check "29 migraciones registradas, ninguna fallida" "$([ "$(psqlq -c 'SELECT count(*) FROM "_prisma_migrations" WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL')" = 29 ] && [ "$(psqlq -c 'SELECT count(*) FROM "_prisma_migrations" WHERE finished_at IS NULL')" = 0 ]; echo $?)"
+check "30 migraciones registradas, ninguna fallida" "$([ "$(psqlq -c 'SELECT count(*) FROM "_prisma_migrations" WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL')" = 30 ] && [ "$(psqlq -c 'SELECT count(*) FROM "_prisma_migrations" WHERE finished_at IS NULL')" = 0 ]; echo $?)"
 npx.cmd prisma migrate status --schema "$NEW_SCHEMA" 2>&1 | grep -q "Database schema is up to date"; check "migrate status: al día" "$?"
 npx.cmd prisma migrate diff --from-url "$DATABASE_URL" --to-schema-datamodel "$NEW_SCHEMA" --exit-code >/dev/null 2>&1; check "sin deriva entre la base y schema.prisma" "$?"
 AFTER="$(fp)"
@@ -65,6 +65,8 @@ check "restricciones CHECK nuevas presentes y VALIDADAS sobre las filas existent
 check "índices únicos por origen presentes" "$([ "$(psqlq -c "SELECT count(*) FROM pg_indexes WHERE indexname IN ('Event_organizationId_sourceSystem_sourceId_key','Notification_organizationId_sourceSystem_sourceId_key','ParishAnnouncement_organizationId_sourceSystem_sourceId_key','IntegrationClient_tokenHash_key','IntegrationLinkCode_codeHash_key')")" = 5 ]; echo $?)"
 psqlq -c "INSERT INTO \"Event\" (id, \"organizationId\", name, \"startsAt\", \"updatedAt\", \"sourceSystem\") VALUES ('x', 'org-1', 'x', now(), now(), 'SIGYP')" >/dev/null 2>&1; check "la base rechaza un evento con origen sin sourceId (CHECK activo)" "$([ $? -ne 0 ]; echo $?)"
 psqlq -c "UPDATE \"Notification\" SET delivery = 'EMAIL' WHERE id = 'ntf-1'" >/dev/null 2>&1; check "la base rechaza una entrega desconocida (CHECK activo)" "$([ $? -ne 0 ]; echo $?)"
+check "turnos (30): CHECK presentes y validados" "$([ "$(psqlq -c "SELECT count(*) FROM pg_constraint WHERE conname IN ('PastoralTurn_status_check','PastoralTurn_source_check','PastoralTurn_dates_check','PastoralTurn_decision_check','PastoralTurn_push_check','PastoralTurnDecision_check') AND convalidated")" = 6 ]; echo $?)"
+psqlq -c "INSERT INTO \"PastoralTurn\" (id, \"organizationId\", \"sourceId\", version, title, \"startsAt\", \"endsAt\", status, \"updatedAt\") VALUES ('t', 'org-1', 's', 1, 'x', now(), now() + interval '1 hour', 'REJECTED', now())" >/dev/null 2>&1; check "turnos (30): la base rechaza un rechazo sin quién ni motivo" "$([ $? -ne 0 ]; echo $?)"
 
 echo "— 3b. El código de producción ($REF) sigue funcionando con el esquema ya migrado (ventana migrar → publicar)"
 # Cliente Prisma de $REF generado APARTE (no toca el del repositorio): lee y escribe con las columnas que conoce.
@@ -89,7 +91,12 @@ JS
 node "$OLD/compat.cjs" "$OLDW/client"; check "lecturas y escrituras del código anterior sobre el esquema nuevo" "$?"
 check "las filas creadas por el código anterior respetan los CHECK nuevos (y no quedan)" "$([ "$(psqlq -c "SELECT count(*) FROM \"Event\" WHERE name LIKE '%código anterior%'")" = 0 ]; echo $?)"
 
-echo "— 4. Reversión (script de producción) y nueva aplicación"
+echo "— 4. Reversión (scripts de producción: primero 30, después 28/29) y nueva aplicación"
+psqlq -c "INSERT INTO \"PastoralTurn\" (id, \"organizationId\", \"sourceId\", version, title, \"startsAt\", \"endsAt\", \"updatedAt\") VALUES ('t1', 'org-1', 's1', 1, 'Turno', now(), now() + interval '1 hour', now())" >/dev/null
+psqlq < "$ROOT/apps/api/prisma/rollback/20261027_pastoral_turns_rollback.sql" >/dev/null 2>&1
+check "con turnos la reversión de 30 se ABORTA sin cambiar nada" "$([ $? -ne 0 ] && [ "$(psqlq -c 'SELECT count(*) FROM "PastoralTurn"')" = 1 ] && [ "$(psqlq -c 'SELECT count(*) FROM "_prisma_migrations"')" = 30 ]; echo $?)"
+psqlq -c "DELETE FROM \"PastoralTurn\"" >/dev/null
+psqlq < "$ROOT/apps/api/prisma/rollback/20261027_pastoral_turns_rollback.sql" >/dev/null; check "sin turnos la reversión de 30 se aplica" "$?"
 psqlq -c "INSERT INTO \"IntegrationClient\" (id, \"organizationId\", label, \"tokenHash\", \"tokenHint\", scopes) VALUES ('c1', 'org-1', 'x', 'h', 'hint', '{profile:write}')" >/dev/null
 psqlq < "$ROOT/apps/api/prisma/rollback/20261019_sigyp_rollback.sql" >/dev/null 2>&1
 check "con datos de SIGyP la reversión se ABORTA sin cambiar nada" "$([ $? -ne 0 ] && [ "$(psqlq -c 'SELECT count(*) FROM "IntegrationClient"')" = 1 ] && [ "$(psqlq -c 'SELECT count(*) FROM "_prisma_migrations"')" = 29 ]; echo $?)"
@@ -97,9 +104,9 @@ psqlq -c "DELETE FROM \"IntegrationClient\"" >/dev/null
 psqlq < "$ROOT/apps/api/prisma/rollback/20261019_sigyp_rollback.sql" >/dev/null; check "sin datos de SIGyP la reversión se aplica" "$?"
 npx.cmd prisma migrate diff --from-url "$DATABASE_URL" --to-schema-datamodel "$OLD_SCHEMA" --exit-code >/dev/null 2>&1; check "tras revertir, la base coincide exactamente con el esquema de $REF" "$?"
 check "tras revertir, datos intactos (misma huella)" "$([ "$BEFORE" = "$(fp)" ]; echo $?)"
-npx.cmd prisma migrate deploy --schema "$NEW_SCHEMA" >/dev/null 2>&1; check "se pueden volver a aplicar 28 y 29" "$?"
+npx.cmd prisma migrate deploy --schema "$NEW_SCHEMA" >/dev/null 2>&1; check "se pueden volver a aplicar 28, 29 y 30" "$?"
 npx.cmd prisma migrate diff --from-url "$DATABASE_URL" --to-schema-datamodel "$NEW_SCHEMA" --exit-code >/dev/null 2>&1; check "y la base vuelve a coincidir con schema.prisma" "$?"
 check "datos intactos después del ciclo completo" "$([ "$BEFORE" = "$(fp)" ]; echo $?)"
 
-echo; echo "Migraciones 27 → 29 → reversión → 29: $ok OK, $fail FAIL"
+echo; echo "Migraciones 27 → 30 → reversión → 30: $ok OK, $fail FAIL"
 [ "$fail" = 0 ]

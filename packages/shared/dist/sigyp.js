@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.sigypNoticeSchema = exports.multiNoticeSchema = exports.noticeAudiencesSchema = exports.NOTICE_AUDIENCE_LABEL = exports.NOTICE_AUDIENCES = exports.sigypEventWithdrawSchema = exports.sigypEventSchema = exports.SIGYP_ATTENDANCE_MODES = exports.sigypLinkCompleteSchema = exports.sigypLinkPreviewSchema = exports.LINK_CODE_ALPHABET = exports.LINK_CODE_TTL_MINUTES = exports.sigypProfileSchema = exports.SIGYP_PROFILE_FIELDS = exports.sigypWithdrawSchema = exports.sigypAnnouncementSchema = exports.SIGYP_CATEGORY_LABEL = exports.SIGYP_CATEGORIES = exports.sigypReauthSchema = exports.sigypClientCreateSchema = exports.sigypLinkCodeCreateSchema = exports.SIGYP_SCOPE_LABEL = exports.SIGYP_DEFAULT_SCOPES = exports.SIGYP_SCOPES = exports.SIGYP_CONTRACT_VERSION = exports.SIGYP_EVENT_TYPES = void 0;
+exports.sigypNoticeSchema = exports.multiNoticeSchema = exports.noticeAudiencesSchema = exports.NOTICE_AUDIENCE_LABEL = exports.NOTICE_AUDIENCES = exports.turnDecisionsQuerySchema = exports.turnDecisionSchema = exports.TURN_DECISIONS = exports.sigypTurnSchema = exports.TURN_STATUSES_FROM_SIGYP = exports.sigypEventWithdrawSchema = exports.sigypEventSchema = exports.SIGYP_ATTENDANCE_MODES = exports.sigypLinkCompleteSchema = exports.sigypLinkPreviewSchema = exports.LINK_CODE_ALPHABET = exports.LINK_CODE_TTL_MINUTES = exports.sigypProfileSchema = exports.SIGYP_PROFILE_FIELDS = exports.sigypWithdrawSchema = exports.sigypAnnouncementSchema = exports.SIGYP_CATEGORY_LABEL = exports.SIGYP_CATEGORIES = exports.sigypReauthSchema = exports.sigypClientCreateSchema = exports.sigypLinkCodeCreateSchema = exports.SIGYP_SCOPE_LABEL = exports.SIGYP_DEFAULT_SCOPES = exports.SIGYP_SCOPES = exports.SIGYP_CONTRACT_VERSION = exports.SIGYP_EVENT_TYPES = void 0;
 exports.isAnnouncementVisible = isAnnouncementVisible;
 exports.sigypManagedFieldsIn = sigypManagedFieldsIn;
 exports.normalizeLinkCode = normalizeLinkCode;
@@ -25,15 +25,16 @@ exports.SIGYP_CONTRACT_VERSION = 1;
  * Alcances de una credencial. `notices:send` = avisos a los SEGUIDORES; `notices:staff` = avisos al PERSONAL de la
  * parroquia: es un permiso aparte que el titular (SUPERADMIN) concede de forma explícita al vincular (D3).
  */
-exports.SIGYP_SCOPES = ["announcements:write", "profile:write", "events:write", "notices:send", "notices:staff"];
+exports.SIGYP_SCOPES = ["announcements:write", "profile:write", "events:write", "notices:send", "notices:staff", "turns:write"];
 /** Propuesta inicial de la pantalla de vinculación: todo menos los avisos al personal. */
-exports.SIGYP_DEFAULT_SCOPES = ["announcements:write", "profile:write", "events:write", "notices:send"];
+exports.SIGYP_DEFAULT_SCOPES = ["announcements:write", "profile:write", "events:write", "notices:send", "turns:write"];
 exports.SIGYP_SCOPE_LABEL = {
     "announcements:write": "Cartelera: avisos públicos con vigencia",
     "profile:write": "Datos públicos del perfil (descripción, contacto, canales y horarios)",
     "events:write": "Eventos públicos de la parroquia (sin inscripciones ni datos de participantes)",
     "notices:send": "Avisos a los seguidores de la parroquia (sin acceso a sus datos)",
     "notices:staff": "Avisos al personal de la parroquia (administración y operadores)",
+    "turns:write": "Turnos que el sacerdote acepta o rechaza desde Peregrinos (sin datos de contacto)",
 };
 const scopeList = zod_1.z.array(zod_1.z.enum(exports.SIGYP_SCOPES)).min(1, "Elige al menos un permiso").max(exports.SIGYP_SCOPES.length)
     .refine((s) => new Set(s).size === s.length, "Permisos repetidos");
@@ -144,6 +145,35 @@ exports.sigypEventSchema = zod_1.z.object({
     .refine((e) => e.attendanceMode === "IN_PERSON" || e.onlineUrl !== null, { message: "Un evento virtual o mixto necesita el enlace de participación", path: ["onlineUrl"] })
     .refine((e) => e.attendanceMode === "ONLINE" || e.locationName !== null || e.address !== null, { message: "Un evento presencial o mixto necesita lugar o dirección", path: ["locationName"] });
 exports.sigypEventWithdrawSchema = exports.sigypWithdrawSchema;
+/* -------- Turnos con decisión del sacerdote (2026-10-27) -------- */
+/**
+ * Turno que SIGyP pide decidir al sacerdote. Solo lo necesario para decidir: NUNCA datos de contacto ni del expediente
+ * (la nota es texto libre de quien carga, con tope). Cada envío trae una versión creciente; WITHDRAWN = ya no requiere
+ * decisión (se canceló o se resolvió en SIGyP).
+ */
+exports.TURN_STATUSES_FROM_SIGYP = ["PENDING", "WITHDRAWN"];
+exports.sigypTurnSchema = zod_1.z.object({
+    contract: zod_1.z.literal(1),
+    sourceId: zod_1.z.string().uuid(),
+    version: zod_1.z.number().int().min(1).max(1_000_000),
+    title: zod_1.z.string().trim().min(3).max(150),
+    category: zod_1.z.string().trim().max(60).nullable(),
+    startsAt: iso,
+    endsAt: iso,
+    location: zod_1.z.string().trim().max(160).nullable(),
+    note: zod_1.z.string().trim().max(500).nullable(),
+    status: zod_1.z.enum(exports.TURN_STATUSES_FROM_SIGYP),
+}).strict().refine((t) => new Date(t.endsAt).getTime() > new Date(t.startsAt).getTime(), { message: "endsAt debe ser posterior a startsAt", path: ["endsAt"] });
+/** Decisión del sacerdote en Peregrinos: sobre la versión que está viendo; rechazar exige motivo. */
+exports.TURN_DECISIONS = ["ACCEPTED", "REJECTED"];
+exports.turnDecisionSchema = zod_1.z.object({
+    decision: zod_1.z.enum(exports.TURN_DECISIONS),
+    version: zod_1.z.number().int().min(1),
+    // Mínimo 5: el mismo que exige SIGyP a un rechazo (AgendaEvent_reject_reason_length), para que se pueda aplicar allí.
+    reason: zod_1.z.string().trim().min(5, "Indica el motivo (al menos 5 caracteres)").max(300).nullable().optional(),
+}).strict().refine((d) => d.decision !== "REJECTED" || !!d.reason, { message: "Rechazar un turno exige un motivo", path: ["reason"] });
+/** Cursor de decisiones que lee SIGyP (`GET /turns/decisions?after=N`). */
+exports.turnDecisionsQuerySchema = zod_1.z.object({ after: zod_1.z.coerce.number().int().min(0).default(0), limit: zod_1.z.coerce.number().int().min(1).max(200).default(100) });
 /* -------- Avisos multigrupo (lógica de destinatarios compartida) -------- */
 /** Grupos de destinatarios en Peregrinos. Se derivan de datos reales: seguidores y personal según su rol. */
 exports.NOTICE_AUDIENCES = ["FOLLOWERS", "STAFF:SUPERADMIN", "STAFF:ADMIN", "STAFF:OPERATOR"];

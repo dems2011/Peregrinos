@@ -19,9 +19,9 @@ const eventParamSchema = z.object({ eventId: z.string().uuid() });
 const idParam = z.object({ id: z.string().uuid() });
 /** Token FCM: texto opaco de Firebase (letras, dígitos, ":", "_" y "-"); se valida el formato, no el contenido. */
 const fcmToken = z.string().trim().min(20, "Token de dispositivo inválido.").max(4096).regex(/^[A-Za-z0-9_:-]+$/, "Token de dispositivo inválido.");
-const deviceBody = z.object({ token: fcmToken, platform: z.enum(["ANDROID"]).default("ANDROID") }).strict();
+export const deviceBody = z.object({ token: fcmToken, platform: z.enum(["ANDROID"]).default("ANDROID") }).strict();
 /** Baja: el token va en el cuerpo, nunca en la URL (las URL quedan en los logs). */
-const deviceRevokeBody = z.object({ token: fcmToken }).strict();
+export const deviceRevokeBody = z.object({ token: fcmToken }).strict();
 
 async function personOf(req: FastifyRequest) {
   const u = await prisma.user.findUniqueOrThrow({ where: { id: req.pilgrimAccount.id }, select: { personId: true } });
