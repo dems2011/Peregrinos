@@ -16,6 +16,7 @@
  */
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
+import { SIGYP_DEFAULT_SCOPES, SIGYP_SCOPES } from "@peregrinos/shared";
 import { createRequire } from "node:module";
 import { join, resolve } from "node:path";
 
@@ -91,7 +92,8 @@ async function runMode(mode) {
         const card = document.querySelector('[data-testid="sigyp-card"]');
         return { boxes: boxes.length, checked: boxes.filter((b) => b.checked).length, pwd: !!card?.querySelector('input[type="password"][autocomplete="current-password"]') };
       });
-      check("tarjeta SIGyP: 5 alcances, 4 marcados (sin el personal) y campo de contraseña", card.boxes === 5 && card.checked === 4 && card.pwd, card);
+      // Cantidades tomadas del contrato (no fijas): todos los alcances, marcados los propuestos por defecto (todos menos el personal).
+  check(`tarjeta SIGyP: ${SIGYP_SCOPES.length} alcances, ${SIGYP_DEFAULT_SCOPES.length} marcados (sin el personal) y campo de contraseña`, card.boxes === SIGYP_SCOPES.length && card.checked === SIGYP_DEFAULT_SCOPES.length && !SIGYP_DEFAULT_SCOPES.includes("notices:staff") && card.pwd, card);
       if (process.env.SCREENSHOT_DIR) {
         for (const [w, h, name] of [[1366, 900, "escritorio"], [390, 844, "movil"]]) {
           await page.setViewport({ width: w, height: h });
