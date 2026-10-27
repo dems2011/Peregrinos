@@ -6,7 +6,7 @@ import { useLoad } from "@/lib/hooks";
 import { fmtDateTimeMedium, viewerTimeZone } from "@/lib/format";
 
 /** B1 — Bandeja de avisos de las parroquias que sigue la cuenta. */
-interface Notice { id: string; kind: "MANUAL" | "EVENT_PUBLISHED"; title: string; body: string; createdAt: string; readAt: string | null; organization: { id: string; name: string }; event: { id: string; name: string } | null }
+interface Notice { id: string; kind: "MANUAL" | "EVENT_PUBLISHED" | "REQUEST_STATUS" | string; title: string; body: string; createdAt: string; readAt: string | null; organization: { id: string; name: string }; event: { id: string; name: string } | null }
 
 export default function Avisos() {
   const list = useLoad(() => api<{ unread: number; items: Notice[] }>("/auth/account/notifications"), []);
@@ -38,7 +38,9 @@ export default function Avisos() {
           </button>
           {open === n.id && <>
             <p style={{ whiteSpace: "pre-line", margin: "6px 0" }}>{n.body}</p>
-            <Link className="small" href={`/parroquias/${n.organization.id}`}>Ver la parroquia{n.event ? " y el evento" : ""}</Link>
+            {n.kind === "REQUEST_STATUS"
+              ? <Link className="small" href="/cuenta/solicitudes">Ver mis solicitudes</Link>
+              : <Link className="small" href={`/parroquias/${n.organization.id}`}>Ver la parroquia{n.event ? " y el evento" : ""}</Link>}
           </>}
         </article>
       ))}

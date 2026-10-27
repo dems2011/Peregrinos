@@ -84,6 +84,10 @@ edit("app/src/main/assets/capacitor.config.json", (s) => {
   c.server = { ...c.server, url: u.origin, cleartext: u.protocol === "http:" };
   return JSON.stringify(c, null, "\t") + "\n";
 });
+// Sin google-services.json no hay Firebase: PushNotifications.register() cerraba la app («Default FirebaseApp is not
+// initialized», visto en un Samsung A34 con Android 16 el 2026-10-27) y se perdía la sesión. Sin el plugin registrado,
+// la web lo ve como no disponible (Capacitor.isPluginAvailable) y no pide push; los avisos siguen en la bandeja.
+edit("app/src/main/assets/capacitor.plugins.json", (s) => JSON.stringify(JSON.parse(s).filter((p) => p.pkg !== "@capacitor/push-notifications"), null, "\t") + "\n");
 if (u.protocol === "http:") {
   // HTTP solo en la variante de prueba (red local o emulador); la app real sigue solo con HTTPS.
   edit("app/src/main/AndroidManifest.xml", (s) => s.includes("usesCleartextTraffic") ? s : s.replace("<application", '<application\n        android:usesCleartextTraffic="true"'));

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { isMfaChallenge } from "@peregrinos/shared";
-import { ApiError, cancelMfaLogin, login, verifyMfaLogin, warmUpApi } from "@/lib/api";
+import { ApiError, api, cancelMfaLogin, login, verifyMfaLogin, warmUpApi } from "@/lib/api";
 import { ArrowRight } from "lucide-react";
 import { BrandMark } from "@/components/BrandMark";
 import { SplashBackground } from "@/components/SplashBackground";
@@ -27,6 +27,10 @@ export default function LoginPage() {
   const codeValid = useRecovery ? code.replace(/[^A-Za-z0-9]/g, "").length === 10 : /^\d{6}$/.test(code.replace(/\s/g, ""));
   // Despierta el API (Render en reposo) mientras se escriben los datos: "Ingresar" ya no espera el arranque en frío.
   useEffect(() => { void warmUpApi(); }, []);
+  // La app (y la web) abre en «/», que solo conoce la sesión del PERSONAL: sin ella llega aquí. Si hay una sesión de
+  // cuenta de peregrino vigente (60 días), se va a su cuenta en vez de pedirle la contraseña cada vez que reabre la app
+  // (visto en un teléfono el 2026-10-27). /auth/account/* no renueva ni avisa «sesión vencida»: un 401 aquí es silencioso.
+  useEffect(() => { api("/auth/account/me").then(() => router.replace("/cuenta"), () => undefined); }, [router]);
 
   async function onSubmitCode(e: FormEvent) {
     e.preventDefault();

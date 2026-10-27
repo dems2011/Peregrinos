@@ -133,3 +133,14 @@ extremo real con SIGyP (`run.sh e2e-sigyp.mjs`: x1 6/6, 25/25 verificaciones en 
 simultáneas → una sola guardada); `migraciones-actualizacion.sh` 27 → 30 → reversión → 30.
 **NO verificado:** la entrega push a un teléfono real (no hay dispositivo ni emulador en esta PC, y la configuración FCM
 de Render no se tocó ni se probó). En las pruebas el estado es honestamente `NOT_CONFIGURED`.
+## Solicitudes de los fieles (2026-10-27)
+
+Alcance nuevo `requests:sync` (lo concede el titular al generar el código). SIGyP publica los trámites que la parroquia
+habilita en línea (`PUT /request-types/:sourceId`: nombre y descripción); el fiel, con su cuenta y correo verificado,
+pide uno en `/cuenta/solicitudes` (solo parroquias que hoy reciben, 10 por hora, 5 abiertas por parroquia); SIGyP las
+recoge por cursor (`GET /requests/incoming?after=`, cada 20 s y en cada sincronización), las registra como RECIBIDAS con
+número SO y publica cada estado con un mensaje opcional PARA la persona (`PUT /requests/:sourceId/status`, versión
+creciente). Las notas internas nunca viajan. Aviso y push al fiel con texto genérico (sin el trámite: se ve con el
+teléfono bloqueado). Migración 31 `20261027000100_pilgrim_requests` (aditiva; reversión
+`rollback/20261027_pilgrim_requests_rollback.sql`). Altas en orden por organización (`lockCursor`), igual que las
+decisiones de turnos. Pruebas: `s9`, x1 real con SIGyP, y en un teléfono físico (`PILOTO-2026-11-APK.md`).
